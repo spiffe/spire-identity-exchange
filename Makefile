@@ -8,7 +8,7 @@ build: deps
 	@echo "--------------------------------"
 	@echo "Building spire-identity-exchange..."
 	@mkdir -p $(BUILD_DIR)/bin
-	@go build -v -o $(BUILD_DIR)/bin/$(APP_NAME) . && \
+	@go build -v -o $(BUILD_DIR)/bin/$(APP_NAME) ./cmd/spire-identity-exchange-server && \
 	ls -l $(BUILD_DIR)/bin/$(APP_NAME) && \
 	echo "$(APP_NAME) built successfully at $(BUILD_DIR)/bin/$(APP_NAME)"
 	@echo "--------------------------------"
