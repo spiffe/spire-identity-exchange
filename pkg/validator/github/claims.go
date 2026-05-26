@@ -1,8 +1,6 @@
 package github
 
 import (
-	"encoding/json"
-
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 )
@@ -39,15 +37,14 @@ type Claims struct {
 	EnvironmentNodeID    string `json:"environment_node_id"`
 	RunnerEnvironment    string `json:"runner_environment"`
 	Enterprise           string `json:"enterprise"`
+
+	// rawClaims holds the complete raw claim map from the token, including
+	// claims not modeled as struct fields. Set during token parsing.
+	rawClaims map[string]interface{}
 }
 
 // ToCommonClaims converts GitHub-specific claims to the shared JWTClaims type.
 func (c *Claims) ToCommonClaims() *validator.JWTClaims {
-	raw := make(map[string]interface{})
-	if b, err := json.Marshal(c); err == nil {
-		json.Unmarshal(b, &raw) //nolint:errcheck
-	}
-
 	var expiry int64
 	if c.ExpiresAt != nil {
 		expiry = c.ExpiresAt.Unix()
@@ -74,6 +71,6 @@ func (c *Claims) ToCommonClaims() *validator.JWTClaims {
 		NotBefore: notBefore,
 		IssuedAt:  issuedAt,
 		JTI:       c.ID,
-		Raw:       raw,
+		Raw:       c.rawClaims,
 	}
 }

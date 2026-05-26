@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,9 @@ type Config struct {
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
 	KeyProvider validator.KeyProvider
+	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
+	// Must not be enabled in production.
+	AllowHTTP bool
 }
 
 // Validator validates GitHub Actions OIDC tokens.
@@ -55,6 +59,10 @@ func NewValidator(cfg Config) (*Validator, error) {
 	issuer := cfg.IssuerURL
 	if issuer == "" {
 		issuer = DefaultIssuer
+	}
+
+	if err := validateIssuerURL(issuer, cfg.AllowHTTP); err != nil {
+		return nil, fmt.Errorf("invalid issuer URL: %w", err)
 	}
 	if len(cfg.Audiences) == 0 {
 		return nil, fmt.Errorf("at least one audience must be configured")
@@ -79,6 +87,27 @@ func NewValidator(cfg Config) (*Validator, error) {
 		allowedRepositories:     cfg.AllowedRepositories,
 		keyProvider:             keyProvider,
 	}, nil
+}
+
+// validateIssuerURL validates the issuer URL format and scheme.
+func validateIssuerURL(issuer string, allowHTTP bool) error {
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if u.Scheme != "https" && !(allowHTTP && u.Scheme == "http") {
+		return fmt.Errorf("scheme must be https (got %q)", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("host must not be empty")
+	}
+	if u.RawQuery != "" {
+		return fmt.Errorf("query parameters are not allowed")
+	}
+	if u.Fragment != "" {
+		return fmt.Errorf("fragment is not allowed")
+	}
+	return nil
 }
 
 // Validate validates a GitHub Actions OIDC token and returns common claims.
@@ -107,8 +136,7 @@ func (v *Validator) validateToken(ctx context.Context, rawToken string) (*Claims
 		return nil, fmt.Errorf("failed to get public key for kid=%q: %w", kid, err)
 	}
 
-	claims := &Claims{}
-	parsed, err := jwt.ParseWithClaims(rawToken, claims, func(t *jwt.Token) (interface{}, error) {
+	keyFunc := func(t *jwt.Token) (interface{}, error) {
 		switch t.Method.(type) {
 		case *jwt.SigningMethodRSA, *jwt.SigningMethodECDSA:
 			// GitHub currently uses RS256 but may switch to ECDSA.
@@ -116,17 +144,31 @@ func (v *Validator) validateToken(ctx context.Context, rawToken string) (*Claims
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return pubKey, nil
-	},
+	}
+	parserOpts := []jwt.ParserOption{
 		jwt.WithIssuer(v.issuerURL),
 		jwt.WithLeeway(clockLeeway),
 		jwt.WithExpirationRequired(),
-	)
+	}
+
+	// Parse into structured claims for typed field access.
+	claims := &Claims{}
+	parsed, err := jwt.ParseWithClaims(rawToken, claims, keyFunc, parserOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
 	if !parsed.Valid {
 		return nil, fmt.Errorf("token is not valid")
 	}
+
+	// Parse again into MapClaims to capture all claims including those not
+	// modeled in the Claims struct. This ensures GetRaw() returns the complete
+	// claim set as the interface contract requires.
+	mapClaims := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(rawToken, mapClaims); err != nil {
+		return nil, fmt.Errorf("failed to parse raw claims: %w", err)
+	}
+	claims.rawClaims = map[string]interface{}(mapClaims)
 
 	// Validate audience: token must contain at least one of the configured audiences.
 	tokenAud, err := claims.GetAudience()
@@ -184,7 +226,7 @@ func (v *Validator) checkAllowLists(claims *Claims) error {
 // Supports wildcard suffix matching (e.g., "my-org/*" matches "my-org/any-repo").
 func isValueAllowed(value string, allowedValues []string) bool {
 	for _, av := range allowedValues {
-		if strings.Contains(av, "*") {
+		if strings.HasSuffix(av, "*") {
 			pattern := strings.TrimSuffix(av, "*")
 			if strings.HasPrefix(value, pattern) {
 				return true
