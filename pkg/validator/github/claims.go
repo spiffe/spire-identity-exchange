@@ -1,76 +1,70 @@
 package github
 
-import (
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/spiffe/spire-identity-exchange/pkg/validator"
-)
-
-// Claims holds the parsed claims from a GitHub Actions OIDC token.
-// It embeds jwt.RegisteredClaims so that jwt/v5 handles exp, nbf, iat,
-// iss, sub, aud validation via ParserOptions.
+// Claims holds GitHub Actions OIDC specific claim fields.
+// Used internally for typed access when generating selectors.
 type Claims struct {
-	jwt.RegisteredClaims
-
-	Repository           string `json:"repository"`
-	RepositoryID         string `json:"repository_id"`
-	RepositoryOwner      string `json:"repository_owner"`
-	RepositoryOwnerID    string `json:"repository_owner_id"`
-	RepositoryVisibility string `json:"repository_visibility"`
-	Workflow             string `json:"workflow"`
-	WorkflowRef          string `json:"workflow_ref"`
-	WorkflowSHA          string `json:"workflow_sha"`
-	JobWorkflowRef       string `json:"job_workflow_ref"`
-	JobWorkflowSHA       string `json:"job_workflow_sha"`
-	Ref                  string `json:"ref"`
-	RefType              string `json:"ref_type"`
-	RefProtected         string `json:"ref_protected"`
-	SHA                  string `json:"sha"`
-	HeadRef              string `json:"head_ref"`
-	BaseRef              string `json:"base_ref"`
-	EventName            string `json:"event_name"`
-	Actor                string `json:"actor"`
-	ActorID              string `json:"actor_id"`
-	RunID                string `json:"run_id"`
-	RunNumber            string `json:"run_number"`
-	RunAttempt           string `json:"run_attempt"`
-	Environment          string `json:"environment"`
-	EnvironmentNodeID    string `json:"environment_node_id"`
-	RunnerEnvironment    string `json:"runner_environment"`
-	Enterprise           string `json:"enterprise"`
-
-	// rawClaims holds the complete raw claim map from the token, including
-	// claims not modeled as struct fields. Set during token parsing.
-	rawClaims map[string]interface{}
+	Repository           string
+	RepositoryID         string
+	RepositoryOwner      string
+	RepositoryOwnerID    string
+	RepositoryVisibility string
+	Workflow             string
+	WorkflowRef          string
+	WorkflowSHA          string
+	JobWorkflowRef       string
+	JobWorkflowSHA       string
+	Ref                  string
+	RefType              string
+	RefProtected         string
+	SHA                  string
+	HeadRef              string
+	BaseRef              string
+	EventName            string
+	Actor                string
+	ActorID              string
+	RunID                string
+	RunNumber            string
+	RunAttempt           string
+	Environment          string
+	EnvironmentNodeID    string
+	RunnerEnvironment    string
+	Enterprise           string
 }
 
-// ToCommonClaims converts GitHub-specific claims to the shared JWTClaims type.
-func (c *Claims) ToCommonClaims() *validator.JWTClaims {
-	var expiry int64
-	if c.ExpiresAt != nil {
-		expiry = c.ExpiresAt.Unix()
+// claimsFromRaw reconstructs GitHub Claims from the raw claims map.
+func claimsFromRaw(raw map[string]interface{}) *Claims {
+	c := &Claims{}
+	getString := func(key string) string {
+		if v, ok := raw[key].(string); ok {
+			return v
+		}
+		return ""
 	}
-	var notBefore int64
-	if c.NotBefore != nil {
-		notBefore = c.NotBefore.Unix()
-	}
-	var issuedAt int64
-	if c.IssuedAt != nil {
-		issuedAt = c.IssuedAt.Unix()
-	}
-
-	aud := []string{}
-	if c.Audience != nil {
-		aud = []string(c.Audience)
-	}
-
-	return &validator.JWTClaims{
-		Issuer:    c.Issuer,
-		Subject:   c.Subject,
-		Audience:  aud,
-		Expiry:    expiry,
-		NotBefore: notBefore,
-		IssuedAt:  issuedAt,
-		JTI:       c.ID,
-		Raw:       c.rawClaims,
-	}
+	c.Repository = getString("repository")
+	c.RepositoryOwner = getString("repository_owner")
+	c.RepositoryID = getString("repository_id")
+	c.RepositoryOwnerID = getString("repository_owner_id")
+	c.RepositoryVisibility = getString("repository_visibility")
+	c.Workflow = getString("workflow")
+	c.WorkflowRef = getString("workflow_ref")
+	c.JobWorkflowRef = getString("job_workflow_ref")
+	c.Ref = getString("ref")
+	c.RefType = getString("ref_type")
+	c.SHA = getString("sha")
+	c.HeadRef = getString("head_ref")
+	c.BaseRef = getString("base_ref")
+	c.EventName = getString("event_name")
+	c.Actor = getString("actor")
+	c.ActorID = getString("actor_id")
+	c.RunID = getString("run_id")
+	c.RunNumber = getString("run_number")
+	c.RunAttempt = getString("run_attempt")
+	c.Environment = getString("environment")
+	c.EnvironmentNodeID = getString("environment_node_id")
+	c.RunnerEnvironment = getString("runner_environment")
+	c.WorkflowSHA = getString("workflow_sha")
+	c.JobWorkflowSHA = getString("job_workflow_sha")
+	c.RefProtected = getString("ref_protected")
+	c.Enterprise = getString("enterprise")
+	return c
 }

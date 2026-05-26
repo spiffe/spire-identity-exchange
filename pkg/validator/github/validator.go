@@ -1,31 +1,19 @@
+// Package github provides a GitHub Actions OIDC token validator built on
+// the generic jwt.Validator. It adds GitHub-specific allowlist checks
+// and SPIRE selector generation.
 package github
 
 import (
 	"context"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/rsa"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	jose "github.com/go-jose/go-jose/v4"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	jwtvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
 )
 
 const (
 	DefaultIssuer = "https://token.actions.githubusercontent.com"
-	jwksPath      = "/.well-known/jwks"
-	cacheTTL      = time.Hour
-	clockLeeway   = 30 * time.Second
-	httpTimeout   = 10 * time.Second
-	maxJWKSBytes  = 1 << 20 // 1 MiB
 )
 
 // Config holds configuration for the GitHub OIDC validator.
@@ -34,7 +22,6 @@ type Config struct {
 	Audiences               []string
 	AllowedRepositoryOwners []string
 	AllowedRepositories     []string
-	HTTPClient              *http.Client
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
@@ -47,11 +34,9 @@ type Config struct {
 // Validator validates GitHub Actions OIDC tokens.
 // It implements validator.TokenValidator and validator.SelectorGenerator.
 type Validator struct {
-	issuerURL               string
-	audiences               []string
+	jwtValidator            *jwtvalidator.Validator
 	allowedRepositoryOwners []string
 	allowedRepositories     []string
-	keyProvider             validator.KeyProvider
 }
 
 // NewValidator creates a new GitHub OIDC validator.
@@ -60,163 +45,56 @@ func NewValidator(cfg Config) (*Validator, error) {
 	if issuer == "" {
 		issuer = DefaultIssuer
 	}
-
-	if err := validateIssuerURL(issuer, cfg.AllowHTTP); err != nil {
-		return nil, fmt.Errorf("invalid issuer URL: %w", err)
-	}
-	if len(cfg.Audiences) == 0 {
-		return nil, fmt.Errorf("at least one audience must be configured")
-	}
 	if len(cfg.AllowedRepositories) == 0 && len(cfg.AllowedRepositoryOwners) == 0 {
 		return nil, fmt.Errorf("at least one of allowed_repositories or allowed_repository_owners must be configured")
 	}
 
-	keyProvider := cfg.KeyProvider
-	if keyProvider == nil {
-		client := cfg.HTTPClient
-		if client == nil {
-			client = &http.Client{Timeout: httpTimeout}
-		}
-		keyProvider = newDefaultKeyProvider(issuer, client)
+	jv, err := jwtvalidator.NewValidator(jwtvalidator.Config{
+		IssuerURL:   issuer,
+		Audiences:   cfg.Audiences,
+		KeyProvider: cfg.KeyProvider,
+		AllowHTTP:   cfg.AllowHTTP,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &Validator{
-		issuerURL:               issuer,
-		audiences:               cfg.Audiences,
+		jwtValidator:            jv,
 		allowedRepositoryOwners: cfg.AllowedRepositoryOwners,
 		allowedRepositories:     cfg.AllowedRepositories,
-		keyProvider:             keyProvider,
 	}, nil
 }
 
-// validateIssuerURL validates the issuer URL format and scheme.
-func validateIssuerURL(issuer string, allowHTTP bool) error {
-	u, err := url.Parse(issuer)
-	if err != nil {
-		return fmt.Errorf("failed to parse URL: %w", err)
-	}
-	if u.Scheme != "https" && !(allowHTTP && u.Scheme == "http") {
-		return fmt.Errorf("scheme must be https (got %q)", u.Scheme)
-	}
-	if u.Host == "" {
-		return fmt.Errorf("host must not be empty")
-	}
-	if u.RawQuery != "" {
-		return fmt.Errorf("query parameters are not allowed")
-	}
-	if u.Fragment != "" {
-		return fmt.Errorf("fragment is not allowed")
-	}
-	return nil
-}
-
-// Validate validates a GitHub Actions OIDC token and returns common claims.
+// Validate validates a GitHub Actions OIDC token and returns claims.
 // Implements validator.TokenValidator.
 func (v *Validator) Validate(ctx context.Context, token string) (validator.Claims, error) {
-	claims, err := v.validateToken(ctx, token)
+	claims, err := v.jwtValidator.Validate(ctx, token)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := v.checkAllowLists(claims); err != nil {
+	raw := claims.GetRaw()
+	if err := v.checkAllowLists(raw); err != nil {
 		return nil, err
-	}
-
-	return claims.ToCommonClaims(), nil
-}
-
-func (v *Validator) validateToken(ctx context.Context, rawToken string) (*Claims, error) {
-	kid, err := extractKID(rawToken)
-	if err != nil {
-		return nil, err
-	}
-
-	pubKey, err := v.keyProvider.GetKey(ctx, kid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get public key for kid=%q: %w", kid, err)
-	}
-
-	keyFunc := func(t *jwt.Token) (interface{}, error) {
-		switch t.Method.(type) {
-		case *jwt.SigningMethodRSA, *jwt.SigningMethodECDSA:
-			// GitHub currently uses RS256 but may switch to ECDSA.
-		default:
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return pubKey, nil
-	}
-	parserOpts := []jwt.ParserOption{
-		jwt.WithIssuer(v.issuerURL),
-		jwt.WithLeeway(clockLeeway),
-		jwt.WithExpirationRequired(),
-	}
-
-	// Parse into structured claims for typed field access.
-	claims := &Claims{}
-	parsed, err := jwt.ParseWithClaims(rawToken, claims, keyFunc, parserOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("token validation failed: %w", err)
-	}
-	if !parsed.Valid {
-		return nil, fmt.Errorf("token is not valid")
-	}
-
-	// Parse again into MapClaims to capture all claims including those not
-	// modeled in the Claims struct. This ensures GetRaw() returns the complete
-	// claim set as the interface contract requires.
-	mapClaims := jwt.MapClaims{}
-	if _, _, err := jwt.NewParser().ParseUnverified(rawToken, mapClaims); err != nil {
-		return nil, fmt.Errorf("failed to parse raw claims: %w", err)
-	}
-	claims.rawClaims = map[string]interface{}(mapClaims)
-
-	// Validate audience: token must contain at least one of the configured audiences.
-	tokenAud, err := claims.GetAudience()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get audience from token: %w", err)
-	}
-	if !v.validateAudiences(tokenAud) {
-		return nil, fmt.Errorf("audience mismatch: token has %v, expected one of %v", tokenAud, v.audiences)
 	}
 
 	return claims, nil
 }
 
-func (v *Validator) validateAudiences(tokenAudiences []string) bool {
-	for _, tokenAud := range tokenAudiences {
-		for _, configuredAud := range v.audiences {
-			if tokenAud == configuredAud {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func extractKID(rawToken string) (string, error) {
-	parser := jwt.NewParser()
-	token, _, err := parser.ParseUnverified(rawToken, jwt.MapClaims{})
-	if err != nil {
-		return "", fmt.Errorf("failed to parse token header: %w", err)
-	}
-	kid, ok := token.Header["kid"].(string)
-	if !ok || kid == "" {
-		return "", fmt.Errorf("token header missing or invalid 'kid' field")
-	}
-	return kid, nil
-}
-
 // checkAllowLists enforces AND logic: when both lists are configured,
 // the token must match both owner and repository.
-func (v *Validator) checkAllowLists(claims *Claims) error {
+func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
 	if len(v.allowedRepositoryOwners) > 0 {
-		if !isValueAllowed(claims.RepositoryOwner, v.allowedRepositoryOwners) {
-			return fmt.Errorf("repository owner %q is not in the allowed list", claims.RepositoryOwner)
+		owner, _ := raw["repository_owner"].(string)
+		if !isValueAllowed(owner, v.allowedRepositoryOwners) {
+			return fmt.Errorf("repository owner %q is not in the allowed list", owner)
 		}
 	}
 	if len(v.allowedRepositories) > 0 {
-		if !isValueAllowed(claims.Repository, v.allowedRepositories) {
-			return fmt.Errorf("repository %q is not in the allowed list", claims.Repository)
+		repo, _ := raw["repository"].(string)
+		if !isValueAllowed(repo, v.allowedRepositories) {
+			return fmt.Errorf("repository %q is not in the allowed list", repo)
 		}
 	}
 	return nil
@@ -236,113 +114,4 @@ func isValueAllowed(value string, allowedValues []string) bool {
 		}
 	}
 	return false
-}
-
-// defaultKeyProvider implements validator.KeyProvider with on-demand JWKS
-// fetching and in-memory caching.
-type defaultKeyProvider struct {
-	issuerURL  string
-	httpClient *http.Client
-
-	mu    sync.RWMutex
-	cache *jwksCache
-}
-
-type jwksCache struct {
-	keys   map[string]crypto.PublicKey
-	expiry time.Time
-}
-
-func newDefaultKeyProvider(issuerURL string, httpClient *http.Client) *defaultKeyProvider {
-	return &defaultKeyProvider{
-		issuerURL:  issuerURL,
-		httpClient: httpClient,
-	}
-}
-
-// GetKey returns the public key for the given kid. Implements validator.KeyProvider.
-func (p *defaultKeyProvider) GetKey(ctx context.Context, kid string) (crypto.PublicKey, error) {
-	p.mu.RLock()
-	if p.cache != nil && time.Now().Before(p.cache.expiry) {
-		if key, ok := p.cache.keys[kid]; ok {
-			p.mu.RUnlock()
-			return key, nil
-		}
-	}
-	p.mu.RUnlock()
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Double-check after acquiring write lock.
-	if p.cache != nil && time.Now().Before(p.cache.expiry) {
-		if key, ok := p.cache.keys[kid]; ok {
-			return key, nil
-		}
-	}
-
-	jwksURL := strings.TrimRight(p.issuerURL, "/") + jwksPath
-	keys, err := p.fetchJWKS(ctx, jwksURL)
-	if err != nil {
-		return nil, err
-	}
-
-	p.cache = &jwksCache{keys: keys, expiry: time.Now().Add(cacheTTL)}
-
-	key, ok := keys[kid]
-	if !ok {
-		return nil, fmt.Errorf("no key found for kid=%q in JWKS", kid)
-	}
-	return key, nil
-}
-
-func (p *defaultKeyProvider) fetchJWKS(ctx context.Context, jwksURL string) (map[string]crypto.PublicKey, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJWKSBytes))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d fetching JWKS: %s", resp.StatusCode, string(body))
-	}
-
-	var jwks jose.JSONWebKeySet
-	if err := json.Unmarshal(body, &jwks); err != nil {
-		return nil, fmt.Errorf("failed to parse JWKS: %w", err)
-	}
-
-	keys := make(map[string]crypto.PublicKey, len(jwks.Keys))
-	for _, jwk := range jwks.Keys {
-		if jwk.KeyID == "" {
-			continue
-		}
-		if jwk.Use != "" && jwk.Use != "sig" {
-			continue
-		}
-		pub := jwk.Public().Key
-		switch key := pub.(type) {
-		case *rsa.PublicKey:
-			keys[jwk.KeyID] = key
-		case *ecdsa.PublicKey:
-			keys[jwk.KeyID] = key
-		default:
-			continue
-		}
-	}
-
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("no valid signing keys found in JWKS from %s", jwksURL)
-	}
-
-	return keys, nil
 }
