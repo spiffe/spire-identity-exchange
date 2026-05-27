@@ -37,3 +37,11 @@ type Selector struct {
 	Type  string
 	Value string
 }
+
+// Metrics defines the interface for recording validator operation metrics.
+// Implementations may use Prometheus, OpenTelemetry, or any other backend.
+// When nil is passed in Config, metrics collection is silently skipped.
+type Metrics interface {
+	IncOperationCount(component, plugin, operation, status string)
+	ObserveOperationDuration(component, plugin, operation, status string, duration float64)
+}

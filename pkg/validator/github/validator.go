@@ -29,6 +29,9 @@ type Config struct {
 	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
 	// Must not be enabled in production.
 	AllowHTTP bool
+	// Metrics allows injecting a metrics collector for operation tracking.
+	// If nil, metrics collection is silently skipped.
+	Metrics validator.Metrics
 }
 
 // Validator validates GitHub Actions OIDC tokens.
@@ -54,6 +57,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 		Audiences:   cfg.Audiences,
 		KeyProvider: cfg.KeyProvider,
 		AllowHTTP:   cfg.AllowHTTP,
+		Metrics:     cfg.Metrics,
 	})
 	if err != nil {
 		return nil, err

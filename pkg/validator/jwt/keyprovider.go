@@ -14,6 +14,7 @@ import (
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 )
 
 const (
@@ -29,6 +30,7 @@ const (
 type DefaultKeyProvider struct {
 	issuerURL  string
 	httpClient *http.Client
+	metrics    validator.Metrics
 
 	mu    sync.RWMutex
 	cache *jwksCache
@@ -41,10 +43,11 @@ type jwksCache struct {
 
 // NewDefaultKeyProvider creates a KeyProvider that fetches JWKS on demand
 // from the issuer's /.well-known/jwks endpoint.
-func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client) *DefaultKeyProvider {
+func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics validator.Metrics) *DefaultKeyProvider {
 	return &DefaultKeyProvider{
 		issuerURL:  issuerURL,
 		httpClient: httpClient,
+		metrics:    metrics,
 	}
 }
 
@@ -85,13 +88,24 @@ func (p *DefaultKeyProvider) GetKey(ctx context.Context, kid string) (crypto.Pub
 }
 
 func (p *DefaultKeyProvider) fetchJWKS(ctx context.Context, jwksURL string) (map[string]crypto.PublicKey, error) {
+	now := time.Now()
+	statusCode := "OK"
+	defer func() {
+		if p.metrics != nil {
+			p.metrics.ObserveOperationDuration("validator", "jwt", "fetch_jwks", statusCode, time.Since(now).Seconds())
+			p.metrics.IncOperationCount("validator", "jwt", "fetch_jwks", statusCode)
+		}
+	}()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
 	if err != nil {
+		statusCode = "InvalidArgument"
 		return nil, err
 	}
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
+		statusCode = "Internal"
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -101,11 +115,13 @@ func (p *DefaultKeyProvider) fetchJWKS(ctx context.Context, jwksURL string) (map
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		statusCode = "Internal"
 		return nil, fmt.Errorf("HTTP %d fetching JWKS: %s", resp.StatusCode, string(body))
 	}
 
 	var jwks jose.JSONWebKeySet
 	if err := json.Unmarshal(body, &jwks); err != nil {
+		statusCode = "Internal"
 		return nil, fmt.Errorf("failed to parse JWKS: %w", err)
 	}
 

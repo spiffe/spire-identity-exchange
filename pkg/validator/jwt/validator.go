@@ -30,6 +30,9 @@ type Config struct {
 	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
 	// Must not be enabled in production.
 	AllowHTTP bool
+	// Metrics allows injecting a metrics collector for operation tracking.
+	// If nil, metrics collection is silently skipped.
+	Metrics validator.Metrics
 }
 
 // Validator validates JWT tokens by verifying signatures, issuer, audience,
@@ -38,6 +41,7 @@ type Validator struct {
 	issuerURL   string
 	audiences   []string
 	keyProvider validator.KeyProvider
+	metrics     validator.Metrics
 }
 
 // NewValidator creates a new generic JWT validator.
@@ -58,26 +62,38 @@ func NewValidator(cfg Config) (*Validator, error) {
 		if client == nil {
 			client = &http.Client{Timeout: defaultHTTPTimeout}
 		}
-		keyProvider = NewDefaultKeyProvider(cfg.IssuerURL, client)
+		keyProvider = NewDefaultKeyProvider(cfg.IssuerURL, client, cfg.Metrics)
 	}
 
 	return &Validator{
 		issuerURL:   cfg.IssuerURL,
 		audiences:   cfg.Audiences,
 		keyProvider: keyProvider,
+		metrics:     cfg.Metrics,
 	}, nil
 }
 
 // Validate validates a JWT token and returns claims.
 // Implements validator.TokenValidator.
 func (v *Validator) Validate(ctx context.Context, token string) (validator.Claims, error) {
+	now := time.Now()
+	statusCode := "OK"
+	defer func() {
+		if v.metrics != nil {
+			v.metrics.ObserveOperationDuration("validator", "jwt", "validate_token", statusCode, time.Since(now).Seconds())
+			v.metrics.IncOperationCount("validator", "jwt", "validate_token", statusCode)
+		}
+	}()
+
 	kid, err := extractKID(token)
 	if err != nil {
+		statusCode = "InvalidArgument"
 		return nil, err
 	}
 
 	pubKey, err := v.keyProvider.GetKey(ctx, kid)
 	if err != nil {
+		statusCode = "Internal"
 		return nil, fmt.Errorf("failed to get public key for kid=%q: %w", kid, err)
 	}
 
@@ -100,24 +116,29 @@ func (v *Validator) Validate(ctx context.Context, token string) (validator.Claim
 	regClaims := &gojwt.RegisteredClaims{}
 	parsed, err := gojwt.ParseWithClaims(token, regClaims, keyFunc, parserOpts...)
 	if err != nil {
+		statusCode = "InvalidArgument"
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
 	if !parsed.Valid {
+		statusCode = "InvalidArgument"
 		return nil, fmt.Errorf("token is not valid")
 	}
 
 	// Validate audience: token must contain at least one of the configured audiences.
 	tokenAud, err := regClaims.GetAudience()
 	if err != nil {
+		statusCode = "InvalidArgument"
 		return nil, fmt.Errorf("failed to get audience from token: %w", err)
 	}
 	if !v.validateAudiences(tokenAud) {
+		statusCode = "PermissionDenied"
 		return nil, fmt.Errorf("audience mismatch: token has %v, expected one of %v", tokenAud, v.audiences)
 	}
 
 	// Parse into MapClaims to capture all claims for GetRaw().
 	mapClaims := gojwt.MapClaims{}
 	if _, _, err := gojwt.NewParser().ParseUnverified(token, mapClaims); err != nil {
+		statusCode = "Internal"
 		return nil, fmt.Errorf("failed to parse raw claims: %w", err)
 	}
 
