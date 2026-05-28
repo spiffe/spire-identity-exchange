@@ -21,13 +21,22 @@ func TestGetKey(t *testing.T) {
 	kid := "test-kid-cache"
 
 	var fetchCount atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/jwks", func(w http.ResponseWriter, r *http.Request) {
 		fetchCount.Add(1)
 		jwk := jose.JSONWebKey{Key: &rsaKey.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
 		jwks := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(jwks)
-	}))
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"jwks_uri": server.URL + "/.well-known/jwks",
+		})
+	})
+	server = httptest.NewServer(mux)
 	defer server.Close()
 
 	provider := NewDefaultKeyProvider(server.URL, server.Client(), nil)
@@ -151,6 +160,64 @@ func TestFetchJWKS(t *testing.T) {
 		assert.Len(t, keys, 1)
 		assert.Contains(t, keys, "sig-kid")
 		assert.NotContains(t, keys, "enc-kid")
+	})
+}
+
+func TestDiscoverJWKSURI(t *testing.T) {
+	t.Run("valid_discovery", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"jwks_uri": "https://example.com/.well-known/jwks",
+			})
+		}))
+		defer server.Close()
+
+		provider := NewDefaultKeyProvider(server.URL, server.Client(), nil)
+		uri, err := provider.discoverJWKSURI(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/.well-known/jwks", uri)
+	})
+
+	t.Run("non_200_status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("not found"))
+		}))
+		defer server.Close()
+
+		provider := NewDefaultKeyProvider(server.URL, server.Client(), nil)
+		_, err := provider.discoverJWKSURI(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "HTTP 404")
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("not json"))
+		}))
+		defer server.Close()
+
+		provider := NewDefaultKeyProvider(server.URL, server.Client(), nil)
+		_, err := provider.discoverJWKSURI(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse discovery document")
+	})
+
+	t.Run("missing_jwks_uri", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"issuer": "https://example.com",
+			})
+		}))
+		defer server.Close()
+
+		provider := NewDefaultKeyProvider(server.URL, server.Client(), nil)
+		_, err := provider.discoverJWKSURI(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing jwks_uri")
 	})
 }
 

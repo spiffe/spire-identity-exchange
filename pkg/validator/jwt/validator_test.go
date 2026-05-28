@@ -66,12 +66,21 @@ func createMockJWKSServer(t *testing.T, publicKey crypto.PublicKey, kid string) 
 	case *ecdsa.PublicKey:
 		alg = "ES256"
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/jwks", func(w http.ResponseWriter, r *http.Request) {
 		jwk := jose.JSONWebKey{Key: publicKey, KeyID: kid, Algorithm: alg, Use: "sig"}
 		jwks := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(jwks)
-	}))
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"jwks_uri": server.URL + "/.well-known/jwks",
+		})
+	})
+	server = httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	return server
 }
