@@ -37,7 +37,9 @@ func buildSelectors(c *Claims) []*types.Selector {
 
 	add("workflow", c.Workflow)
 	add("workflow_ref", c.WorkflowRef)
+	addWorkflowRefParts("workflow_ref", c.WorkflowRef, add)
 	add("job_workflow_ref", c.JobWorkflowRef)
+	addWorkflowRefParts("job_workflow_ref", c.JobWorkflowRef, add)
 
 	add("ref", c.Ref)
 	add("ref_type", c.RefType)
@@ -61,4 +63,47 @@ func buildSelectors(c *Claims) []*types.Selector {
 	add("runner_environment", c.RunnerEnvironment)
 
 	return selectors
+}
+
+// parseWorkflowRef splits a workflow ref string like
+// "owner/repo/.github/workflows/ci.yml@refs/heads/main" into its components.
+// Returns (repo, path, ref, ok).
+func parseWorkflowRef(workflowRef string) (repo, path, ref string, ok bool) {
+	if workflowRef == "" {
+		return "", "", "", false
+	}
+
+	// Split at "@" to separate the base from the git ref.
+	atIdx := strings.LastIndex(workflowRef, "@")
+	if atIdx < 0 {
+		return "", "", "", false
+	}
+	base := workflowRef[:atIdx]
+	ref = workflowRef[atIdx+1:]
+
+	// Split at "/.github/" to separate repo from workflow path.
+	const sep = "/.github/"
+	sepIdx := strings.Index(base, sep)
+	if sepIdx < 0 {
+		return "", "", "", false
+	}
+	repo = base[:sepIdx]
+	path = base[sepIdx+1:] // includes ".github/..."
+
+	if repo == "" || path == "" || ref == "" {
+		return "", "", "", false
+	}
+
+	return repo, path, ref, true
+}
+
+// addWorkflowRefParts adds decomposed selectors for a workflow ref field.
+func addWorkflowRefParts(prefix string, value string, add func(string, string)) {
+	repo, path, ref, ok := parseWorkflowRef(value)
+	if !ok {
+		return
+	}
+	add(prefix+":repo", repo)
+	add(prefix+":path", path)
+	add(prefix+":ref", ref)
 }

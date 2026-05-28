@@ -51,8 +51,14 @@ func TestBuildSelectors(t *testing.T) {
 				"sha:abc123",
 				"actor:test-user",
 				"environment:production",
+				"workflow_ref:repo:my-org/my-repo",
+				"workflow_ref:path:.github/workflows/ci.yml",
+				"workflow_ref:ref:refs/heads/main",
+				"job_workflow_ref:repo:my-org/my-repo",
+				"job_workflow_ref:path:.github/workflows/ci.yml",
+				"job_workflow_ref:ref:refs/heads/main",
 			},
-			expectCount: 22, // 21 fields + 1 branch
+			expectCount: 28, // 21 fields + 1 branch + 6 decomposed (3 each for workflow_ref and job_workflow_ref)
 		},
 		{
 			name: "branch_extraction_nested_path",
@@ -128,6 +134,108 @@ func TestBuildSelectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseWorkflowRef(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		expectOK     bool
+		expectRepo   string
+		expectPath   string
+		expectRef    string
+	}{
+		{
+			name:       "standard_workflow_ref",
+			input:      "my-org/my-repo/.github/workflows/ci.yml@refs/heads/main",
+			expectOK:   true,
+			expectRepo: "my-org/my-repo",
+			expectPath: ".github/workflows/ci.yml",
+			expectRef:  "refs/heads/main",
+		},
+		{
+			name:       "tag_ref",
+			input:      "my-org/my-repo/.github/workflows/release.yml@refs/tags/v1.0.0",
+			expectOK:   true,
+			expectRepo: "my-org/my-repo",
+			expectPath: ".github/workflows/release.yml",
+			expectRef:  "refs/tags/v1.0.0",
+		},
+		{
+			name:       "nested_workflow_path",
+			input:      "org/repo/.github/workflows/sub/deploy.yml@refs/heads/main",
+			expectOK:   true,
+			expectRepo: "org/repo",
+			expectPath: ".github/workflows/sub/deploy.yml",
+			expectRef:  "refs/heads/main",
+		},
+		{
+			name:       "sha_ref",
+			input:      "my-org/my-repo/.github/workflows/ci.yml@abc123def456",
+			expectOK:   true,
+			expectRepo: "my-org/my-repo",
+			expectPath: ".github/workflows/ci.yml",
+			expectRef:  "abc123def456",
+		},
+		{
+			name:     "empty_string",
+			input:    "",
+			expectOK: false,
+		},
+		{
+			name:     "no_at_sign",
+			input:    "my-org/my-repo/.github/workflows/ci.yml",
+			expectOK: false,
+		},
+		{
+			name:     "no_github_dir",
+			input:    "my-org/my-repo/workflows/ci.yml@refs/heads/main",
+			expectOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, path, ref, ok := parseWorkflowRef(tt.input)
+			assert.Equal(t, tt.expectOK, ok)
+			if tt.expectOK {
+				assert.Equal(t, tt.expectRepo, repo)
+				assert.Equal(t, tt.expectPath, path)
+				assert.Equal(t, tt.expectRef, ref)
+			}
+		})
+	}
+}
+
+func TestBuildSelectors_WorkflowRefDecomposition(t *testing.T) {
+	claims := &Claims{
+		WorkflowRef:    "my-org/my-repo/.github/workflows/ci.yml@refs/heads/main",
+		JobWorkflowRef: "other-org/other-repo/.github/workflows/reusable.yml@refs/tags/v1.0.0",
+	}
+
+	selectors := buildSelectors(claims)
+
+	values := make([]string, len(selectors))
+	for i, s := range selectors {
+		values[i] = s.Value
+	}
+
+	// Original full values.
+	assert.Contains(t, values, "workflow_ref:my-org/my-repo/.github/workflows/ci.yml@refs/heads/main")
+	assert.Contains(t, values, "job_workflow_ref:other-org/other-repo/.github/workflows/reusable.yml@refs/tags/v1.0.0")
+
+	// Decomposed workflow_ref.
+	assert.Contains(t, values, "workflow_ref:repo:my-org/my-repo")
+	assert.Contains(t, values, "workflow_ref:path:.github/workflows/ci.yml")
+	assert.Contains(t, values, "workflow_ref:ref:refs/heads/main")
+
+	// Decomposed job_workflow_ref.
+	assert.Contains(t, values, "job_workflow_ref:repo:other-org/other-repo")
+	assert.Contains(t, values, "job_workflow_ref:path:.github/workflows/reusable.yml")
+	assert.Contains(t, values, "job_workflow_ref:ref:refs/tags/v1.0.0")
+
+	// 2 original + 6 decomposed = 8
+	assert.Len(t, selectors, 8)
 }
 
 func TestGenerateSelectors_ViaValidator(t *testing.T) {
