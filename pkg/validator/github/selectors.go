@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 )
 
@@ -11,17 +12,17 @@ const SelectorType = "github_actions"
 
 // GenerateSelectors produces SPIRE selectors from validated GitHub OIDC claims.
 // Implements validator.SelectorGenerator.
-func (v *Validator) GenerateSelectors(claims validator.Claims) []validator.Selector {
+func (v *Validator) GenerateSelectors(claims validator.Claims) []*types.Selector {
 	gh := claimsFromRaw(claims.GetRaw())
 	return buildSelectors(gh)
 }
 
-func buildSelectors(c *Claims) []validator.Selector {
-	var selectors []validator.Selector
+func buildSelectors(c *Claims) []*types.Selector {
+	var selectors []*types.Selector
 
 	add := func(key, value string) {
 		if value != "" {
-			selectors = append(selectors, validator.Selector{
+			selectors = append(selectors, &types.Selector{
 				Type:  SelectorType,
 				Value: fmt.Sprintf("%s:%s", key, value),
 			})

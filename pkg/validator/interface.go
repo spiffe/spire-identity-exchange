@@ -3,6 +3,8 @@ package validator
 import (
 	"context"
 	"crypto"
+
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
 
 // TokenValidator defines the interface for validating external tokens
@@ -27,15 +29,11 @@ type KeySynchronizer interface {
 
 // SelectorGenerator generates SPIRE selectors from validated claims.
 // Selectors are used for entry matching in both Delegated Identity API
-// calls and node attestor responses.
+// calls and node attestor responses. The returned selectors use the
+// spire-api-sdk types.Selector, so they can be passed directly to
+// SPIRE APIs without conversion.
 type SelectorGenerator interface {
-	GenerateSelectors(claims Claims) []Selector
-}
-
-// Selector represents a SPIRE selector (type:value pair).
-type Selector struct {
-	Type  string
-	Value string
+	GenerateSelectors(claims Claims) []*types.Selector
 }
 
 // Metrics defines the interface for recording validator operation metrics.
