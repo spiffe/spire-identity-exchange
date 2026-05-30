@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Target branch to lint/test against (e.g. main, release)'
+        required: false
+        default: 'main'
+  pull_request:
+    types: [synchronize, opened, reopened]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  build-matrix:
+    name: Build matrix
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - id: set-matrix-integration
+        name: Collect all integration tests
+        run: |
+          integrationtests="$(find tests/integration -maxdepth 2 -type f -name run-tests.sh | xargs -I % dirname %)"
+          integrationtests_json="$(echo "$integrationtests" | jq -c --slurp --raw-input 'split("\n") | map(select(. != ""))')"
+          echo "${integrationtests_json}"
+          echo "integrationtests=$integrationtests_json" >>"$GITHUB_OUTPUT"
+
+    outputs:
+      integrationtests: ${{ steps.set-matrix-integration.outputs.integrationtests }}
+
+  integration-test:
+    runs-on: ubuntu-24.04
+
+    needs:
+      - build-matrix
+
+    strategy:
+      fail-fast: false
+      matrix:
+        integrationtest:
+          - ${{ fromJson(needs.build-matrix.outputs.integrationtests) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Install and test integration
+        run: |
+          ${{ matrix.integrationtest }}/run-tests.sh
+

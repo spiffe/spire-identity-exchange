@@ -1,0 +1,9 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: node1-spire-agent-six
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-exchange/spire-identity-exchange/node1
+  selectors:
+  - systemd:id:spire-agent@six.service
