@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2317
 
-set -xe
+set -xeo pipefail
 
 SCRIPT="$(readlink -f "$0")"
 SCRIPTPATH="$(dirname "${SCRIPT}")"

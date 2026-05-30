@@ -4,6 +4,6 @@ metadata:
   name: node1-spire-identity-exchange
 spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
-  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-idenitty-exchange
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
   selectors:
-  - systemd:id:spire-idenitty-exchange@main.service
+  - systemd:id:spire-identity-exchange@main.service
