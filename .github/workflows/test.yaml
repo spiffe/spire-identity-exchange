@@ -1,12 +1,6 @@
 name: Test
 
 on:
-  workflow_dispatch:
-    inputs:
-      target_branch:
-        description: 'Target branch to lint/test against (e.g. main, release)'
-        required: false
-        default: 'main'
   pull_request:
     types: [synchronize, opened, reopened]
 
