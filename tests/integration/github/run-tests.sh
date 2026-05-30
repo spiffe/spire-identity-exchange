@@ -87,8 +87,8 @@ sudo cp "${SCRIPTPATH}/server.conf" /etc/spire/server/main.conf
 sudo systemctl start spire-server@main spire-controller-manager@main
 wait_for_healthcheck spire-server /run/spire/server/sockets/main/private/api.sock
 
-# Configure our agents. For the test, create join tokens for both agents. You should really use a node attestor other then join tokens such as tpm-direct, http_challenge, or a cloud provider one
-JOIN_TOKEN=$(sudo spire-server token generate -spiffeID spiffe://example.org/agent/node1 -socketPath /run/spire/server/sockets/a/private/api.sock | awk '{print "\""$2"\""}')
+# Configure our agents. For the test, create join token for the main agent. You should really use a node attestor other then join tokens such as tpm-direct, http_challenge, or a cloud provider one
+JOIN_TOKEN=$(sudo spire-server token generate -spiffeID spiffe://example.org/agent/node1 | awk '{print "\""$2"\""}')
 export JOIN_TOKEN
 sudo /bin/bash -c "echo JOIN_TOKEN=${JOIN_TOKEN} > /etc/spire/agent/main.env"
 sudo cp "${SCRIPTPATH}/six-agent.conf" /etc/spire/agent/six.conf
