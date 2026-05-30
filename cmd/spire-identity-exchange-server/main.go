@@ -175,9 +175,9 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 		return nil, fmt.Errorf("failed to read the file %s: %w", filePath, err)
 	}
 
-        if expandEnv {
-                data = []byte(os.ExpandEnv(string(data)))
-        }
+	if expandEnv {
+		data = []byte(os.ExpandEnv(string(data)))
+	}
 
 	var cfg config.SpireIdentityExchangeConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
