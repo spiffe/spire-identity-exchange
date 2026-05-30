@@ -9,6 +9,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  basic-tests:
+    name: Run Basic Tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - id: set-matrix-integration
+        name: Do basic tests
+        run: |
+          make
 
   build-matrix:
     name: Build matrix
@@ -33,6 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     needs:
+      - basic-tests
       - build-matrix
 
     strategy:
