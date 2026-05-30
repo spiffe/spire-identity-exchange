@@ -98,4 +98,6 @@ sudo systemctl start spire-agent@main spire-agent@six
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/main/public/api.sock
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.sock
 
-exit 1
+make
+
+#FIXME add test to make sure it works here
