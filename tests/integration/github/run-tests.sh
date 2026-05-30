@@ -83,7 +83,7 @@ sudo mkdir -p /etc/spire/server/main/manifests/
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
 # Startup server and make sure its ready
-sudo cp "${SCRIPTPATH}/agent.conf" /etc/spire/server/main.conf
+sudo cp "${SCRIPTPATH}/server.conf" /etc/spire/server/main.conf
 sudo systemctl start spire-server@main spire-controller-manager@main
 wait_for_healthcheck spire-server /run/spire/server/sockets/main/private/api.sock
 
