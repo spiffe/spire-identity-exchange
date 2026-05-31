@@ -105,10 +105,10 @@ make build
 sudo mkdir -p /usr/libexec/spire/
 sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
 
-sudo mkdir -p /etc/spire/identity-exchange/certs
+sudo mkdir -p /etc/spire/identity-exchange/main/certs
 sudo openssl req -x509 -newkey rsa:2048 \
-  -keyout /etc/spire/identity-exchange/certs/server.key \
-  -out /etc/spire/identity-exchange/certs/server.pem -sha256 -days 365 -nodes \
+  -keyout /etc/spire/identity-exchange/main/certs/server.key \
+  -out /etc/spire/identity-exchange/main/certs/server.pem -sha256 -days 365 -nodes \
   -subj "/CN=localhost" \
   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
@@ -143,7 +143,7 @@ CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
 
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
-~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/certs/server.pem \
+~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/main/certs/server.pem \
   -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate

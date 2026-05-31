@@ -6,13 +6,13 @@
     "metricsPort": 4950,
     "httpGatewayPort": 8444,
     "tls": {
-      "certFile": "/etc/spire/identity-exchange/certs/server.pem",
-      "keyFile": "/etc/spire/identity-exchange/certs/server.key"
+      "certFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.pem",
+      "keyFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.key"
     }
   },
   "spire": {
-    "unixSocketPath": "/var/run/spire/server/sockets/main/private/api.sock",
-    "trustDomain": "example.org",
+    "unixSocketPath": "/var/run/spire/server/sockets/${SYSTEMD_INSTANCE}/private/api.sock",
+    "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
     "svidTTL": "5m"
   },
   "githubOIDC": {
