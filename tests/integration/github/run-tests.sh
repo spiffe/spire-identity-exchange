@@ -120,8 +120,7 @@ sudo systemctl start spire-identity-exchange@main.service
 MAX_WAIT=30
 ELAPSED=0
 while true; do
-  curl -s -o /dev/null https://localhost:8443 -cacert /etc/spire/identity-exchange/certs/server.pem
-  if [ $? -eq 0 ]; then
+  if curl -s -o /dev/null https://localhost:8443 -cacert /etc/spire/identity-exchange/certs/server.pem; then
     break
   fi
   if [ $ELAPSED -ge $MAX_WAIT ]; then
