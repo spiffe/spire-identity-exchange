@@ -20,7 +20,7 @@
     "issuer": "https://token.actions.githubusercontent.com",
     "audiences": ["spire-identity-exchange"],
     "jwksUri": "https://token.actions.githubusercontent.com/.well-known/jwks",
-    "spiffeIdTemplate": "spiffe://{{.trust_domain}}/v2/github/{{.enterprise}}/{{.job_workflow_ref}}/{{.event_name}}",
+    "spiffeIdTemplate": "spiffe://{{.trust_domain}}/spire-identity-exchange/github/{{.enterprise}}/{{.repository}}",
     "allowedRepositories": ["*"],
     "requiredClaims": [
       "repository",
