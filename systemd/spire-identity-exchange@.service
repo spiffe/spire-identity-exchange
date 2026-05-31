@@ -18,7 +18,7 @@ Environment=SYSTEMD_INSTANCE=%i
 ExecStart=/usr/libexec/spire/spire-identity-exchange
 # https://gist.github.com/ageis/f5595e59b1cddb1513d1b425a323db04
 LockPersonality=true
-MemoryDenyWriteExecute=true
+#MemoryDenyWriteExecute=true
 NoNewPrivileges=true
 PrivateDevices=false
 # Needed by plugins
