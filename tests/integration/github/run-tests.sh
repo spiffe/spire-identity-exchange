@@ -129,7 +129,7 @@ CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
 
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
-grpcurl -cacert /etc/spire/identity-exchange/certs/server.pem \
+~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/certs/server.pem \
   -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
