@@ -128,7 +128,7 @@ while true; do
     exit 1
   fi
   sleep 1
-  ((ELAPSED++))
+  ((ELAPSED++)) || true
 done
 
 SPIFFE_ID="spiffe://example.org/spire-identity-exchange/github/cncf/spire-identity-exchange"
