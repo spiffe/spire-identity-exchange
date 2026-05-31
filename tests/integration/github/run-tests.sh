@@ -112,6 +112,7 @@ sudo openssl req -x509 -newkey rsa:2048 \
   -subj "/CN=localhost" \
   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
+sudo cp "${SCRIPTPATH}/default.json" /etc/spire/identity-exchange/
 sudo cp "${SCRIPTPATH}/../../../systemd/spire-identity-exchange@.service" /etc/systemd/system
 sudo systemctl daemon-reload
 sudo systemctl start spire-identity-exchange@main.service
