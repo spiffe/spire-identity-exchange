@@ -21,6 +21,7 @@ teardown() {
   sudo systemctl status spire-controller-manager@main || true
   sudo systemctl status spire-agent@main || true
   sudo systemctl status spire-agent@six || true
+  sudo systemctl status spire-identity-exchange@main.service || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
@@ -112,6 +113,6 @@ sudo openssl req -x509 -newkey rsa:2048 \
 
 sudo cp "${SCRIPTPATH}/../../../systemd/spire-identity-exchange@.service" /etc/systemd/system
 sudo systemctl daemon-reload
-systemctl start spire-identity-exchange@main.service
+sudo systemctl start spire-identity-exchange@main.service
 
 #FIXME add test to make sure it works here
