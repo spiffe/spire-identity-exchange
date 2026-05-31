@@ -15,10 +15,10 @@ EnvironmentFile=-/etc/spiffe/default-trust-domain.env
 EnvironmentFile=-/etc/spire/identity-exchange/%i.env
 EnvironmentFile=-/etc/spire/identity-exchange/%i/env
 Environment=SYSTEMD_INSTANCE=%i
-ExecStart=/usr/libexec/spire/spire-identity-exchange
+ExecStart=/usr/libexec/spire/spire-identity-exchange -config /etc/spire/identity-exchange/config.json
 # https://gist.github.com/ageis/f5595e59b1cddb1513d1b425a323db04
 LockPersonality=true
-#MemoryDenyWriteExecute=true
+MemoryDenyWriteExecute=true
 NoNewPrivileges=true
 PrivateDevices=false
 # Needed by plugins
@@ -29,8 +29,8 @@ ProtectHostname=true
 ProtectKernelLogs=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
-#ProtectSystem=strict
-#ReadOnlyPaths=/
+ProtectSystem=strict
+ReadOnlyPaths=/
 Restart=always
 RestartSec=5s
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
