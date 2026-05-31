@@ -65,7 +65,7 @@ jobs:
         id: token_request
         run: |
           AUDIENCE="spire-identity-exchange"
-          RESPONSE=$(curl -0 -sS -G \
+          RESPONSE=$(curl -sS -G \
             -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             --data-urlencode "audience=$AUDIENCE" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL")
