@@ -1,0 +1,54 @@
+{
+  "name": "spire-identity-exchange",
+  "logLevel": "info",
+  "server": {
+    "port": 8443,
+    "metricsPort": 4950,
+    "httpGatewayPort": 8444,
+    "tls": {
+      "certFile": "/etc/spire/identity-exchange/certs/server.pem",
+      "keyFile": "/etc/spire/identity-exchange/certs/server.key"
+    }
+  },
+  "spire": {
+    "unixSocketPath": "/var/run/spire/server/sockets/main/private/api.sock",
+    "trustDomain": "example.org",
+    "svidTTL": "5m"
+  },
+  "githubOIDC": {
+    "enabled": true,
+    "issuer": "http://localhost:9999",
+    "audiences": ["spire-identity-exchange"],
+    "jwksUri": "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "spiffeIdTemplate": "spiffe://{{.trust_domain}}/v2/github/{{.enterprise}}/{{.job_workflow_ref}}/{{.event_name}}",
+    "allowedRepositories": ["*"],
+    "requiredClaims": [
+      "repository",
+      "sha",
+      "workflow_ref",
+      "job_workflow_ref",
+      "actor",
+      "runner_environment",
+      "run_id",
+      "run_attempt",
+      "event_name",
+      "enterprise"
+    ],
+    "workflowTTLOverrides": {},
+    "skipTokenExpiration": false,
+    "jwksCacheDuration": "5m",
+    "svidTTL": "0s"
+  },
+  "k8sSAToken": {
+    "enabled": false,
+    "apiHost": "https://kubernetes.default.svc:443",
+    "clusterName": "my-cluster",
+    "audiences": ["spire-identity-exchange"],
+    "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
+    "tls": {
+      "caFile": "",
+      "certFile": "",
+      "keyFile": ""
+    }
+  }
+}

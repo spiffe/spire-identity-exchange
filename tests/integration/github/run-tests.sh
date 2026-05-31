@@ -100,4 +100,18 @@ wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.soc
 
 make build
 
+sudo mkdir -p /usr/libexec/spire/
+sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
+
+sudo mkdir -p /etc/spire/identity-exchange/certs
+sudo openssl req -x509 -newkey rsa:2048 \
+  -keyout /etc/spire/identity-exchange/certs/server.key \
+  -out /etc/spire/identity-exchange/certs/server.pem -sha256 -days 365 -nodes \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+sudo cp "${SCRIPTPATH}/../../../systemd/spire-identity-exchange@.service" /etc/systemd/system
+sudo systemctl daemon-reload
+systemctl start spire-identity-exchange@main.service
+
 #FIXME add test to make sure it works here

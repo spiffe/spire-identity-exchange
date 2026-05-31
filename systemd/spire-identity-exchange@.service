@@ -1,0 +1,43 @@
+[Unit]
+Description=SPIRE Identity Exchange Daemon %i
+After=network-online.target local-fs.target time-sync.target
+Before=remote-fs-pre.target
+Wants=network-online.target local-fs.target time-sync.target remote-fs-pre.target spire-server.target
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=/var/lib/spire/identity-exchange/%i
+StateDirectory=spire/identity-exchange/%i
+RuntimeDirectory=spire/identity-exchange/%i
+RuntimeDirectoryPreserve=true
+ConfigurationDirectory=spire/identity-exchange
+EnvironmentFile=-/etc/spiffe/default-trust-domain.env
+EnvironmentFile=-/etc/spire/identity-exchange/%i.env
+EnvironmentFile=-/etc/spire/identity-exchange/%i/env
+Environment=SYSTEMD_INSTANCE=%i
+ExecStart=/usr/libexec/spire/spire-identity-exchange
+# https://gist.github.com/ageis/f5595e59b1cddb1513d1b425a323db04
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=true
+PrivateDevices=false
+# Needed by plugins
+PrivateTmp=false
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadOnlyPaths=/
+Restart=always
+RestartSec=5s
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target
