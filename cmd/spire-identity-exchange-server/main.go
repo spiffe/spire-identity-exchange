@@ -149,6 +149,8 @@ func run() error {
 
 func parseFlags(logger *zap.Logger) (*config.SpireIdentityExchangeConfig, error) {
 	configFile := flag.String("config", "", "Path to spire-identity-exchange JSON configuration file")
+	expandEnv := flag.Bool("expand-env", false, "Expand environment variables in config file")
+
 	flag.Parse()
 
 	if *configFile == "" {
@@ -156,7 +158,7 @@ func parseFlags(logger *zap.Logger) (*config.SpireIdentityExchangeConfig, error)
 		return nil, fmt.Errorf("--config flag is required")
 	}
 
-	cfg, err := loadSpireIdentityExchangeConfigFile(*configFile)
+	cfg, err := loadSpireIdentityExchangeConfigFile(*configFile, expandEnv != nil && *expandEnv)
 	if err != nil {
 		logger.Error("failed to load spire-identity-exchange configuration", zap.String("file", *configFile), zap.Error(err))
 		return nil, err
@@ -167,10 +169,14 @@ func parseFlags(logger *zap.Logger) (*config.SpireIdentityExchangeConfig, error)
 }
 
 // loadSpireIdentityExchangeConfigFile loads spire-identity-exchange configuration from a JSON file
-func loadSpireIdentityExchangeConfigFile(filePath string) (*config.SpireIdentityExchangeConfig, error) {
+func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*config.SpireIdentityExchangeConfig, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the file %s: %w", filePath, err)
+	}
+
+	if expandEnv {
+		data = []byte(os.ExpandEnv(string(data)))
 	}
 
 	var cfg config.SpireIdentityExchangeConfig
