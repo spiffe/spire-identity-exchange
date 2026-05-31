@@ -148,3 +148,8 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
 
+~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/main/certs/server.pem \
+  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintJWTSVIDRequest\":{\"audiences\":[\"foo\"]}}" \
+  localhost:8443 \
+  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
+
