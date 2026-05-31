@@ -116,6 +116,7 @@ sudo systemctl daemon-reload
 sudo systemctl start spire-identity-exchange@main.service
 
 #FIXME add test to make sure it works here
+sleep 10
 
 SPIFFE_ID="spiffe://example.org/github/my-org/my-repo/mock-workflow-yml"
 
