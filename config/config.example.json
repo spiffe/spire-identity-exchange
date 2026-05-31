@@ -4,7 +4,7 @@
   "server": {
     "port": 8443,
     "metricsPort": 4950,
-    "httpGatewayPort": 8444,
+    "restPort": 8444,
     "tls": {
       "certFile": "./certs/svid.crt",
       "keyFile": "./certs/svid.key"

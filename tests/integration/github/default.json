@@ -4,7 +4,7 @@
   "server": {
     "port": 8443,
     "metricsPort": 4950,
-    "httpGatewayPort": 8444,
+    "restPort": 8444,
     "tls": {
       "certFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.pem",
       "keyFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.key"
@@ -12,6 +12,7 @@
   },
   "spire": {
     "unixSocketPath": "/var/run/spire/server/sockets/${SYSTEMD_INSTANCE}/private/api.sock",
+    "agentWorkloadSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}/public/api.sock",
     "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
     "svidTTL": "5m"
   },
