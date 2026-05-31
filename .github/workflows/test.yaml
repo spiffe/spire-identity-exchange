@@ -65,9 +65,14 @@ jobs:
         id: token_request
         run: |
           AUDIENCE="spire-identity-exchange"
-          RESPONSE=$(curl -0 -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}")
+          RESPONSE=$(curl -0 -sS -G \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            --data-urlencode "audience=$AUDIENCE" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL")
+          if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
+            echo "::error::GitHub did not return valid JSON. Response was: $RESPONSE"
+            exit 1
+          fi
           JWT=$(echo "$RESPONSE" | jq -r '.value')
           echo "::add-mask::$JWT"
           echo "jwt=$JWT" >> $GITHUB_OUTPUT
