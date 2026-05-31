@@ -116,3 +116,21 @@ sudo systemctl daemon-reload
 sudo systemctl start spire-identity-exchange@main.service
 
 #FIXME add test to make sure it works here
+
+SPIFFE_ID="spiffe://example.org/github/my-org/my-repo/mock-workflow-yml"
+
+openssl req -new \
+  -newkey rsa:2048 -nodes -keyout workload.key \
+  -subj "/CN=workload" \
+  -addext "subjectAltName=URI:${SPIFFE_ID}" \
+  -out workload.csr
+
+CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
+
+go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+
+grpcurl -cacert /etc/spire/identity-exchange/certs/server.pem \
+  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \
+  localhost:8443 \
+  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
+
