@@ -110,6 +110,7 @@ sudo openssl req -x509 -newkey rsa:2048 \
   -keyout /etc/spire/identity-exchange/main/certs/server.key \
   -out /etc/spire/identity-exchange/main/certs/server.pem -sha256 -days 365 -nodes \
   -subj "/CN=localhost" \
+  -addext "basicConstraints=critical,CA:TRUE" \
   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
 sudo cp "${SCRIPTPATH}/default.json" /etc/spire/identity-exchange/
