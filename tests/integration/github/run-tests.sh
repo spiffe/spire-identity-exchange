@@ -117,8 +117,20 @@ sudo cp "${SCRIPTPATH}/../../../systemd/spire-identity-exchange@.service" /etc/s
 sudo systemctl daemon-reload
 sudo systemctl start spire-identity-exchange@main.service
 
-#FIXME add test to make sure it works here
-sleep 10
+MAX_WAIT=30
+ELAPSED=0
+while true; do
+  curl -s -o /dev/null https://localhost:8443 -cacert /etc/spire/identity-exchange/certs/server.pem
+  if [ $? -eq 0 ]; then
+    break
+  fi
+  if [ $ELAPSED -ge $MAX_WAIT ]; then
+    echo "Timed out after ${MAX_WAIT} seconds."
+    exit 1
+  fi
+  sleep 1
+  ((ELAPSED++))
+done
 
 SPIFFE_ID="spiffe://example.org/spire-identity-exchange/github/cncf/spire-identity-exchange"
 
