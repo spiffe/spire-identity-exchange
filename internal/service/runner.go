@@ -321,7 +321,7 @@ func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.Handler
 		}
 
 		cfg := github.Config{
-			AllowedRepositories: []string{"spire/spire-identity-exchange"},
+			AllowedRepositories: []string{"spiffe/spire-identity-exchange"},
 			Audiences:           []string{"spire-identity-exchange"},
 		}
 
