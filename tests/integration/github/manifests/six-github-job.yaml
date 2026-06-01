@@ -6,4 +6,5 @@ spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire/agent/x509pop/spire-identity-exchange
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/github/test
   selectors:
-  - github:repo:fixme
+  - github_actions:workflow_ref:repo:spiffe/spire-identity-exchange
+  - github_actions:workflow_ref:path:.github/workflows/test.yaml
