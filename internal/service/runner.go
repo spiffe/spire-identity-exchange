@@ -187,6 +187,7 @@ func runSpireIdentityExchangeServer(
 		mux := http.NewServeMux()
 
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
+		mux.HandleFunc("POST /api/v1/svid/{plugin}/x509", handleGetX509SVID(cache, logger))
 
 		httpServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
@@ -289,5 +290,15 @@ func handleTrustBundleX509(cache *trustBundleCache, logger *zap.Logger) http.Han
 		w.Header().Set("Content-Type", "application/x-pem-file")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(pemBytes)
+	}
+}
+
+// handleGetX509SVID Verify the token from the user and return 1 valid x509 svid if available including chain
+func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		//w.Header().Set("Content-Type", "application/x-pem-file")
+		w.Header().Set("Content-Type", "plain/text")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Hello: " + r.PathValue("plugin")))
 	}
 }
