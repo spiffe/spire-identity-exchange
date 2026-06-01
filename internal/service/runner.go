@@ -321,13 +321,14 @@ func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.Handler
 		}
 
 		cfg := github.Config{
-			Audiences: []string{"spire-identity-exchange"},
+			AllowedRepositories: []string{"spire/spire-identity-exchange"},
+			Audiences:           []string{"spire-identity-exchange"},
 		}
 
 		validator, err := github.NewValidator(cfg)
 		if err != nil {
 			logger.Warn("Failed to init validator", zap.Error(err))
-			http.Error(w, "Trust bundle warming up or unavailable", http.StatusServiceUnavailable)
+			http.Error(w, "spire-identity-exchange is currently unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		claims, err := validator.Validate(r.Context(), token)
