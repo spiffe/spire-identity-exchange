@@ -1,0 +1,10 @@
+# Needed only for the delegated api. The broker api will not need this and should be removed once the delegated api is removed.
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: node1-spire-identity-exchange
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire/agent/x509pop/spire-identity-exchange
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
+  selectors:
+  - systemd:id:spire-identity-exchange@main.service
