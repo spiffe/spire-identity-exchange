@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"crypto/tls"
 	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/github"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -299,6 +302,42 @@ func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.Handler
 		//w.Header().Set("Content-Type", "application/x-pem-file")
 		w.Header().Set("Content-Type", "plain/text")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Hello: " + r.PathValue("plugin")))
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Missing Authorization Header", http.StatusUnauthorized)
+			return
+		}
+
+		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			http.Error(w, "Invalid Authorization Header Format", http.StatusUnauthorized)
+			return
+		}
+
+		token := strings.TrimSpace(authHeader[7:])
+		if token == "" {
+			http.Error(w, "Empty Token", http.StatusUnauthorized)
+			return
+		}
+
+		cfg := github.Config{
+			Audiences: []string{"spire-identity-exchange"},
+		}
+
+		validator, err := github.NewValidator(cfg)
+		if err != nil {
+			logger.Warn("Failed to init validator", zap.Error(err))
+			http.Error(w, "Trust bundle warming up or unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		claims, err := validator.Validate(r.Context(), token)
+		if err != nil {
+			logger.Info("Failed to validate", zap.Error(err))
+			http.Error(w, "Failed to validate your token", http.StatusUnauthorized)
+			return
+		}
+		selectors := validator.GenerateSelectors(claims)
+		selectorsJSON, _ := json.Marshal(selectors)
+		_, _ = w.Write([]byte("Hello: " + r.PathValue("plugin")+" " + string(selectorsJSON) ))
 	}
 }
