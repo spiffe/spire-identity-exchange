@@ -293,7 +293,7 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 	errs = append(errs, c.K8sSAToken.Validate())
 
 	if c.Server.RestPort != 0 && c.SPIRE.AgentWorkloadSocketPath == "" {
-		errs = append(errs, fmt.Errorf("When RestPort is enabled, you must specify an AgentWorkloadSocketPath"))
+		errs = append(errs, errors.New("spire.agentWorkloadSocketPath is required when server.restPort is enabled"))
 	}
 
 	if len(errs) > 0 {

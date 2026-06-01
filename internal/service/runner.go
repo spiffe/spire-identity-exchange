@@ -48,7 +48,7 @@ type trustBundleCache struct {
 func (c *trustBundleCache) Get() []byte {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.pemBytes
+	return append([]byte(nil), c.pemBytes...)
 }
 
 // OnX509ContextUpdate matches the real workloadapi.X509ContextWatcher interface signature.
@@ -202,7 +202,7 @@ func runSpireIdentityExchangeServer(
 				errCh <- err
 			}
 		}()
-		logger.Info("HTTP gateway server configured with TLS",
+		logger.Info("HTTP REST server configured with TLS",
 			zap.Int("port", cfg.Server.RestPort),
 			zap.String("cert_file", cfg.Server.TLS.CertFile),
 			zap.String("key_file", cfg.Server.TLS.KeyFile))
