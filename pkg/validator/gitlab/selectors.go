@@ -55,7 +55,7 @@ func buildSelectors(c *Claims) []*types.Selector {
 	add("ref_protected", c.RefProtected)
 	add("sha", c.SHA)
 
-	if c.RefType == "branch" {
+	if c.RefType == "branch" && strings.HasPrefix(c.RefPath, "refs/heads/") {
 		branch := strings.TrimPrefix(c.RefPath, "refs/heads/")
 		if branch != "" {
 			add("branch", branch)
@@ -106,7 +106,7 @@ func parseCIConfigRefURI(uri string) (host, projectPath, configPath, ref string,
 	host = hostProject[:slashIdx]
 	projectPath = hostProject[slashIdx+1:]
 
-	if host == "" || projectPath == "" || ref == "" {
+	if host == "" || projectPath == "" || configPath == "" || ref == "" {
 		return "", "", "", "", false
 	}
 
