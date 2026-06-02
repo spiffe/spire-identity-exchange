@@ -144,12 +144,16 @@ CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
 
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
+#~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/main/certs/server.pem \
+#  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \
+#  localhost:8443 \
+#  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
+
 ~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/main/certs/server.pem \
-  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \
+  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintJWTSVIDRequest\":{\"audiences\":[\"foo\"]}}" \
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
 
 diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
 
 curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s
-
