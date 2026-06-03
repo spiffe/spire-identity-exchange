@@ -188,6 +188,6 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate the configuration: %w", err)
 	}
-
+//FIXME load plugins
 	return &cfg, nil
 }

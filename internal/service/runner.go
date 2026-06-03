@@ -17,7 +17,6 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
-	"github.com/spiffe/spire-identity-exchange/pkg/validator/github"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -190,7 +189,7 @@ func runSpireIdentityExchangeServer(
 		mux := http.NewServeMux()
 
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
-		mux.HandleFunc("POST /api/v1/svid/{plugin}/x509", handleGetX509SVID(cache, logger))
+		mux.HandleFunc("POST /api/v1/svid/{plugin}/x509", handleGetX509SVID(cfg, cache, logger))
 
 		httpServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
@@ -297,7 +296,7 @@ func handleTrustBundleX509(cache *trustBundleCache, logger *zap.Logger) http.Han
 }
 
 // handleGetX509SVID Verify the token from the user and return 1 valid x509 svid if available including chain
-func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
+func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		//w.Header().Set("Content-Type", "application/x-pem-file")
 		w.Header().Set("Content-Type", "plain/text")
@@ -320,12 +319,8 @@ func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.Handler
 			return
 		}
 
-		cfg := github.Config{
-			AllowedRepositories: []string{"spiffe/spire-identity-exchange"},
-			Audiences:           []string{"spire-identity-exchange"},
-		}
-
-		validator, err := github.NewValidator(cfg)
+		//FIXME still not right, but closer...
+		validator, err := cfg.Auth.Plugins[0].Config.NewValidator()
 		if err != nil {
 			logger.Warn("Failed to init validator", zap.Error(err))
 			http.Error(w, "spire-identity-exchange is currently unavailable", http.StatusServiceUnavailable)

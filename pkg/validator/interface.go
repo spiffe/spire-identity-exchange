@@ -3,9 +3,23 @@ package validator
 import (
 	"context"
 	"crypto"
+	"encoding/json"
 
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
+
+// TokenValidatorLoader takes in some config, validates it is good and then
+// lets you instantiate a new Validator based on the config
+type TokenValidatorLoader interface {
+	Unmarshal(raw json.RawMessage) error
+	ValidateConfig() error
+	NewValidator() (TokenValidatorAndSelectorGenerator, error)
+}
+
+type TokenValidatorAndSelectorGenerator interface {
+    TokenValidator
+    SelectorGenerator
+}
 
 // TokenValidator defines the interface for validating external tokens
 // and extracting identity claims. This interface is shared between

@@ -16,6 +16,15 @@
     "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
     "svidTTL": "5m"
   },
+  "auth": {
+    "plugins": [{
+      "plugin": "github",
+      "config": {
+        "allowedRepositories": ["spiffe/spire-identity-exchange"],
+        "audiences": ["spire-identity-exchange"]
+      }
+    }]
+  },
   "githubOIDC": {
     "enabled": true,
     "issuer": "https://token.actions.githubusercontent.com",
