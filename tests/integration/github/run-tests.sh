@@ -17,7 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  sudo systemctl status spire-identity-exchange@main.service 2>&1 || true
+  sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main 2>&1 || true
   sudo spire-server entry show 2>&1 || true
   sudo systemctl status spire-controller-manager@main 2>&1 || true
