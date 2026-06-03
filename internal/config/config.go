@@ -181,9 +181,9 @@ type K8sAPIClientTlsConfig struct {
 func (c *AuthConfig) Validate() error {
 	usedPlugins := make(map[string]struct{})
 	var errs []error
-	for _, plugin := range c.Plugins {
-		if plugin.Name == "" {
-			plugin.Name = plugin.Plugin
+	for i, plugin := range c.Plugins {
+		if c.Plugins[i].Name == "" {
+			c.Plugins[i].Name = plugin.Plugin
 		}
 		if _, exists := usedPlugins[plugin.Name]; exists {
 			errs = append(errs, fmt.Errorf("plugin name %s is defined more then once", plugin.Name))
@@ -194,7 +194,7 @@ func (c *AuthConfig) Validate() error {
 		} else {
 			config := &github.Config{}
 			config.Unmarshal(plugin.RawConfig)
-			plugin.Config = config
+			c.Plugins[i].Config = config
 		}
 		//FIXME validate with individual plugin
 		usedPlugins[plugin.Name] = struct{}{}

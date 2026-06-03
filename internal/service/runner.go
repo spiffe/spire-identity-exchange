@@ -320,6 +320,10 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		}
 
 		//FIXME still not right, but closer...
+		if cfg.Auth.Plugins[0].Config == nil {
+			http.Error(w, "spire-identity-exchange is currently unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		validator, err := cfg.Auth.Plugins[0].Config.NewValidator()
 		if err != nil {
 			logger.Warn("Failed to init validator", zap.Error(err))
