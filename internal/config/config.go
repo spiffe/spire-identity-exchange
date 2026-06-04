@@ -164,10 +164,6 @@ type K8sAPIClientTlsConfig struct {
 func (c *ServerConfig) Validate() error {
 	var errs []error
 
-	if c.Port == 0 {
-		errs = append(errs, errors.New("server.port is required"))
-	}
-
 	if c.MetricsPort == 0 {
 		errs = append(errs, errors.New("server.metricsPort is required"))
 	}
