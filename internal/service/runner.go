@@ -361,6 +361,6 @@ func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.Handler
 		}
 		selectors := validator.GenerateSelectors(claims)
 		selectorsJSON, _ := json.Marshal(selectors)
-		_, _ = w.Write([]byte("Hello: " + r.PathValue("plugin")+" " + string(selectorsJSON) + "\n" ))
+		_, _ = w.Write([]byte("Hello: " + r.PathValue("plugin") + " " + string(selectorsJSON) + "\n"))
 	}
 }
