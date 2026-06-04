@@ -2,18 +2,22 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"crypto/tls"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/github"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -37,6 +41,45 @@ const (
 	// a malicious client cannot trickle a giant body to exhaust memory.
 	httpMaxRequestBodyBytes int64 = 256 * 1024
 )
+
+// trustBundleCache implements the workloadapi.X509ContextWatcher interface.
+type trustBundleCache struct {
+	mu       sync.RWMutex
+	pemBytes []byte
+}
+
+func (c *trustBundleCache) Get() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]byte(nil), c.pemBytes...)
+}
+
+// OnX509ContextUpdate matches the real workloadapi.X509ContextWatcher interface signature.
+func (c *trustBundleCache) OnX509ContextUpdate(x509Ctx *workloadapi.X509Context) {
+	if x509Ctx == nil || x509Ctx.Bundles == nil {
+		return
+	}
+
+	var localPemBytes []byte
+	for _, bundle := range x509Ctx.Bundles.Bundles() {
+		for _, cert := range bundle.X509Authorities() {
+			b := pem.EncodeToMemory(&pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: cert.Raw,
+			})
+			localPemBytes = append(localPemBytes, b...)
+		}
+	}
+
+	c.mu.Lock()
+	c.pemBytes = localPemBytes
+	c.mu.Unlock()
+}
+
+// OnX509ContextWatchError matches the real workloadapi.X509ContextWatcher interface signature.
+func (c *trustBundleCache) OnX509ContextWatchError(err error) {
+	// Hooks error channel updates from the streaming socket connection context gracefully
+}
 
 // Run runs spire-identity-exchange gRPC server (and optionally HTTP gateway) and waits for
 // termination signals. Pass nil for a validator to disable that auth method.
@@ -117,21 +160,41 @@ func runSpireIdentityExchangeServer(
 	proto.RegisterSpireIdentityExchangeApiServer(grpcServer, handler)
 	reflection.Register(grpcServer)
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() {
 		errCh <- grpcServer.Serve(listener)
 	}()
 
-	// --- HTTP gateway server (optional) ---
-	var httpServer *http.Server
-	if cfg.Server.HTTPGatewayPort != 0 {
-		gwmux := runtime.NewServeMux()
-		if err := proto.RegisterSpireIdentityExchangeApiHandlerServer(ctx, gwmux, handler); err != nil {
-			return fmt.Errorf("failed to register HTTP gateway handler: %w", err)
+	// --- Initialize go-spiffe background watcher stream ---
+	cache := &trustBundleCache{}
+	if cfg.Server.RestPort != 0 {
+		socketAddr := fmt.Sprintf("unix://%s", cfg.SPIRE.AgentWorkloadSocketPath)
+		logger.Info("Initializing go-spiffe workload API stream client", zap.String("socket_path", socketAddr))
+
+		client, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
+		if err != nil {
+			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
+
+		go func() {
+			defer client.Close()
+			if watchErr := client.WatchX509Context(ctx, cache); watchErr != nil {
+				logger.Error("SPIRE trust bundle context watcher runtime error", zap.Error(watchErr))
+			}
+		}()
+	}
+
+	// --- Custom Hand-Crafted REST API ---
+	var httpServer *http.Server
+	if cfg.Server.RestPort != 0 {
+		mux := http.NewServeMux()
+
+		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
+		mux.HandleFunc("POST /api/v1/svid/{plugin}/x509", handleGetX509SVID(cache, logger))
+
 		httpServer = &http.Server{
-			Addr:              fmt.Sprintf(":%d", cfg.Server.HTTPGatewayPort),
-			Handler:           http.MaxBytesHandler(gwmux, httpMaxRequestBodyBytes),
+			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
+			Handler:           http.MaxBytesHandler(mux, httpMaxRequestBodyBytes),
 			TLSConfig:         tlsConfig.Clone(),
 			ReadHeaderTimeout: httpReadHeaderTimeout,
 			ReadTimeout:       httpReadTimeout,
@@ -143,8 +206,8 @@ func runSpireIdentityExchangeServer(
 				errCh <- err
 			}
 		}()
-		logger.Info("HTTP gateway server configured with TLS",
-			zap.Int("port", cfg.Server.HTTPGatewayPort),
+		logger.Info("HTTP REST server configured with TLS",
+			zap.Int("port", cfg.Server.RestPort),
 			zap.String("cert_file", cfg.Server.TLS.CertFile),
 			zap.String("key_file", cfg.Server.TLS.KeyFile))
 	}
@@ -172,7 +235,7 @@ func runSpireIdentityExchangeServer(
 	case <-time.After(serverStartTimeout):
 		logger.Info("spire-identity-exchange servers started successfully",
 			zap.Int("grpc_port", cfg.Server.Port),
-			zap.Int("http_gateway_port", cfg.Server.HTTPGatewayPort))
+			zap.Int("http_rest_port", cfg.Server.RestPort))
 	}
 
 	select {
@@ -212,6 +275,70 @@ func runSpireIdentityExchangeServer(
 		return nil
 
 	case err := <-errCh:
-		return fmt.Errorf("gRPC server error: %w", err)
+		return fmt.Errorf("server runtime error: %w", err)
+	}
+}
+
+// handleTrustBundleX509 reads instantly from the pre-baked cache on HTTP request hit.
+func handleTrustBundleX509(cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pemBytes := cache.Get()
+
+		if len(pemBytes) == 0 {
+			logger.Warn("Trust bundle requested but cache is empty or warming up")
+			http.Error(w, "Trust bundle warming up or unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-pem-file")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(pemBytes)
+	}
+}
+
+// handleGetX509SVID Verify the token from the user and return 1 valid x509 svid if available including chain
+func handleGetX509SVID(cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		//w.Header().Set("Content-Type", "application/x-pem-file")
+		w.Header().Set("Content-Type", "plain/text")
+		w.WriteHeader(http.StatusOK)
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Missing Authorization Header", http.StatusUnauthorized)
+			return
+		}
+
+		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			http.Error(w, "Invalid Authorization Header Format", http.StatusUnauthorized)
+			return
+		}
+
+		token := strings.TrimSpace(authHeader[7:])
+		if token == "" {
+			http.Error(w, "Empty Token", http.StatusUnauthorized)
+			return
+		}
+
+		cfg := github.Config{
+			AllowedRepositories: []string{"spiffe/spire-identity-exchange"},
+			Audiences:           []string{"spire-identity-exchange"},
+		}
+
+		validator, err := github.NewValidator(cfg)
+		if err != nil {
+			logger.Warn("Failed to init validator", zap.Error(err))
+			http.Error(w, "spire-identity-exchange is currently unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		claims, err := validator.Validate(r.Context(), token)
+		if err != nil {
+			logger.Info("Failed to validate", zap.Error(err))
+			http.Error(w, "Failed to validate your token", http.StatusUnauthorized)
+			return
+		}
+		selectors := validator.GenerateSelectors(claims)
+		selectorsJSON, _ := json.Marshal(selectors)
+		_, _ = w.Write([]byte("Hello: " + r.PathValue("plugin")+" " + string(selectorsJSON) ))
 	}
 }

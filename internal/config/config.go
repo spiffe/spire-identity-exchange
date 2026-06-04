@@ -42,10 +42,10 @@ type SpireIdentityExchangeConfig struct {
 
 // ServerConfig contains HTTP server configuration
 type ServerConfig struct {
-	Port            int       `json:"port"`
-	MetricsPort     int       `json:"metricsPort"`
-	HTTPGatewayPort int       `json:"httpGatewayPort"`
-	TLS             TLSConfig `json:"tls"`
+	Port        int       `json:"port"`
+	MetricsPort int       `json:"metricsPort"`
+	RestPort    int       `json:"restPort"`
+	TLS         TLSConfig `json:"tls"`
 }
 
 // TLSConfig contains TLS configuration
@@ -58,6 +58,9 @@ type TLSConfig struct {
 type SPIREConfig struct {
 	// Unix domain socket path for SPIRE Server API
 	UnixSocketPath string `json:"unixSocketPath"`
+
+	// Unix domain socket path for SPIRE Agent Workload API
+	AgentWorkloadSocketPath string `json:"agentWorkloadSocketPath"`
 
 	// Trust domain
 	TrustDomain string `json:"trustDomain"`
@@ -288,6 +291,10 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 	errs = append(errs, c.SPIRE.Validate())
 	errs = append(errs, c.GitHubOIDC.Validate())
 	errs = append(errs, c.K8sSAToken.Validate())
+
+	if c.Server.RestPort != 0 && c.SPIRE.AgentWorkloadSocketPath == "" {
+		errs = append(errs, errors.New("spire.agentWorkloadSocketPath is required when server.restPort is enabled"))
+	}
 
 	if len(errs) > 0 {
 		return errors.Join(errs...)

@@ -110,6 +110,7 @@ sudo openssl req -x509 -newkey rsa:2048 \
   -keyout /etc/spire/identity-exchange/main/certs/server.key \
   -out /etc/spire/identity-exchange/main/certs/server.pem -sha256 -days 365 -nodes \
   -subj "/CN=localhost" \
+  -addext "basicConstraints=critical,CA:TRUE" \
   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
 sudo cp "${SCRIPTPATH}/default.json" /etc/spire/identity-exchange/
@@ -153,3 +154,6 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
 
+diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
+
+curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s
