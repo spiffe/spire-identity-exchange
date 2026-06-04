@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"time"
 
-        "github.com/spiffe/spire-identity-exchange/pkg/validator"
-        "github.com/spiffe/spire-identity-exchange/pkg/validator/registry"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/registry"
 )
 
 // Duration is a time.Duration that unmarshals from JSON as either a duration
@@ -199,7 +199,7 @@ func (c *AuthConfig) Validate() error {
 			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", plugin.Name))
 			continue
 		}
-		pluginGenerator, exists := registry.AllBuildinPlugins[plugin.Plugin]
+		pluginGenerator, exists := registry.AllBuiltinPlugins[plugin.Plugin]
 		if !exists {
 			errs = append(errs, fmt.Errorf("plugin type %s is unknown", plugin.Name))
 		} else {
