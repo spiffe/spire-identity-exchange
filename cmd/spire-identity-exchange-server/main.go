@@ -100,48 +100,54 @@ func run() error {
 	}()
 	logger.Info("Metrics server initialized with runtime metrics", zap.Int("port", cfg.Server.MetricsPort))
 
-	// Create GitHub OIDC validator if enabled
 	var githubOIDCValidator validator.TokenValidator
-	if cfg.GitHubOIDC.Enabled {
-		v, err := githuboidc.NewValidator(ctx, cfg.GitHubOIDC, appMetrics, &logger)
-		if err != nil {
-			logger.Error("failed to create GitHub OIDC validator", zap.Error(err))
-			return err
-		}
-		// In-memory replay cache only protects against replay within this process. Multi-replica
-		// deployments need a shared backend (e.g. Redis) — a workload could otherwise replay the
-		// same token against a different replica. For now operators running >1 replica must
-		// serialize through a single instance, gate load-balancing to sticky routing, or accept
-		// the risk.
-		//
-		// TODO(replay-cache-backend): implement a pluggable ReplayCache backend (Redis first).
-		//   - Add a `replayCache` block to SpireIdentityExchangeConfig (kind: memory|redis, addr,
-		//     password, db, key prefix, ttl).
-		//   - Implement RedisReplayCache satisfying the existing cache.ReplayCache interface.
-		//   - Wire selection here based on cfg.ReplayCache.Kind; default remains in-memory.
-		//   - Add integration tests with miniredis. Cross-replica replay rejection must be
-		//     verified end-to-end (two SIE instances + one shared Redis).
-		//   - Drop the WARN log below once a shared backend is configured.
-		githubOIDCValidator = cache.NewReplayCheckingValidator(v, cache.NewInMemoryReplayCache(ctx))
-		logger.Info("GitHub OIDC validator enabled with in-memory replay cache")
-		logger.Warn("replay cache is in-memory only: multi-replica deployments can be bypassed by replaying a token against a different replica. Run a single replica until a shared backend is configured.")
-	}
-
-	// Create K8s SA token validator if enabled
 	var k8sSATokenValidator validator.TokenValidator
-	if cfg.K8sSAToken.Enabled {
-		v, err := k8ssatoken.NewValidator(cfg.K8sSAToken, &logger)
-		if err != nil {
-			logger.Error("failed to create K8s SA token validator", zap.Error(err))
-			return err
-		}
-		k8sSATokenValidator = v
-		logger.Info("Kubernetes SA token validator enabled")
-	}
 
-	if githubOIDCValidator == nil && k8sSATokenValidator == nil {
-		logger.Error("at least one authentication method must be enabled (githubOIDC or k8sSAToken)")
-		return fmt.Errorf("no authentication method enabled")
+	// Only initialize validators if the gRPC server is enabled (port != 0)
+	if cfg.Server.Port != 0 {
+		// Create GitHub OIDC validator if enabled
+		if cfg.GitHubOIDC.Enabled {
+			v, err := githuboidc.NewValidator(ctx, cfg.GitHubOIDC, appMetrics, &logger)
+			if err != nil {
+				logger.Error("failed to create GitHub OIDC validator", zap.Error(err))
+				return err
+			}
+			// In-memory replay cache only protects against replay within this process. Multi-replica
+			// deployments need a shared backend (e.g. Redis) — a workload could otherwise replay the
+			// same token against a different replica. For now operators running >1 replica must
+			// serialize through a single instance, gate load-balancing to sticky routing, or accept
+			// the risk.
+			//
+			// TODO(replay-cache-backend): implement a pluggable ReplayCache backend (Redis first).
+			//   - Add a `replayCache` block to SpireIdentityExchangeConfig (kind: memory|redis, addr,
+			//     password, db, key prefix, ttl).
+			//   - Implement RedisReplayCache satisfying the existing cache.ReplayCache interface.
+			//   - Wire selection here based on cfg.ReplayCache.Kind; default remains in-memory.
+			//   - Add integration tests with miniredis. Cross-replica replay rejection must be
+			//     verified end-to-end (two SIE instances + one shared Redis).
+			//   - Drop the WARN log below once a shared backend is configured.
+			githubOIDCValidator = cache.NewReplayCheckingValidator(v, cache.NewInMemoryReplayCache(ctx))
+			logger.Info("GitHub OIDC validator enabled with in-memory replay cache")
+			logger.Warn("replay cache is in-memory only: multi-replica deployments can be bypassed by replaying a token against a different replica. Run a single replica until a shared backend is configured.")
+		}
+
+		// Create K8s SA token validator if enabled
+		if cfg.K8sSAToken.Enabled {
+			v, err := k8ssatoken.NewValidator(cfg.K8sSAToken, &logger)
+			if err != nil {
+				logger.Error("failed to create K8s SA token validator", zap.Error(err))
+				return err
+			}
+			k8sSATokenValidator = v
+			logger.Info("Kubernetes SA token validator enabled")
+		}
+
+		if githubOIDCValidator == nil && k8sSATokenValidator == nil {
+			logger.Error("at least one authentication method must be enabled (githubOIDC or k8sSAToken)")
+			return fmt.Errorf("no authentication method enabled")
+		}
+	} else {
+		logger.Info("gRPC port is 0; skipping token validator initializations")
 	}
 
 	return service.Run(ctx, cfg, spireClient, githubOIDCValidator, k8sSATokenValidator, appMetrics, &logger)
