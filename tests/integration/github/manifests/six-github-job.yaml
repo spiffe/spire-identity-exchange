@@ -3,7 +3,7 @@ kind: ClusterStaticEntry
 metadata:
   name: six-github-test
 spec:
-  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire/agent/x509pop/spire-identity-exchange
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/github/test
   selectors:
   - github_actions:workflow_ref:repo:spiffe/spire-identity-exchange

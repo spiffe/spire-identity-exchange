@@ -48,7 +48,7 @@ func TestRunSpireIdentityExchangeServer_NilConfig(t *testing.T) {
 	ctx := context.Background()
 	mockValidator := &MockValidator{}
 
-	err := runSpireIdentityExchangeServer(ctx, nil, &MockServerClient{}, mockValidator, nil, nil, logger)
+	err := runSpireIdentityExchangeServer(ctx, nil, &MockServerClient{}, mockValidator, nil, RESTDeps{}, nil, logger)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "configuration is nil")
@@ -75,7 +75,7 @@ func TestRunSpireIdentityExchangeServer_InvalidValidatorConfig(t *testing.T) {
 	}
 	mockValidator := &MockValidator{}
 
-	err := runSpireIdentityExchangeServer(ctx, cfg, &MockServerClient{}, mockValidator, nil, nil, logger)
+	err := runSpireIdentityExchangeServer(ctx, cfg, &MockServerClient{}, mockValidator, nil, RESTDeps{}, nil, logger)
 
 	// With an empty issuer, the validator creation should fail
 	// However, if it doesn't, the cancelled context will cause the server to shut down

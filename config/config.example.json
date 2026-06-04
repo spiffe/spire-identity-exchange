@@ -12,6 +12,8 @@
   },
   "spire": {
     "unixSocketPath": "/tmp/spire-server/private/api.sock",
+    "agentWorkloadSocketPath": "/tmp/spire-agent/public/api.sock",
+    "agentDelegatedSocketPath": "/tmp/spire-agent/admin/api.sock",
     "trustDomain": "example.org",
     "svidTTL": "5m"
   },

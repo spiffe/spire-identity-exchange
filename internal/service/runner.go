@@ -2,13 +2,10 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"crypto/tls"
-	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +13,8 @@ import (
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
+	"github.com/spiffe/spire-identity-exchange/internal/service/rest"
+	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
@@ -41,46 +40,17 @@ const (
 	httpMaxRequestBodyBytes int64 = 256 * 1024
 )
 
-// trustBundleCache implements the workloadapi.X509ContextWatcher interface.
-type trustBundleCache struct {
-	mu       sync.RWMutex
-	pemBytes []byte
+// RESTDeps holds the dependencies the REST surface needs that are constructed
+// in main.go (validators come from operator config; the delegated client
+// needs a live socket path). Passing them through Run keeps runner.go a pure
+// lifecycle file.
+type RESTDeps struct {
+	// Plugins maps a path-param name (e.g. "github") to a validator + selector
+	// generator pair. Population happens in main.go from operator config.
+	Plugins rest.PluginSet
 }
 
-func (c *trustBundleCache) Get() []byte {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return append([]byte(nil), c.pemBytes...)
-}
-
-// OnX509ContextUpdate matches the real workloadapi.X509ContextWatcher interface signature.
-func (c *trustBundleCache) OnX509ContextUpdate(x509Ctx *workloadapi.X509Context) {
-	if x509Ctx == nil || x509Ctx.Bundles == nil {
-		return
-	}
-
-	var localPemBytes []byte
-	for _, bundle := range x509Ctx.Bundles.Bundles() {
-		for _, cert := range bundle.X509Authorities() {
-			b := pem.EncodeToMemory(&pem.Block{
-				Type:  "CERTIFICATE",
-				Bytes: cert.Raw,
-			})
-			localPemBytes = append(localPemBytes, b...)
-		}
-	}
-
-	c.mu.Lock()
-	c.pemBytes = localPemBytes
-	c.mu.Unlock()
-}
-
-// OnX509ContextWatchError matches the real workloadapi.X509ContextWatcher interface signature.
-func (c *trustBundleCache) OnX509ContextWatchError(err error) {
-	// Hooks error channel updates from the streaming socket connection context gracefully
-}
-
-// Run runs spire-identity-exchange gRPC server (and optionally HTTP gateway) and waits for
+// Run runs spire-identity-exchange gRPC server (and optionally HTTP REST server) and waits for
 // termination signals. Pass nil for a validator to disable that auth method.
 // Returns the first error encountered during startup or runtime so the caller can exit
 // non-zero — a swallowed bind/TLS failure looks identical to a clean shutdown to a
@@ -91,10 +61,11 @@ func Run(
 	spireClient server_util.ServerClient,
 	githubOIDCValidator validator.TokenValidator,
 	k8sSATokenValidator validator.TokenValidator,
+	restDeps RESTDeps,
 	metrics metrics.Metrics,
 	logger *zap.Logger,
 ) error {
-	if err := runSpireIdentityExchangeServer(ctx, cfg, spireClient, githubOIDCValidator, k8sSATokenValidator, metrics, logger); err != nil {
+	if err := runSpireIdentityExchangeServer(ctx, cfg, spireClient, githubOIDCValidator, k8sSATokenValidator, restDeps, metrics, logger); err != nil {
 		logger.Error("spire-identity-exchange error", zap.Error(err))
 		return err
 	}
@@ -102,25 +73,22 @@ func Run(
 	return nil
 }
 
-// runSpireIdentityExchangeServer starts the gRPC server and/or the HTTP/REST gateway
-// based on configuration. Setting either port to 0 disables that respective protocol.
+// runSpireIdentityExchangeServer starts the gRPC server and, if restPort is set,
+// also an HTTP REST server on a separate port backed by handlers in the rest package.
 func runSpireIdentityExchangeServer(
 	ctx context.Context,
 	cfg *config.SpireIdentityExchangeConfig,
 	spireClient server_util.ServerClient,
 	githubOIDCValidator validator.TokenValidator,
 	k8sSATokenValidator validator.TokenValidator,
+	restDeps RESTDeps,
 	metrics metrics.Metrics,
 	logger *zap.Logger,
 ) error {
 	if cfg == nil {
 		return fmt.Errorf("configuration is nil")
 	}
-
-	// Fail fast if both servers are intentionally or accidentally disabled
-	if cfg.Server.Port == 0 && cfg.Server.RestPort == 0 {
-		return fmt.Errorf("both gRPC (port %d) and REST (port %d) servers are disabled; nothing to run", cfg.Server.Port, cfg.Server.RestPort)
-	}
+	logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.Port))
 
 	// Start key syncers for any validator that supports it
 	for _, v := range []validator.TokenValidator{githubOIDCValidator, k8sSATokenValidator} {
@@ -149,61 +117,60 @@ func runSpireIdentityExchangeServer(
 		MinVersion:   tls.VersionTLS13,
 	}
 
-	errCh := make(chan error, 3)
-
 	// --- gRPC server ---
-	var grpcServer *grpc.Server
-	var listener net.Listener
-
-	if cfg.Server.Port != 0 {
-		logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.Port))
-
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.Port))
-		if err != nil {
-			return fmt.Errorf("failed to create network listener: %w", err)
-		}
-
-		grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConfig)))
-		logger.Info("gRPC server configured with TLS",
-			zap.String("cert_file", cfg.Server.TLS.CertFile),
-			zap.String("key_file", cfg.Server.TLS.KeyFile))
-
-		proto.RegisterSpireIdentityExchangeApiServer(grpcServer, handler)
-		reflection.Register(grpcServer)
-
-		go func() {
-			errCh <- grpcServer.Serve(listener)
-		}()
-	} else {
-		logger.Info("gRPC server port is 0; gRPC server is disabled.")
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.Port))
+	if err != nil {
+		return fmt.Errorf("failed to create network listener: %w", err)
 	}
 
-	// --- Initialize go-spiffe background watcher stream ---
-	cache := &trustBundleCache{}
-	if cfg.Server.RestPort != 0 {
-		socketAddr := fmt.Sprintf("unix://%s", cfg.SPIRE.AgentWorkloadSocketPath)
-		logger.Info("Initializing go-spiffe workload API stream client", zap.String("socket_path", socketAddr))
+	grpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConfig)))
+	logger.Info("gRPC server configured with TLS",
+		zap.String("cert_file", cfg.Server.TLS.CertFile),
+		zap.String("key_file", cfg.Server.TLS.KeyFile))
 
-		client, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
+	proto.RegisterSpireIdentityExchangeApiServer(grpcServer, handler)
+	reflection.Register(grpcServer)
+
+	errCh := make(chan error, 3)
+	go func() {
+		errCh <- grpcServer.Serve(listener)
+	}()
+
+	// --- REST server (optional) ---
+	var (
+		httpServer      *http.Server
+		delegatedClient *delegated.Client
+	)
+	if cfg.Server.RestPort != 0 {
+		// Trust bundle cache fed by Main agent's Workload API.
+		trustBundle := rest.NewTrustBundleCache(logger)
+		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath
+		logger.Info("initializing workload API watcher", zap.String("socket_path", socketAddr))
+
+		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
 		if err != nil {
 			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
-
 		go func() {
-			defer client.Close()
-			if watchErr := client.WatchX509Context(ctx, cache); watchErr != nil {
-				logger.Error("SPIRE trust bundle context watcher runtime error", zap.Error(watchErr))
+			defer wlaClient.Close()
+			if watchErr := wlaClient.WatchX509Context(ctx, trustBundle); watchErr != nil {
+				logger.Error("workload API watcher stopped with error", zap.Error(watchErr))
 			}
 		}()
-	}
 
-	// --- Custom Hand-Crafted REST API ---
-	var httpServer *http.Server
-	if cfg.Server.RestPort != 0 {
-		mux := http.NewServeMux()
+		// Delegated Identity client to SIX's admin socket.
+		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
+		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
+		if err != nil {
+			return fmt.Errorf("failed to create delegated identity client: %w", err)
+		}
 
-		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
-		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, logger))
+		mux := rest.NewMux(rest.Deps{
+			TrustBundle: trustBundle,
+			Delegated:   delegatedClient,
+			Plugins:     restDeps.Plugins,
+			Logger:      logger,
+		})
 
 		httpServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
@@ -223,21 +190,20 @@ func runSpireIdentityExchangeServer(
 			zap.Int("port", cfg.Server.RestPort),
 			zap.String("cert_file", cfg.Server.TLS.CertFile),
 			zap.String("key_file", cfg.Server.TLS.KeyFile))
-	} else {
-		logger.Info("HTTP REST server port is 0; REST server is disabled.")
 	}
 
 	// stopStarted tears down anything we already brought up. Used when one server fails to
 	// start while the other is already listening — without this, a bind failure on the HTTP
-	// gateway would leak the gRPC listener (port stays bound, supervisor restarts re-fail).
+	// REST server would leak the gRPC listener (port stays bound, supervisor restarts re-fail).
 	stopStarted := func() {
-		if grpcServer != nil {
-			grpcServer.Stop()
-		}
+		grpcServer.Stop()
 		if httpServer != nil {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
 			_ = httpServer.Shutdown(shutdownCtx)
+		}
+		if delegatedClient != nil {
+			_ = delegatedClient.Close()
 		}
 	}
 
@@ -265,13 +231,11 @@ func runSpireIdentityExchangeServer(
 		stopped := make(chan struct{})
 		go func() {
 			var wg sync.WaitGroup
-			if grpcServer != nil {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					grpcServer.GracefulStop()
-				}()
-			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				grpcServer.GracefulStop()
+			}()
 			if httpServer != nil {
 				wg.Add(1)
 				go func() {
@@ -288,78 +252,15 @@ func runSpireIdentityExchangeServer(
 			logger.Info("Server shutdown completed")
 		case <-shutdownCtx.Done():
 			logger.Warn("Shutdown timeout exceeded, forcing stop")
-			if grpcServer != nil {
-				grpcServer.Stop()
-			}
+			grpcServer.Stop()
 		}
 
+		if delegatedClient != nil {
+			_ = delegatedClient.Close()
+		}
 		return nil
 
 	case err := <-errCh:
 		return fmt.Errorf("server runtime error: %w", err)
-	}
-}
-
-// handleTrustBundleX509 reads instantly from the pre-baked cache on HTTP request hit.
-func handleTrustBundleX509(cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		pemBytes := cache.Get()
-
-		if len(pemBytes) == 0 {
-			logger.Warn("Trust bundle requested but cache is empty or warming up")
-			http.Error(w, "Trust bundle warming up or unavailable", http.StatusServiceUnavailable)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/x-pem-file")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(pemBytes)
-	}
-}
-
-// handleGetX509SVID Verify the token from the user and return 1 valid x509 svid if available including chain
-func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		stack := r.PathValue("stack")
-
-		if stack == "" {
-			http.Error(w, "stack parameter is missing", http.StatusBadRequest)
-			return
-		}
-		validator, exists := cfg.Auth.LoadedStacks[stack]
-		if !exists {
-			http.Error(w, "stack is unknown", http.StatusBadRequest)
-			return
-		}
-
-		//w.Header().Set("Content-Type", "application/x-pem-file")
-		w.Header().Set("Content-Type", "text/plain")
-
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Missing Authorization Header", http.StatusUnauthorized)
-			return
-		}
-
-		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-			http.Error(w, "Invalid Authorization Header Format", http.StatusUnauthorized)
-			return
-		}
-
-		token := strings.TrimSpace(authHeader[7:])
-		if token == "" {
-			http.Error(w, "Empty Token", http.StatusUnauthorized)
-			return
-		}
-
-		claims, err := validator.Validate(r.Context(), token)
-		if err != nil {
-			logger.Info("Failed to validate", zap.Error(err))
-			http.Error(w, "Failed to validate your token", http.StatusUnauthorized)
-			return
-		}
-		selectors := validator.GenerateSelectors(claims)
-		selectorsJSON, _ := json.Marshal(selectors)
-		_, _ = w.Write([]byte("Hello: "  + r.PathValue("stack") + " "  + string(selectorsJSON) + "\n" ))
 	}
 }

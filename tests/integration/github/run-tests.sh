@@ -17,7 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
+  sudo systemctl status spire-identity-exchange@main.service 2>&1 || true
   sudo systemctl status spire-server@main 2>&1 || true
   sudo spire-server entry show 2>&1 || true
   sudo systemctl status spire-controller-manager@main 2>&1 || true
@@ -156,4 +156,42 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
 
-curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+# --- Delegated REST X509 SVID issuance end-to-end ---
+# Wait for SIX agent's cache to populate with the alias-parented entries.
+# After SIX attests, entries flow from server → agent over a few seconds.
+DELEGATED_RESPONSE=""
+DELEGATED_ELAPSED=0
+DELEGATED_MAX_WAIT=30
+while [ ${DELEGATED_ELAPSED} -lt ${DELEGATED_MAX_WAIT} ]; do
+  if DELEGATED_RESPONSE=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      -X POST https://localhost:8444/api/v1/svid/github/x509 \
+      --cacert /etc/spire/identity-exchange/main/certs/server.pem 2>/dev/null); then
+    break
+  fi
+  sleep 1
+  ((DELEGATED_ELAPSED++)) || true
+done
+
+if [ -z "${DELEGATED_RESPONSE}" ]; then
+  echo "::error::delegated SVID endpoint did not return a response within ${DELEGATED_MAX_WAIT}s"
+  exit 1
+fi
+
+echo "${DELEGATED_RESPONSE}" | jq -e '.spiffeId' >/dev/null || {
+  echo "::error::delegated response missing spiffeId: ${DELEGATED_RESPONSE}"; exit 1
+}
+
+echo "${DELEGATED_RESPONSE}" | jq -r '.cert'   > /tmp/svid.pem
+echo "${DELEGATED_RESPONSE}" | jq -r '.bundle' > /tmp/bundle.pem
+
+# Issued SVID has a SPIFFE URI SAN.
+openssl x509 -in /tmp/svid.pem -text -noout | grep -q "URI:spiffe://" || {
+  echo "::error::issued cert is missing a SPIFFE URI SAN"; exit 1
+}
+
+# Issued SVID chains to the returned trust bundle.
+openssl verify -CAfile /tmp/bundle.pem /tmp/svid.pem || {
+  echo "::error::issued cert does not chain to the returned trust bundle"; exit 1
+}
+
+echo "delegated X509 SVID issuance verified end-to-end"

@@ -81,8 +81,16 @@ type SPIREConfig struct {
 	// Unix domain socket path for SPIRE Server API
 	UnixSocketPath string `json:"unixSocketPath"`
 
-	// Unix domain socket path for SPIRE Agent Workload API
+	// Unix domain socket path for SPIRE Agent Workload API.
+	// Used by the REST trust-bundle endpoint to stream bundle updates.
 	AgentWorkloadSocketPath string `json:"agentWorkloadSocketPath"`
+
+	// Unix domain socket path for SPIRE Agent Delegated Identity API.
+	// When set, the REST /svid/{plugin}/x509 endpoint issues SVIDs by fetching
+	// them through this socket rather than calling SPIRE Server directly. The
+	// agent listening on this socket must include this exchange's SPIFFE ID in
+	// its authorized_delegates configuration.
+	AgentDelegatedSocketPath string `json:"agentDelegatedSocketPath"`
 
 	// Trust domain
 	TrustDomain string `json:"trustDomain"`
@@ -349,6 +357,9 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 
 	if c.Server.RestPort != 0 && c.SPIRE.AgentWorkloadSocketPath == "" {
 		errs = append(errs, errors.New("spire.agentWorkloadSocketPath is required when server.restPort is enabled"))
+	}
+	if c.Server.RestPort != 0 && c.SPIRE.AgentDelegatedSocketPath == "" {
+		errs = append(errs, errors.New("spire.agentDelegatedSocketPath is required when server.restPort is enabled"))
 	}
 
 	if len(errs) > 0 {

@@ -16,6 +16,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	prommetrics "github.com/spiffe/spire-identity-exchange/internal/metrics/prometheus"
 	"github.com/spiffe/spire-identity-exchange/internal/service"
+	"github.com/spiffe/spire-identity-exchange/internal/service/rest"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
 	pkgvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/spire/cmd/spire-server/util"
@@ -151,7 +152,26 @@ func run() error {
 		logger.Info("gRPC port is 0; skipping token validator initializations")
 	}
 
-	return service.Run(ctx, cfg, spireClient, githubOIDCValidator, k8sSATokenValidator, appMetrics, &logger)
+	// Build the REST plugin registry from the pkg/validator instances already
+	// loaded by config. The REST surface uses pkg/validator directly because
+	// it exposes GenerateSelectors (needed for the delegated path); the
+	// internal/ validators above remain in use by the gRPC broker path.
+	//
+	// TODO: replay-cache wrap the pkg/validator instances too. The existing
+	// internal/cache.NewReplayCheckingValidator wraps the internal validator
+	// interface; equivalent wrapping for the pkg validator is a follow-up.
+	restPlugins := rest.PluginSet{}
+	if cfg.Server.RestPort != 0 {
+		for name, v := range cfg.Auth.LoadedPlugins {
+			restPlugins[name] = rest.Plugin{
+				Validator:         v,
+				SelectorGenerator: v,
+			}
+			logger.Info("REST plugin registered", zap.String("name", name))
+		}
+	}
+
+	return service.Run(ctx, cfg, spireClient, githubOIDCValidator, k8sSATokenValidator, service.RESTDeps{Plugins: restPlugins}, appMetrics, &logger)
 }
 
 func parseFlags(logger *zap.Logger) (*config.SpireIdentityExchangeConfig, error) {
