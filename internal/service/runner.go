@@ -338,6 +338,6 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		}
 		selectors := validator.GenerateSelectors(claims)
 		selectorsJSON, _ := json.Marshal(selectors)
-		_, _ = w.Write([]byte("Hello: " + r.PathValue("stack")+" " + string(selectorsJSON) ))
+		_, _ = w.Write([]byte("Hello: "  + r.PathValue("stack") + " "  + string(selectorsJSON) + "\n" ))
 	}
 }
