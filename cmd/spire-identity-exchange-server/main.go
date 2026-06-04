@@ -194,12 +194,15 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 	cfg.Auth.LoadedPlugins = make(map[string]pkgvalidator.TokenValidatorAndSelectorGenerator)
 	cfg.Auth.LoadedStacks = make(map[string]pkgvalidator.TokenValidatorAndSelectorGenerator)
 	for _, plugin := range cfg.Auth.Plugins {
-		validator, err := plugin.Config.NewValidator()
-		if err != nil {
-			return nil, err
+		if plugin.Config == nil {
+			return nil, fmt.Errorf("plugin %q has no loaded config", plugin.Name)
 		}
-		cfg.Auth.LoadedPlugins[plugin.Name] = validator
-		cfg.Auth.LoadedStacks[plugin.Name] = validator
+		v, err := plugin.Config.NewValidator()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create validator for plugin %q: %w", plugin.Name, err)
+		}
+		cfg.Auth.LoadedPlugins[plugin.Name] = v
+		cfg.Auth.LoadedStacks[plugin.Name] = v
 	}
 
 	return &cfg, nil

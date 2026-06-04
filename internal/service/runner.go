@@ -312,8 +312,7 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		}
 
 		//w.Header().Set("Content-Type", "application/x-pem-file")
-		w.Header().Set("Content-Type", "plain/text")
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "text/plain")
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {

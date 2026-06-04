@@ -46,13 +46,16 @@ func (c *Config) Unmarshal(raw json.RawMessage) error {
 
 func (c *Config) ValidateConfig() error {
 	if c.IssuerURL == "" {
-		return errors.New("issuerURL is required")
+		c.IssuerURL = DefaultIssuer
 	}
 	if !c.AllowHTTP && strings.HasPrefix(c.IssuerURL, "http://") {
 		return errors.New("http:// issuer URLs are not allowed unless AllowHTTP is true")
 	}
 	if len(c.Audiences) == 0 {
 		return errors.New("at least one audience must be specified")
+	}
+	if len(c.AllowedRepositories) == 0 && len(c.AllowedRepositoryOwners) == 0 {
+		return errors.New("at least one of allowedRepositories or allowedRepositoryOwners must be specified")
 	}
 	return nil
 }
@@ -64,7 +67,7 @@ func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, e
 func NewValidatorConfigFromJson(rawConfig json.RawMessage) (*Validator, error) {
 	var cfg Config
 	if err := json.Unmarshal(rawConfig, &cfg); err != nil {
-		return nil, fmt.Errorf("cache config error: %w", err)
+		return nil, fmt.Errorf("github validator config error: %w", err)
 	}
 	return NewValidator(cfg)
 }

@@ -63,9 +63,9 @@ type TLSConfig struct {
 
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
-	Plugins []PluginConfig `json:"plugins"`
-	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator
-	LoadedStacks map[string]validator.TokenValidatorAndSelectorGenerator
+	Plugins       []PluginConfig `json:"plugins"`
+	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
+	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 }
 
 // PluginConfig contains the configuration for a single plugin
@@ -192,7 +192,7 @@ func (c *AuthConfig) Validate() error {
 			c.Plugins[i].Name = plugin.Plugin
 		}
 		if _, exists := usedPlugins[plugin.Name]; exists {
-			errs = append(errs, fmt.Errorf("plugin name %s is defined more then once", plugin.Name))
+			errs = append(errs, fmt.Errorf("plugin name %s is defined more than once", plugin.Name))
 			continue
 		}
 		if !pluginNamePattern.MatchString(plugin.Name) {
@@ -201,13 +201,16 @@ func (c *AuthConfig) Validate() error {
 		}
 		pluginGenerator, exists := registry.AllBuiltinPlugins[plugin.Plugin]
 		if !exists {
-			errs = append(errs, fmt.Errorf("plugin type %s is unknown", plugin.Name))
+			errs = append(errs, fmt.Errorf("plugin type %q is unknown", plugin.Plugin))
 		} else {
 			config, err := pluginGenerator()
 			if err != nil {
-				errs = append(errs, fmt.Errorf("Failed to validate plugin %s", err))
+				errs = append(errs, fmt.Errorf("failed to initialize plugin %q: %w", plugin.Name, err))
+			} else if err := config.Unmarshal(plugin.RawConfig); err != nil {
+				errs = append(errs, fmt.Errorf("failed to unmarshal config for plugin %q: %w", plugin.Name, err))
+			} else if err := config.ValidateConfig(); err != nil {
+				errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", plugin.Name, err))
 			} else {
-				config.Unmarshal(plugin.RawConfig)
 				c.Plugins[i].Config = config
 			}
 		}

@@ -8,8 +8,8 @@ import (
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
 
-// TokenValidatorLoaderGenerator Lets you start he process of loading a new
-// TokenValdiatorLoader
+// TokenValidatorLoaderGenerator lets you start the process of loading a new
+// TokenValidatorLoader
 type TokenValidatorLoaderGenerator func() (TokenValidatorLoader, error)
 
 // TokenValidatorLoader takes in some config, validates it is good and then
@@ -21,8 +21,8 @@ type TokenValidatorLoader interface {
 }
 
 type TokenValidatorAndSelectorGenerator interface {
-    TokenValidator
-    SelectorGenerator
+	TokenValidator
+	SelectorGenerator
 }
 
 // TokenValidator defines the interface for validating external tokens
