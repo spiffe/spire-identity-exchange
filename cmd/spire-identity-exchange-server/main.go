@@ -17,6 +17,7 @@ import (
 	prommetrics "github.com/spiffe/spire-identity-exchange/internal/metrics/prometheus"
 	"github.com/spiffe/spire-identity-exchange/internal/service"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
+	pkgvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -188,6 +189,18 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate the configuration: %w", err)
 	}
-//FIXME load plugins
+
+	// Load the plugins and stacks from validated config
+	cfg.Auth.LoadedPlugins = make(map[string]pkgvalidator.TokenValidatorAndSelectorGenerator)
+	cfg.Auth.LoadedStacks = make(map[string]pkgvalidator.TokenValidatorAndSelectorGenerator)
+	for _, plugin := range cfg.Auth.Plugins {
+		validator, err := plugin.Config.NewValidator()
+		if err != nil {
+			return nil, err
+		}
+		cfg.Auth.LoadedPlugins[plugin.Name] = validator
+		cfg.Auth.LoadedStacks[plugin.Name] = validator
+	}
+
 	return &cfg, nil
 }

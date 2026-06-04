@@ -18,6 +18,10 @@ const (
 	DefaultIssuer = "https://token.actions.githubusercontent.com"
 )
 
+func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
+	return &Config{}, nil
+}
+
 // Config holds configuration for the GitHub OIDC validator.
 type Config struct {
 	IssuerURL               string   `json:"issuerURL"`

@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"time"
 
         "github.com/spiffe/spire-identity-exchange/pkg/validator"
-        "github.com/spiffe/spire-identity-exchange/pkg/validator/github"
+        "github.com/spiffe/spire-identity-exchange/pkg/validator/registry"
 )
 
 // Duration is a time.Duration that unmarshals from JSON as either a duration
 // string (e.g. "1h", "10m") or an integer number of nanoseconds.
 type Duration time.Duration
+
+var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string
@@ -61,6 +64,8 @@ type TLSConfig struct {
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
 	Plugins []PluginConfig `json:"plugins"`
+	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator
+	LoadedStacks map[string]validator.TokenValidatorAndSelectorGenerator
 }
 
 // PluginConfig contains the configuration for a single plugin
@@ -183,20 +188,29 @@ func (c *AuthConfig) Validate() error {
 	var errs []error
 	for i, plugin := range c.Plugins {
 		if c.Plugins[i].Name == "" {
+			plugin.Name = plugin.Plugin
 			c.Plugins[i].Name = plugin.Plugin
 		}
 		if _, exists := usedPlugins[plugin.Name]; exists {
 			errs = append(errs, fmt.Errorf("plugin name %s is defined more then once", plugin.Name))
+			continue
 		}
-		//FIXME needs some kind of plugin registry here instead of hardcoding
-		if plugin.Plugin != "github" {
+		if !pluginNamePattern.MatchString(plugin.Name) {
+			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", plugin.Name))
+			continue
+		}
+		pluginGenerator, exists := registry.AllBuildinPlugins[plugin.Plugin]
+		if !exists {
 			errs = append(errs, fmt.Errorf("plugin type %s is unknown", plugin.Name))
 		} else {
-			config := &github.Config{}
-			config.Unmarshal(plugin.RawConfig)
-			c.Plugins[i].Config = config
+			config, err := pluginGenerator()
+			if err != nil {
+				errs = append(errs, fmt.Errorf("Failed to validate plugin %s", err))
+			} else {
+				config.Unmarshal(plugin.RawConfig)
+				c.Plugins[i].Config = config
+			}
 		}
-		//FIXME validate with individual plugin
 		usedPlugins[plugin.Name] = struct{}{}
 	}
 	return errors.Join(errs...)
