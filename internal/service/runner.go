@@ -102,8 +102,8 @@ func Run(
 	return nil
 }
 
-// runSpireIdentityExchangeServer starts the gRPC server and, if httpGatewayPort is set,
-// also an HTTP/REST gateway on a separate port backed by the same in-process handler.
+// runSpireIdentityExchangeServer starts the gRPC server and/or the HTTP/REST gateway
+// based on configuration. Setting either port to 0 disables that respective protocol.
 func runSpireIdentityExchangeServer(
 	ctx context.Context,
 	cfg *config.SpireIdentityExchangeConfig,
@@ -116,7 +116,11 @@ func runSpireIdentityExchangeServer(
 	if cfg == nil {
 		return fmt.Errorf("configuration is nil")
 	}
-	logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.Port))
+
+	// Fail fast if both servers are intentionally or accidentally disabled
+	if cfg.Server.Port == 0 && cfg.Server.RestPort == 0 {
+		return fmt.Errorf("both gRPC (port %d) and REST (port %d) servers are disabled; nothing to run", cfg.Server.Port, cfg.Server.RestPort)
+	}
 
 	// Start key syncers for any validator that supports it
 	for _, v := range []validator.TokenValidator{githubOIDCValidator, k8sSATokenValidator} {
@@ -145,24 +149,34 @@ func runSpireIdentityExchangeServer(
 		MinVersion:   tls.VersionTLS13,
 	}
 
-	// --- gRPC server ---
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.Port))
-	if err != nil {
-		return fmt.Errorf("failed to create network listener: %w", err)
-	}
-
-	grpcServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConfig)))
-	logger.Info("gRPC server configured with TLS",
-		zap.String("cert_file", cfg.Server.TLS.CertFile),
-		zap.String("key_file", cfg.Server.TLS.KeyFile))
-
-	proto.RegisterSpireIdentityExchangeApiServer(grpcServer, handler)
-	reflection.Register(grpcServer)
-
 	errCh := make(chan error, 3)
-	go func() {
-		errCh <- grpcServer.Serve(listener)
-	}()
+
+	// --- gRPC server ---
+	var grpcServer *grpc.Server
+	var listener net.Listener
+
+	if cfg.Server.Port != 0 {
+		logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.Port))
+
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.Port))
+		if err != nil {
+			return fmt.Errorf("failed to create network listener: %w", err)
+		}
+
+		grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConfig)))
+		logger.Info("gRPC server configured with TLS",
+			zap.String("cert_file", cfg.Server.TLS.CertFile),
+			zap.String("key_file", cfg.Server.TLS.KeyFile))
+
+		proto.RegisterSpireIdentityExchangeApiServer(grpcServer, handler)
+		reflection.Register(grpcServer)
+
+		go func() {
+			errCh <- grpcServer.Serve(listener)
+		}()
+	} else {
+		logger.Info("gRPC server port is 0; gRPC server is disabled.")
+	}
 
 	// --- Initialize go-spiffe background watcher stream ---
 	cache := &trustBundleCache{}
@@ -209,13 +223,17 @@ func runSpireIdentityExchangeServer(
 			zap.Int("port", cfg.Server.RestPort),
 			zap.String("cert_file", cfg.Server.TLS.CertFile),
 			zap.String("key_file", cfg.Server.TLS.KeyFile))
+	} else {
+		logger.Info("HTTP REST server port is 0; REST server is disabled.")
 	}
 
 	// stopStarted tears down anything we already brought up. Used when one server fails to
 	// start while the other is already listening — without this, a bind failure on the HTTP
 	// gateway would leak the gRPC listener (port stays bound, supervisor restarts re-fail).
 	stopStarted := func() {
-		grpcServer.Stop()
+		if grpcServer != nil {
+			grpcServer.Stop()
+		}
 		if httpServer != nil {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
@@ -247,11 +265,13 @@ func runSpireIdentityExchangeServer(
 		stopped := make(chan struct{})
 		go func() {
 			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				grpcServer.GracefulStop()
-			}()
+			if grpcServer != nil {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					grpcServer.GracefulStop()
+				}()
+			}
 			if httpServer != nil {
 				wg.Add(1)
 				go func() {
@@ -268,7 +288,9 @@ func runSpireIdentityExchangeServer(
 			logger.Info("Server shutdown completed")
 		case <-shutdownCtx.Done():
 			logger.Warn("Shutdown timeout exceeded, forcing stop")
-			grpcServer.Stop()
+			if grpcServer != nil {
+				grpcServer.Stop()
+			}
 		}
 
 		return nil
