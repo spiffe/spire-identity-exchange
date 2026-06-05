@@ -6,12 +6,18 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"time"
+
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/registry"
 )
 
 // Duration is a time.Duration that unmarshals from JSON as either a duration
 // string (e.g. "1h", "10m") or an integer number of nanoseconds.
 type Duration time.Duration
+
+var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string
@@ -36,6 +42,7 @@ type SpireIdentityExchangeConfig struct {
 	LogLevel   string           `json:"logLevel"`
 	Server     ServerConfig     `json:"server"`
 	SPIRE      SPIREConfig      `json:"spire"`
+	Auth       AuthConfig       `json:"auth"`
 	GitHubOIDC GitHubOIDCConfig `json:"githubOIDC"`
 	K8sSAToken K8sSATokenConfig `json:"k8sSAToken"`
 }
@@ -52,6 +59,21 @@ type ServerConfig struct {
 type TLSConfig struct {
 	CertFile string `json:"certFile"`
 	KeyFile  string `json:"keyFile"`
+}
+
+// AuthConfig contains Authentication configuration
+type AuthConfig struct {
+	Plugins       []PluginConfig `json:"plugins"`
+	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
+	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
+}
+
+// PluginConfig contains the configuration for a single plugin
+type PluginConfig struct {
+	Name      string                         `json:"name"`
+	Plugin    string                         `json:"plugin"`
+	RawConfig json.RawMessage                `json:"config"`
+	Config    validator.TokenValidatorLoader `json:"-"`
 }
 
 // SPIREConfig contains SPIRE server configurations
@@ -161,12 +183,44 @@ type K8sAPIClientTlsConfig struct {
 	KeyFile string `json:"keyFile"`
 }
 
+func (c *AuthConfig) Validate() error {
+	usedPlugins := make(map[string]struct{})
+	var errs []error
+	for i, plugin := range c.Plugins {
+		if c.Plugins[i].Name == "" {
+			plugin.Name = plugin.Plugin
+			c.Plugins[i].Name = plugin.Plugin
+		}
+		if _, exists := usedPlugins[plugin.Name]; exists {
+			errs = append(errs, fmt.Errorf("plugin name %s is defined more than once", plugin.Name))
+			continue
+		}
+		if !pluginNamePattern.MatchString(plugin.Name) {
+			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", plugin.Name))
+			continue
+		}
+		pluginGenerator, exists := registry.AllBuiltinPlugins[plugin.Plugin]
+		if !exists {
+			errs = append(errs, fmt.Errorf("plugin type %q is unknown", plugin.Plugin))
+		} else {
+			config, err := pluginGenerator()
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to initialize plugin %q: %w", plugin.Name, err))
+			} else if err := config.Unmarshal(plugin.RawConfig); err != nil {
+				errs = append(errs, fmt.Errorf("failed to unmarshal config for plugin %q: %w", plugin.Name, err))
+			} else if err := config.ValidateConfig(); err != nil {
+				errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", plugin.Name, err))
+			} else {
+				c.Plugins[i].Config = config
+			}
+		}
+		usedPlugins[plugin.Name] = struct{}{}
+	}
+	return errors.Join(errs...)
+}
+
 func (c *ServerConfig) Validate() error {
 	var errs []error
-
-	if c.Port == 0 {
-		errs = append(errs, errors.New("server.port is required"))
-	}
 
 	if c.MetricsPort == 0 {
 		errs = append(errs, errors.New("server.metricsPort is required"))
@@ -287,6 +341,7 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 		}
 	}
 
+	errs = append(errs, c.Auth.Validate())
 	errs = append(errs, c.Server.Validate())
 	errs = append(errs, c.SPIRE.Validate())
 	errs = append(errs, c.GitHubOIDC.Validate())

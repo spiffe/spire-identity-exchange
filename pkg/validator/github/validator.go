@@ -5,6 +5,8 @@ package github
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,22 +18,58 @@ const (
 	DefaultIssuer = "https://token.actions.githubusercontent.com"
 )
 
+func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
+	return &Config{}, nil
+}
+
 // Config holds configuration for the GitHub OIDC validator.
 type Config struct {
-	IssuerURL               string
-	Audiences               []string
-	AllowedRepositoryOwners []string
-	AllowedRepositories     []string
+	IssuerURL               string   `json:"issuerURL"`
+	Audiences               []string `json:"audiences"`
+	AllowedRepositoryOwners []string `json:"allowedRepositoryOwners"`
+	AllowedRepositories     []string `json:"allowedRepositories"`
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
-	KeyProvider validator.KeyProvider
+	KeyProvider validator.KeyProvider `json:"-"`
 	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
 	// Must not be enabled in production.
-	AllowHTTP bool
+	AllowHTTP bool `json:"-"`
 	// Metrics allows injecting a metrics collector for operation tracking.
 	// If nil, metrics collection is silently skipped.
-	Metrics validator.Metrics
+	Metrics validator.Metrics `json:"-"`
+}
+
+func (c *Config) Unmarshal(raw json.RawMessage) error {
+	return json.Unmarshal(raw, c)
+}
+
+func (c *Config) ValidateConfig() error {
+	if c.IssuerURL == "" {
+		c.IssuerURL = DefaultIssuer
+	}
+	if !c.AllowHTTP && strings.HasPrefix(c.IssuerURL, "http://") {
+		return errors.New("http:// issuer URLs are not allowed unless AllowHTTP is true")
+	}
+	if len(c.Audiences) == 0 {
+		return errors.New("at least one audience must be specified")
+	}
+	if len(c.AllowedRepositories) == 0 && len(c.AllowedRepositoryOwners) == 0 {
+		return errors.New("at least one of allowedRepositories or allowedRepositoryOwners must be specified")
+	}
+	return nil
+}
+
+func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, error) {
+	return NewValidator(*c)
+}
+
+func NewValidatorConfigFromJson(rawConfig json.RawMessage) (*Validator, error) {
+	var cfg Config
+	if err := json.Unmarshal(rawConfig, &cfg); err != nil {
+		return nil, fmt.Errorf("github validator config error: %w", err)
+	}
+	return NewValidator(cfg)
 }
 
 // Validator validates GitHub Actions OIDC tokens.

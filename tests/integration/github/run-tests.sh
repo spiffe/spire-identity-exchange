@@ -17,7 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  sudo systemctl status spire-identity-exchange@main.service 2>&1 || true
+  sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main 2>&1 || true
   sudo spire-server entry show 2>&1 || true
   sudo systemctl status spire-controller-manager@main 2>&1 || true
@@ -156,4 +156,4 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
 
-curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s
+curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
