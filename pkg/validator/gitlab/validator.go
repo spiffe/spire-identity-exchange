@@ -2,6 +2,8 @@ package gitlab
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,14 +15,50 @@ const (
 	DefaultIssuer = "https://gitlab.com"
 )
 
+func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
+	return &Config{}, nil
+}
+
 type Config struct {
-	IssuerURL             string
-	Audiences             []string
-	AllowedProjectPaths   []string
-	AllowedNamespacePaths []string
-	KeyProvider           validator.KeyProvider
-	AllowHTTP             bool
-	Metrics               validator.Metrics
+	IssuerURL             string                `json:"issuerURL"`
+	Audiences             []string              `json:"audiences"`
+	AllowedProjectPaths   []string              `json:"allowedProjectPaths"`
+	AllowedNamespacePaths []string              `json:"allowedNamespacePaths"`
+	KeyProvider           validator.KeyProvider `json:"-"`
+	AllowHTTP             bool                  `json:"-"`
+	Metrics               validator.Metrics     `json:"-"`
+}
+
+func (c *Config) Unmarshal(raw json.RawMessage) error {
+	return json.Unmarshal(raw, c)
+}
+
+func (c *Config) ValidateConfig() error {
+	if c.IssuerURL == "" {
+		c.IssuerURL = DefaultIssuer
+	}
+	if !c.AllowHTTP && strings.HasPrefix(c.IssuerURL, "http://") {
+		return errors.New("http:// issuer URLs are not allowed unless AllowHTTP is true")
+	}
+	if len(c.Audiences) == 0 {
+		return errors.New("at least one audience must be specified")
+	}
+	if len(c.AllowedProjectPaths) == 0 && len(c.AllowedNamespacePaths) == 0 {
+		return errors.New("at least one of alowedProjectPaths or allowedNamespacePaths must be specified")
+	}
+	return nil
+}
+
+func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, error) {
+	return NewValidator(*c)
+}
+
+func NewValidatorConfigFromJson(rawConfig json.RawMessage) (*Validator, error) {
+	var cfg Config
+	if err := json.Unmarshal(rawConfig, &cfg); err != nil {
+		return nil, fmt.Errorf("gitlab validator config error: %w", err)
+	}
+	return NewValidator(cfg)
 }
 
 type Validator struct {
