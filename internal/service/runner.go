@@ -442,6 +442,11 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			Bundle:    string(bundle),
 			ExpiresAt: svid.ExpiresAt.Unix(),
 		}
+		// The response body contains a private key. Forbid every layer of
+		// caching: TLS-terminating proxies, CDNs, and the client's own disk
+		// cache must not retain this material.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(&resp); err != nil {
 			logger.Error("response encode failed", zap.Error(err))
