@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -41,6 +42,7 @@ func main() {
 	ref := flag.String("ref", "refs/heads/main", "ref claim")
 	eventName := flag.String("event-name", "push", "event_name claim")
 	ttl := flag.Duration("ttl", 10*time.Minute, "Token lifetime")
+	tokenFile := flag.String("token", "", "Filename to write the token to")
 	flag.Parse()
 
 	if *issuer == "" {
@@ -109,8 +111,11 @@ func main() {
 		log.Fatalf("failed to marshal JWKS: %v", err)
 	}
 
+openIDConfiguration := fmt.Sprintf("{\"issuer\":\"%s\",\"jwks_uri\":\"%s/.well-known/jwks\",\"subject_types_supported\":[\"public\"],\"response_types_supported\":[\"code\"],\"claims_supported\":[\"sub\",\"aud\",\"exp\",\"nbf\",\"iat\",\"iss\",\"act\"],\"id_token_signing_alg_values_supported\":[\"RS256\"],\"scopes_supported\":[\"openid\"],\"response_modes_supported\":[\"query\"]}", *issuer, *issuer)
+
 	// Print usage
 	fmt.Println("=== Mock GitHub OIDC Server ===")
+	fmt.Printf("OpenID Configuration: http://localhost:%d/.well-known/openid-configuration\n", *port)
 	fmt.Printf("JWKS endpoint: http://localhost:%d/.well-known/jwks\n", *port)
 	fmt.Printf("Issuer:        %s\n", *issuer)
 	fmt.Printf("Audience:      %s\n", *audience)
@@ -141,11 +146,24 @@ func main() {
 	fmt.Println()
 	fmt.Printf("Serving JWKS at http://localhost:%d/.well-known/jwks ...\n", *port)
 
+	if *tokenFile != "" {
+		if err := os.WriteFile(*tokenFile, []byte(signed), 0600); err != nil {
+			log.Fatalf("failed to write token to %q: %v", *tokenFile, err)
+		}
+	}
+
 	// Serve JWKS
 	http.HandleFunc("/.well-known/jwks", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(jwksJSON)
 	})
+
+	// Serve openid-configuration
+	http.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(openIDConfiguration))
+	})
+
 
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil); err != nil {
 		log.Fatalf("failed to start JWKS server: %v", err)

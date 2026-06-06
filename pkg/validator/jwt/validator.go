@@ -49,7 +49,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 	if cfg.IssuerURL == "" {
 		return nil, fmt.Errorf("issuer URL must not be empty")
 	}
-	if err := validateIssuerURL(cfg.IssuerURL, cfg.AllowHTTP); err != nil {
+	if err := ValidateIssuerURL(cfg.IssuerURL, cfg.AllowHTTP); err != nil {
 		return nil, fmt.Errorf("invalid issuer URL: %w", err)
 	}
 	if len(cfg.Audiences) == 0 {
@@ -196,13 +196,16 @@ func extractKID(rawToken string) (string, error) {
 	return kid, nil
 }
 
-// validateIssuerURL validates the issuer URL format and scheme.
-func validateIssuerURL(issuer string, allowHTTP bool) error {
+// ValidateIssuerURL validates the issuer URL format and scheme.
+func ValidateIssuerURL(issuer string, allowHTTP bool) error {
 	u, err := url.Parse(issuer)
 	if err != nil {
 		return fmt.Errorf("failed to parse URL: %w", err)
 	}
-	if u.Scheme != "https" && !(allowHTTP && u.Scheme == "http") {
+	isHTTPS := u.Scheme == "https"
+	isLocalhost := u.Scheme == "http" && u.Hostname() == "localhost"
+	isAllowedHTTP := allowHTTP && u.Scheme == "http"
+	if !isHTTPS && !isLocalhost && !isAllowedHTTP {
 		return fmt.Errorf("scheme must be https (got %q)", u.Scheme)
 	}
 	if u.Host == "" {

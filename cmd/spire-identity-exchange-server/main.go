@@ -151,6 +151,14 @@ func run() error {
 		logger.Info("gRPC port is 0; skipping token validator initializations")
 	}
 
+	// REST surface reads pkg/validator instances directly off cfg.Auth.LoadedStacks
+	// (the delegated path needs GenerateSelectors, which only pkg/validator exposes).
+	// The internal/ validators above remain in use by the gRPC broker path.
+	//
+	// TODO: replay-cache wrap the pkg/validator instances too. The existing
+	// internal/cache.NewReplayCheckingValidator wraps the internal validator
+	// interface; equivalent wrapping for the pkg validator is a follow-up.
+
 	return service.Run(ctx, cfg, spireClient, githubOIDCValidator, k8sSATokenValidator, appMetrics, &logger)
 }
 

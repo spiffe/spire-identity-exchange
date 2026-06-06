@@ -75,6 +75,27 @@ wait_for_jwt() {
   return 1
 }
 
+# Setup github mock service. Consider moving this out to a systemd service
+go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
+rm -f token
+./mock-github-oidc -token token &
+MAX_WAIT=30
+ELAPSED=0
+while true; do
+  if [ -f token ]; then
+    break
+  fi
+  if [ $ELAPSED -ge $MAX_WAIT ]; then
+    echo "Timed out after ${MAX_WAIT} seconds."
+    exit 1
+  fi
+  sleep 1
+  ((ELAPSED++)) || true
+done
+export MOCKHUB_TOKEN="$(cat token)"
+echo "::add-mask::${MOCKHUB_TOKEN}"
+set -x
+
 # Get the package repo and install the packages
 sudo curl -s -o /etc/apt/sources.list.d/spire-examples.list https://raw.githubusercontent.com/spiffe/spire-examples/refs/heads/main/examples/debs/amd64/spire-examples.list
 sudo apt-get update
@@ -150,10 +171,14 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 #  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
 
 ~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/main/certs/server.pem \
-  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintJWTSVIDRequest\":{\"audiences\":[\"foo\"]}}" \
+  -d "{\"githubOIDC\":{\"githubToken\":\"${MOCKHUB_TOKEN}\"},\"mintJWTSVIDRequest\":{\"audiences\":[\"foo\"]}}" \
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
 
 diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
 
-curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+if [ -n "$GITHUB_TOKEN" ]; then
+	curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+fi
+
+curl -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS

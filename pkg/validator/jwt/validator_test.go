@@ -160,7 +160,7 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "http_issuer_without_allow",
 			cfg: Config{
-				IssuerURL: "http://localhost",
+				IssuerURL: "http://other",
 				Audiences: []string{"test-aud"},
 			},
 			expectErr: true,
@@ -169,7 +169,7 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "http_issuer_with_allow",
 			cfg: Config{
-				IssuerURL: "http://localhost",
+				IssuerURL: "http://other",
 				Audiences: []string{"test-aud"},
 				AllowHTTP: true,
 			},
@@ -389,7 +389,6 @@ func TestValidateIssuerURL(t *testing.T) {
 		{
 			name:      "http_allowed",
 			issuer:    "http://localhost",
-			allowHTTP: true,
 		},
 		{
 			name:      "empty_host",
@@ -413,7 +412,7 @@ func TestValidateIssuerURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateIssuerURL(tt.issuer, tt.allowHTTP)
+			err := ValidateIssuerURL(tt.issuer, tt.allowHTTP)
 			if tt.expectErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
