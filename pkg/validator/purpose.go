@@ -25,8 +25,8 @@ const (
 // Purpose identifies the intended use of a validated token for replay cache
 // isolation. Different purposes produce distinct replay cache keys so that
 // the same token can be used for multiple SVID types without false replay
-// detection. Use the provided constructors (X509Purpose, JWTPurpose) to
-// create values.
+// detection. Use the provided constructors (X509Purpose, JWTPurpose,
+// SharedPurpose) or a PurposeResolver to create values.
 type Purpose struct {
 	value string
 }
