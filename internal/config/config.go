@@ -352,7 +352,7 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 
 	if c.PurposeMode != "" {
 		switch c.PurposeMode {
-		case "purpose", "shared":
+		case string(validator.PurposeModePurpose), string(validator.PurposeModeShared):
 		default:
 			errs = append(errs, fmt.Errorf("purposeMode %q is not recognized (purpose|shared)", c.PurposeMode))
 		}
