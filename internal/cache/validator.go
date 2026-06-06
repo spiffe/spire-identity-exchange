@@ -114,6 +114,10 @@ func extractJTI(token string) string {
 	if len(parts) < 2 {
 		return ""
 	}
+	// Cap payload size to avoid excessive allocations on maliciously large tokens.
+	if len(parts[1]) > 32*1024 {
+		return ""
+	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return ""
