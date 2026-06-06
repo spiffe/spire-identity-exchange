@@ -93,6 +93,7 @@ while true; do
   ((ELAPSED++)) || true
 done
 export MOCKHUB_TOKEN="$(cat token)"
+echo "::add-mask::${MOCKHUB_TOKEN}"
 set -x
 
 # Get the package repo and install the packages
