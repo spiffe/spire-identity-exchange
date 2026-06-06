@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/spiffe/spire-identity-exchange/internal/config"
-	"github.com/spiffe/spire-identity-exchange/internal/utils"
+	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -23,12 +23,12 @@ type MockValidator struct {
 	mock.Mock
 }
 
-func (m *MockValidator) Validate(ctx context.Context, token string) (*utils.Claims, error) {
+func (m *MockValidator) Validate(ctx context.Context, token string, _ v.Purpose) (v.Claims, error) {
 	args := m.Called(ctx, token)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*utils.Claims), args.Error(1)
+	return args.Get(0).(v.Claims), args.Error(1)
 }
 
 // MockKeySynchronizer is a mock that implements both TokenValidator and KeySynchronizer

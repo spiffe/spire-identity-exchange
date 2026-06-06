@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/spiffe/spire-identity-exchange/internal/config"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
@@ -43,15 +44,15 @@ func TestNewValidator(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			validator, err := NewValidator(tc.config, logger)
+			val, err := NewValidator(tc.config, logger)
 
 			if tc.expectErr {
 				assert.Error(t, err)
-				assert.Nil(t, validator)
+				assert.Nil(t, val)
 				return
 			}
 			assert.NoError(t, err)
-			assert.NotNil(t, validator)
+			assert.NotNil(t, val)
 		})
 	}
 }
@@ -62,7 +63,7 @@ func TestValidateToken(t *testing.T) {
 		APIHost: "https://kubernetes.default.svc:443",
 	}
 
-	validator, err := NewValidator(cfg, logger)
+	val, err := NewValidator(cfg, logger)
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestValidateToken(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tokenInfo, err := validator.Validate(ctx, tc.token)
+			tokenInfo, err := val.Validate(ctx, tc.token, validator.X509Purpose())
 
 			if tc.expectErr && err == nil {
 				assert.Error(t, err, "expected error but got none")

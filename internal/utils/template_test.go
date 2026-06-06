@@ -178,7 +178,7 @@ func TestSanitizeForSPIFFE(t *testing.T) {
 func TestGenerateSPIFFEID(t *testing.T) {
 	tests := []struct {
 		name            string
-		claims          *Claims
+		rawClaims       map[string]interface{}
 		templateStr     string
 		trustDomain     string
 		expectedPattern string
@@ -187,11 +187,9 @@ func TestGenerateSPIFFEID(t *testing.T) {
 	}{
 		{
 			name: "valid_spiffe_id_with_template",
-			claims: &Claims{
-				RawClaims: map[string]interface{}{
-					"repository": "test-org/test-repo",
-					"ref":        "refs/heads/main",
-				},
+			rawClaims: map[string]interface{}{
+				"repository": "test-org/test-repo",
+				"ref":        "refs/heads/main",
 			},
 			templateStr:     "spiffe://{{.trust_domain}}/github/{{.org}}/{{.repository}}",
 			trustDomain:     "example.com",
@@ -200,10 +198,8 @@ func TestGenerateSPIFFEID(t *testing.T) {
 		},
 		{
 			name: "template_without_spiffe_scheme",
-			claims: &Claims{
-				RawClaims: map[string]interface{}{
-					"repository": "test-org/test-repo",
-				},
+			rawClaims: map[string]interface{}{
+				"repository": "test-org/test-repo",
 			},
 			templateStr:   "github/{{.org}}/{{.repository}}",
 			trustDomain:   "example.com",
@@ -211,7 +207,7 @@ func TestGenerateSPIFFEID(t *testing.T) {
 		},
 		{
 			name:          "nil_template",
-			claims:        &Claims{},
+			rawClaims:     map[string]interface{}{},
 			templateStr:   "",
 			trustDomain:   "example.com",
 			expectError:   true,
@@ -229,7 +225,7 @@ func TestGenerateSPIFFEID(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			result, err := GenerateSPIFFEID(tt.claims, tmpl, tt.trustDomain)
+			result, err := GenerateSPIFFEID(tt.rawClaims, tmpl, tt.trustDomain)
 
 			if tt.expectError {
 				assert.Error(t, err)

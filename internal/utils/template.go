@@ -138,15 +138,15 @@ func sanitizeForSPIFFE(str string) string {
 	return str
 }
 
-// GenerateSPIFFEID generates a SPIFFE ID from OIDC claims
-func GenerateSPIFFEID(claims *Claims, spiffeIDTemplate *template.Template, trustDomain string) (spiffeid.ID, error) {
+// GenerateSPIFFEID generates a SPIFFE ID from raw JWT claims using the configured template.
+func GenerateSPIFFEID(rawClaims map[string]interface{}, spiffeIDTemplate *template.Template, trustDomain string) (spiffeid.ID, error) {
 	// Ensure template is configured
 	if spiffeIDTemplate == nil {
 		return spiffeid.ID{}, fmt.Errorf("SPIFFE ID template is empty")
 	}
 
 	// Get template data from claims
-	data := GenerateTemplateData(claims.RawClaims, trustDomain)
+	data := GenerateTemplateData(rawClaims, trustDomain)
 
 	// Execute template
 	var buf bytes.Buffer

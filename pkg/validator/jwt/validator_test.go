@@ -307,7 +307,7 @@ func TestValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			token := createTestToken(t, tt.claims, tt.key, tt.kid)
-			result, err := v.Validate(context.Background(), token)
+			result, err := v.Validate(context.Background(), token, validator.X509Purpose())
 			if tt.expectErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
@@ -347,7 +347,7 @@ func TestValidate_Metrics(t *testing.T) {
 
 	// Successful validation.
 	token := createTestToken(t, validClaims(issuer, audience), rsaKey, kid)
-	_, err = v.Validate(context.Background(), token)
+	_, err = v.Validate(context.Background(), token, validator.X509Purpose())
 	require.NoError(t, err)
 
 	m.mu.Lock()
@@ -358,7 +358,7 @@ func TestValidate_Metrics(t *testing.T) {
 	m.mu.Unlock()
 
 	// Failed validation (invalid token).
-	_, err = v.Validate(context.Background(), "invalid-token")
+	_, err = v.Validate(context.Background(), "invalid-token", validator.X509Purpose())
 	require.Error(t, err)
 
 	m.mu.Lock()

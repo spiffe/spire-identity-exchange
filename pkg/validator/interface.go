@@ -30,7 +30,7 @@ type TokenValidatorAndSelectorGenerator interface {
 // spire-identity-exchange (token exchange service) and SPIRE node
 // attestor plugins.
 type TokenValidator interface {
-	Validate(ctx context.Context, token string) (Claims, error)
+	Validate(ctx context.Context, token string, purpose Purpose) (Claims, error)
 }
 
 // KeyProvider provides public keys for JWT signature verification.

@@ -16,8 +16,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	prommetrics "github.com/spiffe/spire-identity-exchange/internal/metrics/prometheus"
 	"github.com/spiffe/spire-identity-exchange/internal/service"
-	"github.com/spiffe/spire-identity-exchange/internal/validator"
-	pkgvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -205,8 +204,8 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 	}
 
 	// Load the plugins and stacks from validated config
-	cfg.Auth.LoadedPlugins = make(map[string]pkgvalidator.TokenValidatorAndSelectorGenerator)
-	cfg.Auth.LoadedStacks = make(map[string]pkgvalidator.TokenValidatorAndSelectorGenerator)
+	cfg.Auth.LoadedPlugins = make(map[string]validator.TokenValidatorAndSelectorGenerator)
+	cfg.Auth.LoadedStacks = make(map[string]validator.TokenValidatorAndSelectorGenerator)
 	for _, plugin := range cfg.Auth.Plugins {
 		if plugin.Config == nil {
 			return nil, fmt.Errorf("plugin %q has no loaded config", plugin.Name)
