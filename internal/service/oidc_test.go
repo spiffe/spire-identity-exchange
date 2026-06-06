@@ -346,10 +346,11 @@ func setupTestServer(t *testing.T, templateStr string) (*SpireIdentityExchangeSe
 			spiffeIDTemplate: tmpl,
 			svidTTL:          effectiveTTL(cfg.GitHubOIDC.SVIDTTL, cfg.SPIRE.SVIDTTL),
 		},
-		config:      cfg,
-		logger:      logger,
-		metrics:     testMetrics,
-		trustDomain: spiffeid.RequireTrustDomainFromString(cfg.SPIRE.TrustDomain),
+		config:          cfg,
+		purposeResolver: v.NewPurposeResolver(v.PurposeMode(cfg.PurposeMode)),
+		logger:          logger,
+		metrics:         testMetrics,
+		trustDomain:     spiffeid.RequireTrustDomainFromString(cfg.SPIRE.TrustDomain),
 	}
 
 	return server, mockValidator, mockServerClient, mockSVIDClient
@@ -942,10 +943,11 @@ func TestMintCertificateByGithubOIDC_WithDifferentTTL(t *testing.T) {
 			spiffeIDTemplate: tmpl,
 			svidTTL:          effectiveTTL(cfg.GitHubOIDC.SVIDTTL, cfg.SPIRE.SVIDTTL),
 		},
-		config:      cfg,
-		logger:      logger,
-		metrics:     testMetrics,
-		trustDomain: spiffeid.RequireTrustDomainFromString(cfg.SPIRE.TrustDomain),
+		config:          cfg,
+		purposeResolver: v.NewPurposeResolver(v.PurposeMode(cfg.PurposeMode)),
+		logger:          logger,
+		metrics:         testMetrics,
+		trustDomain:     spiffeid.RequireTrustDomainFromString(cfg.SPIRE.TrustDomain),
 	}
 
 	spiffeIDStr := "spiffe://example.org/github/example-org/test-repo"

@@ -38,13 +38,14 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 }
 
 type SpireIdentityExchangeConfig struct {
-	Name       string           `json:"name"`
-	LogLevel   string           `json:"logLevel"`
-	Server     ServerConfig     `json:"server"`
-	SPIRE      SPIREConfig      `json:"spire"`
-	Auth       AuthConfig       `json:"auth"`
-	GitHubOIDC GitHubOIDCConfig `json:"githubOIDC"`
-	K8sSAToken K8sSATokenConfig `json:"k8sSAToken"`
+	Name        string           `json:"name"`
+	LogLevel    string           `json:"logLevel"`
+	PurposeMode string           `json:"purposeMode"`
+	Server      ServerConfig     `json:"server"`
+	SPIRE       SPIREConfig      `json:"spire"`
+	Auth        AuthConfig       `json:"auth"`
+	GitHubOIDC  GitHubOIDCConfig `json:"githubOIDC"`
+	K8sSAToken  K8sSATokenConfig `json:"k8sSAToken"`
 }
 
 // ServerConfig contains HTTP server configuration
@@ -346,6 +347,14 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 		case "debug", "info", "warn", "error", "dpanic", "panic", "fatal":
 		default:
 			errs = append(errs, fmt.Errorf("logLevel %q is not a recognized level (debug|info|warn|error|dpanic|panic|fatal)", c.LogLevel))
+		}
+	}
+
+	if c.PurposeMode != "" {
+		switch c.PurposeMode {
+		case "purpose", "shared":
+		default:
+			errs = append(errs, fmt.Errorf("purposeMode %q is not recognized (purpose|shared)", c.PurposeMode))
 		}
 	}
 

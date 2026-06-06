@@ -44,7 +44,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 		return nil, status.Error(codes.InvalidArgument, "GithubOIDC is not set")
 	}
 
-	purpose := determinePurpose(req)
+	purpose := h.determinePurpose(req)
 	claims, err := h.githubOIDC.validator.Validate(ctx, githubOIDC.GithubToken, purpose)
 	if err != nil {
 		audit.FailedStage = stageTokenValidation
@@ -83,7 +83,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByK8sSAToken(ctx context.Co
 		return nil, status.Error(codes.InvalidArgument, "K8sSA is not set")
 	}
 
-	purpose := determinePurpose(req)
+	purpose := h.determinePurpose(req)
 	claims, err := h.k8sSAToken.validator.Validate(ctx, k8sSA.K8SSAToken, purpose)
 	if err != nil {
 		audit.FailedStage = stageTokenValidation
@@ -393,13 +393,15 @@ func (h *SpireIdentityExchangeServer) mintX509SVIDServerKeyGen(
 	}, nil
 }
 
-// determinePurpose derives the replay cache Purpose from the mint request.
-// JWT-SVID requests include audience-scoped hashing; all others default to X.509.
-func determinePurpose(req *proto.MintCertificateRequest) v.Purpose {
+// determinePurpose derives the replay cache Purpose from the mint request,
+// respecting the configured PurposeMode. In "shared" mode, all requests
+// produce the same cache key so a token can only be used once across all
+// SVID types.
+func (h *SpireIdentityExchangeServer) determinePurpose(req *proto.MintCertificateRequest) v.Purpose {
 	if jwtReq := req.GetMintJWTSVIDRequest(); jwtReq != nil {
-		return v.JWTPurpose(jwtReq.GetAudiences())
+		return h.purposeResolver.JWT(jwtReq.GetAudiences())
 	}
-	return v.X509Purpose()
+	return h.purposeResolver.X509()
 }
 
 // populateX509AuditFields extracts the serial number and TTL from an X.509 SVID
