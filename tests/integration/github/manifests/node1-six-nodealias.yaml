@@ -6,5 +6,5 @@ spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire/server
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
   selectors:
-    - spiffe_id:spiffe://${SPIFFE_TRUST_DOMAIN}/spire/agent/x509pop/spire-identity-exchange/node1
+    - spiffe_id:spiffe://${SPIFFE_TRUST_DOMAIN}/spire/agent/x509pop/spire-identity-exchange/spire-identity-exchange/node1
 
