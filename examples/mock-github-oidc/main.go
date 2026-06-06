@@ -111,7 +111,7 @@ func main() {
 		log.Fatalf("failed to marshal JWKS: %v", err)
 	}
 
-	openIDConfiguration := fmt.Sprintf(`{"issuer":"http://localhost:%d","jwks_uri":"http://localhost:%d/.well-known/jwks","subject_types_supported":["public"],"response_types_supported":["code"],"claims_supported":["sub","aud","exp","nbf","iat","iss","act"],"id_token_signing_alg_values_supported":["RS256"],"scopes_supported":["openid"],"response_modes_supported":["query"]}`, *port, *port)
+openIDConfiguration := fmt.Sprintf("{\"issuer\":\"%s\",\"jwks_uri\":\"%s/.well-known/jwks\",\"subject_types_supported\":[\"public\"],\"response_types_supported\":[\"code\"],\"claims_supported\":[\"sub\",\"aud\",\"exp\",\"nbf\",\"iat\",\"iss\",\"act\"],\"id_token_signing_alg_values_supported\":[\"RS256\"],\"scopes_supported\":[\"openid\"],\"response_modes_supported\":[\"query\"]}", *issuer, *issuer)
 
 	// Print usage
 	fmt.Println("=== Mock GitHub OIDC Server ===")
@@ -146,10 +146,9 @@ func main() {
 	fmt.Println()
 	fmt.Printf("Serving JWKS at http://localhost:%d/.well-known/jwks ...\n", *port)
 
-	if tokenFile != nil && *tokenFile != "" {
-		err := os.WriteFile(*tokenFile, []byte(signed), 0600)
-		if err != nil {
-			panic(err)
+	if *tokenFile != "" {
+		if err := os.WriteFile(*tokenFile, []byte(signed), 0600); err != nil {
+			log.Fatalf("failed to write token to %q: %v", *tokenFile, err)
 		}
 	}
 

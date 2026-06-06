@@ -145,7 +145,8 @@ CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
 
-./mock-github-oidc -token ./token &
+rm -f token
+./mock-github-oidc -token token &
 MAX_WAIT=30
 ELAPSED=0
 while true; do
