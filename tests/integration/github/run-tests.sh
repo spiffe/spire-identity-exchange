@@ -75,6 +75,26 @@ wait_for_jwt() {
   return 1
 }
 
+# Setup github mock service. Consider moving this out to a systemd service
+go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
+rm -f token
+./mock-github-oidc -token token &
+MAX_WAIT=30
+ELAPSED=0
+while true; do
+  if [ -f token ]; then
+    break
+  fi
+  if [ $ELAPSED -ge $MAX_WAIT ]; then
+    echo "Timed out after ${MAX_WAIT} seconds."
+    exit 1
+  fi
+  sleep 1
+  ((ELAPSED++)) || true
+done
+export MOCKHUB_TOKEN="$(cat token)"
+set -x
+
 # Get the package repo and install the packages
 sudo curl -s -o /etc/apt/sources.list.d/spire-examples.list https://raw.githubusercontent.com/spiffe/spire-examples/refs/heads/main/examples/debs/amd64/spire-examples.list
 sudo apt-get update
@@ -143,25 +163,6 @@ openssl req -new \
 CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
 
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
-
-rm -f token
-./mock-github-oidc -token token &
-MAX_WAIT=30
-ELAPSED=0
-while true; do
-  if [ -f token ]; then
-    break
-  fi
-  if [ $ELAPSED -ge $MAX_WAIT ]; then
-    echo "Timed out after ${MAX_WAIT} seconds."
-    exit 1
-  fi
-  sleep 1
-  ((ELAPSED++)) || true
-done
-TOKEN="$(cat token)"
-echo "$TOKEN"
 
 #~/go/bin/grpcurl -cacert /etc/spire/identity-exchange/main/certs/server.pem \
 #  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \

@@ -23,6 +23,14 @@
         "allowedRepositories": ["spiffe/spire-identity-exchange"],
         "audiences": ["spire-identity-exchange"]
       }
+    },{
+      "name": "mockhub",
+      "plugin": "github",
+      "config": {
+        "issuerURL": "http://localhost:9999",
+        "allowedRepositories": ["my-org/my-repo"],
+        "audiences": ["spire-identity-exchange"]
+      }
     }]
   },
   "githubOIDC": {
