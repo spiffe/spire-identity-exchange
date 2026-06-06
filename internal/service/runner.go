@@ -19,7 +19,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
-	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -96,8 +96,8 @@ func Run(
 	ctx context.Context,
 	cfg *config.SpireIdentityExchangeConfig,
 	spireClient server_util.ServerClient,
-	githubOIDCValidator v.TokenValidator,
-	k8sSATokenValidator v.TokenValidator,
+	githubOIDCValidator validator.TokenValidator,
+	k8sSATokenValidator validator.TokenValidator,
 	metrics metrics.Metrics,
 	logger *zap.Logger,
 ) error {
@@ -115,8 +115,8 @@ func runSpireIdentityExchangeServer(
 	ctx context.Context,
 	cfg *config.SpireIdentityExchangeConfig,
 	spireClient server_util.ServerClient,
-	githubOIDCValidator v.TokenValidator,
-	k8sSATokenValidator v.TokenValidator,
+	githubOIDCValidator validator.TokenValidator,
+	k8sSATokenValidator validator.TokenValidator,
 	metrics metrics.Metrics,
 	logger *zap.Logger,
 ) error {
@@ -130,14 +130,14 @@ func runSpireIdentityExchangeServer(
 	}
 
 	// Start key syncers for any validator that supports it
-	for _, val := range []v.TokenValidator{githubOIDCValidator, k8sSATokenValidator} {
-		if val == nil {
+	for _, v := range []validator.TokenValidator{githubOIDCValidator, k8sSATokenValidator} {
+		if v == nil {
 			continue
 		}
-		if syncer, ok := val.(v.KeySynchronizer); ok {
-			logger.Info("Starting key synchronizer", zap.String("validator", fmt.Sprintf("%T", val)))
+		if syncer, ok := v.(validator.KeySynchronizer); ok {
+			logger.Info("Starting key synchronizer", zap.String("validator", fmt.Sprintf("%T", v)))
 			if err := syncer.Start(ctx); err != nil {
-				return fmt.Errorf("failed to start key synchronizer for %T: %w", val, err)
+				return fmt.Errorf("failed to start key synchronizer for %T: %w", v, err)
 			}
 		}
 	}
@@ -374,20 +374,20 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			http.Error(w, "Stack parameter is missing", http.StatusBadRequest)
 			return
 		}
-		val, exists := cfg.Auth.LoadedStacks[stack]
+		v, exists := cfg.Auth.LoadedStacks[stack]
 		if !exists {
 			http.Error(w, fmt.Sprintf("Unknown stack: %q", stack), http.StatusBadRequest)
 			return
 		}
 
-		claims, err := val.Validate(r.Context(), token, v.X509Purpose())
+		claims, err := v.Validate(r.Context(), token, validator.X509Purpose())
 		if err != nil {
 			logger.Info("token validation failed", zap.String("stack", stack), zap.Error(err))
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		selectors := val.GenerateSelectors(claims)
+		selectors := v.GenerateSelectors(claims)
 		if len(selectors) == 0 {
 			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
 			return

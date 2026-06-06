@@ -31,7 +31,6 @@ func JWTPurpose(audiences []string) Purpose {
 	h := sha256.Sum256([]byte(strings.Join(sorted, "\x00")))
 	return Purpose{value: "jwt:" + hex.EncodeToString(h[:])}
 }
-}
 
 // String returns the cache-key fragment for this purpose.
 func (p Purpose) String() string {
