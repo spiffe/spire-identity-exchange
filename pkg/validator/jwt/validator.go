@@ -202,7 +202,7 @@ func validateIssuerURL(issuer string, allowHTTP bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse URL: %w", err)
 	}
-	if u.Scheme != "https" && !(allowHTTP && u.Scheme == "http") && !(u.Scheme == "http" && u.Host == "localhost") {
+	if u.Scheme != "https" && !(allowHTTP && u.Scheme == "http") && !(u.Scheme == "http" && u.Hostname() == "localhost") {
 		return fmt.Errorf("scheme must be https (got %q)", u.Scheme)
 	}
 	if u.Host == "" {
