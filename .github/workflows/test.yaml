@@ -65,6 +65,10 @@ jobs:
         id: token_request
         run: |
           AUDIENCE="spire-identity-exchange"
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "::notice::Detected fork PR. OIDC token unavailable. Skipping."
+            exit 0
+          fi
           RESPONSE=$(curl -sS -G \
             -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             --data-urlencode "audience=$AUDIENCE" \
