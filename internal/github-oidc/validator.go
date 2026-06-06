@@ -20,7 +20,7 @@ import (
 	constant "github.com/spiffe/spire-identity-exchange/internal/const"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
-	v "github.com/spiffe/spire-identity-exchange/internal/validator"
+	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"google.golang.org/grpc/codes"
 )
 
@@ -90,7 +90,7 @@ func NewValidator(ctx context.Context, cfg config.GitHubOIDCConfig, m metrics.Me
 // parsing, and claim-policy checks — so JWKS outages and policy rejections show up in
 // the same operation counter/histogram instead of disappearing because the metric defer
 // was scoped too narrowly.
-func (gv *githubValidator) Validate(ctx context.Context, token string) (*utils.Claims, error) {
+func (gv *githubValidator) Validate(ctx context.Context, token string, _ v.Purpose) (v.Claims, error) {
 	now := time.Now()
 	statusCode := codes.OK
 	defer func() {
@@ -114,7 +114,29 @@ func (gv *githubValidator) Validate(ctx context.Context, token string) (*utils.C
 		return nil, fmt.Errorf("claim validation failed: %w", err)
 	}
 
-	return claims, nil
+	// Convert internal utils.Claims to the shared pkg/validator.JWTClaims interface.
+	var expiry int64
+	if claims.ExpiresAt != nil {
+		expiry = claims.ExpiresAt.Unix()
+	}
+	var notBefore int64
+	if claims.NotBefore != nil {
+		notBefore = claims.NotBefore.Unix()
+	}
+	var issuedAt int64
+	if claims.IssuedAt != nil {
+		issuedAt = claims.IssuedAt.Unix()
+	}
+
+	return &v.JWTClaims{
+		Issuer:    claims.Issuer,
+		Subject:   claims.Subject,
+		JTI:       claims.ID,
+		Expiry:    expiry,
+		NotBefore: notBefore,
+		IssuedAt:  issuedAt,
+		Raw:       claims.RawClaims,
+	}, nil
 }
 
 // Start starts the periodic refreshes of the JWKS cache. Implements validator.KeySynchronizer.

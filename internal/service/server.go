@@ -8,7 +8,7 @@ import (
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
-	v "github.com/spiffe/spire-identity-exchange/internal/validator"
+	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"

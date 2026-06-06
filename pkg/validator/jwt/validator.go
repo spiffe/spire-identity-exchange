@@ -75,7 +75,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 
 // Validate validates a JWT token and returns claims.
 // Implements validator.TokenValidator.
-func (v *Validator) Validate(ctx context.Context, token string) (validator.Claims, error) {
+func (v *Validator) Validate(ctx context.Context, token string, _ validator.Purpose) (validator.Claims, error) {
 	now := time.Now()
 	statusCode := "OK"
 	defer func() {

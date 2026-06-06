@@ -22,6 +22,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	prommetrics "github.com/spiffe/spire-identity-exchange/internal/metrics/prometheus"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
+	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -567,11 +568,11 @@ func TestValidate_Integration(t *testing.T) {
 
 	tokenString := createTestToken(t, testData.RealisticGithubOIDCToken, privateKey, kid)
 
-	claims, err := validator.Validate(ctx, tokenString)
+	claims, err := validator.Validate(ctx, tokenString, v.X509Purpose())
 	assert.NoError(t, err)
 	assert.NotNil(t, claims)
-	assert.Equal(t, "example-org/test-github-oidc-wf-token", utils.GetStringClaim(claims.RawClaims, constant.ClaimRepository))
-	assert.Equal(t, "Save OIDC Token", utils.GetStringClaim(claims.RawClaims, constant.ClaimWorkflow))
+	assert.Equal(t, "example-org/test-github-oidc-wf-token", utils.GetStringClaim(claims.GetRaw(), constant.ClaimRepository))
+	assert.Equal(t, "Save OIDC Token", utils.GetStringClaim(claims.GetRaw(), constant.ClaimWorkflow))
 }
 
 func TestStart(t *testing.T) {

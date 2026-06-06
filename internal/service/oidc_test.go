@@ -16,7 +16,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	prommetrics "github.com/spiffe/spire-identity-exchange/internal/metrics/prometheus"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
-	"github.com/golang-jwt/jwt/v5"
+	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	agentv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/agent/v1"
@@ -40,12 +40,12 @@ type MockTokenValidator struct {
 	mock.Mock
 }
 
-func (m *MockTokenValidator) Validate(ctx context.Context, token string) (*utils.Claims, error) {
+func (m *MockTokenValidator) Validate(ctx context.Context, token string, _ v.Purpose) (v.Claims, error) {
 	args := m.Called(ctx, token)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*utils.Claims), args.Error(1)
+	return args.Get(0).(v.Claims), args.Error(1)
 }
 
 // MockSVIDClient is a mock implementation of the SVID client
@@ -364,12 +364,10 @@ func TestMintCertificateByGithubOIDC_Success(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-			Issuer:  "https://token.actions.githubusercontent.com",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Issuer:  "https://token.actions.githubusercontent.com",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 			"workflow":   "test-workflow",
 			"ref":        "refs/heads/main",
@@ -475,11 +473,9 @@ func TestMintCertificateByGithubOIDC_GenerateSPIFFEIDFailed(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -515,11 +511,9 @@ func TestMintCertificateByGithubOIDC_InvalidCSR(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -555,11 +549,9 @@ func TestMintCertificateByGithubOIDC_CSRWithNoURISAN(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -599,11 +591,9 @@ func TestMintCertificateByGithubOIDC_CSRWithMismatchedSPIFFEID(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims - will generate a different SPIFFE ID
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -644,11 +634,9 @@ func TestMintCertificateByGithubOIDC_SPIREClientMintFailed(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -689,11 +677,9 @@ func TestMintCertificateByGithubOIDC_ContextTimeout(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -738,15 +724,15 @@ func TestGenerateSPIFFEID_Success(t *testing.T) {
 	// Setup
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/github/{{.org}}/{{.repository}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 			"workflow":   "test-workflow",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.NoError(t, err)
@@ -758,14 +744,14 @@ func TestGenerateSPIFFEID_NoTemplate(t *testing.T) {
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/github/{{.org}}/{{.repository}}")
 	server.githubOIDC.spiffeIDTemplate = nil
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.Error(t, err)
@@ -777,14 +763,14 @@ func TestGenerateSPIFFEID_TemplateExecutionError(t *testing.T) {
 	// Setup - template references a field that doesn't exist
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/{{.NonExistentField}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.Error(t, err)
@@ -796,14 +782,14 @@ func TestGenerateSPIFFEID_WithoutSpiffeSchemePrefix(t *testing.T) {
 	// Setup - template that doesn't start with spiffe://
 	server, _, _, _ := setupTestServer(t, "/github/{{.org}}/{{.repository}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert - should fail because scheme is missing
 	assert.Error(t, err)
@@ -815,12 +801,12 @@ func TestGenerateSPIFFEID_InvalidSPIFFEIDFormat(t *testing.T) {
 	// Setup - template that generates an invalid SPIFFE ID
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/invalid//path")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{},
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.Error(t, err)
@@ -832,8 +818,8 @@ func TestGenerateSPIFFEID_ComplexTemplate(t *testing.T) {
 	// Setup - more complex template
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/github/{{.org}}/{{.repository}}/{{.ref}}/{{.sha}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 			"ref":        "main",
 			"sha":        "abc123",
@@ -841,7 +827,7 @@ func TestGenerateSPIFFEID_ComplexTemplate(t *testing.T) {
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.NoError(t, err)
@@ -852,12 +838,12 @@ func TestGenerateSPIFFEID_EmptyProviderClaims(t *testing.T) {
 	// Setup
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/github/{{.org}}/{{.repository}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{},
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	// Empty provider claims result in invalid SPIFFE ID (double slashes)
@@ -873,11 +859,9 @@ func TestMintCertificateByGithubOIDC_CSRWithMultipleURISANs(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -969,11 +953,9 @@ func TestMintCertificateByGithubOIDC_WithDifferentTTL(t *testing.T) {
 	githubToken := "test-github-token"
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -1025,14 +1007,14 @@ func TestGenerateSPIFFEID_WithLeadingSlash(t *testing.T) {
 	// Setup - template that starts with /
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/github/{{.org}}/{{.repository}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.NoError(t, err)
@@ -1044,14 +1026,14 @@ func TestGenerateSPIFFEID_WithFullSPIFFEScheme(t *testing.T) {
 	// Setup - template that includes the full spiffe:// scheme
 	server, _, _, _ := setupTestServer(t, "spiffe://{{.trust_domain}}/github/{{.org}}/{{.repository}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.NoError(t, err)
@@ -1095,11 +1077,9 @@ func TestMintCertificateByGithubOIDC_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Mock claims
-	claims := &utils.Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "repo:example-org/test-repo:ref:refs/heads/main",
-		},
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Subject: "repo:example-org/test-repo:ref:refs/heads/main",
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo",
 		},
 	}
@@ -1134,15 +1114,15 @@ func TestGenerateSPIFFEID_SpecialCharactersInClaims(t *testing.T) {
 	// Setup
 	server, _, _, _ := setupTestServer(t, "spiffe://example.org/github/{{.org}}/{{.repository}}")
 
-	claims := &utils.Claims{
-		RawClaims: map[string]interface{}{
+	claims := &v.JWTClaims{
+		Raw: map[string]interface{}{
 			"repository": "example-org/test-repo-with-special-chars",
 			"workflow":   "CI/CD Pipeline!",
 		},
 	}
 
 	// Execute
-	spiffeID, err := utils.GenerateSPIFFEID(claims, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.Raw, server.githubOIDC.spiffeIDTemplate, server.config.SPIRE.TrustDomain)
 
 	// Assert
 	assert.NoError(t, err)

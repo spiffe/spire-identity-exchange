@@ -111,8 +111,8 @@ func NewValidator(cfg Config) (*Validator, error) {
 
 // Validate validates a GitHub Actions OIDC token and returns claims.
 // Implements validator.TokenValidator.
-func (v *Validator) Validate(ctx context.Context, token string) (validator.Claims, error) {
-	claims, err := v.jwtValidator.Validate(ctx, token)
+func (v *Validator) Validate(ctx context.Context, token string, purpose validator.Purpose) (validator.Claims, error) {
+	claims, err := v.jwtValidator.Validate(ctx, token, purpose)
 	if err != nil {
 		return nil, err
 	}
