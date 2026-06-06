@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	jwtvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
@@ -130,31 +129,16 @@ func (v *Validator) Validate(ctx context.Context, token string, purpose validato
 func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
 	if len(v.allowedRepositoryOwners) > 0 {
 		owner, _ := raw["repository_owner"].(string)
-		if !isValueAllowed(owner, v.allowedRepositoryOwners) {
+		if !validator.IsValueAllowed(owner, v.allowedRepositoryOwners) {
 			return fmt.Errorf("repository owner %q is not in the allowed list", owner)
 		}
 	}
 	if len(v.allowedRepositories) > 0 {
 		repo, _ := raw["repository"].(string)
-		if !isValueAllowed(repo, v.allowedRepositories) {
+		if !validator.IsValueAllowed(repo, v.allowedRepositories) {
 			return fmt.Errorf("repository %q is not in the allowed list", repo)
 		}
 	}
 	return nil
 }
 
-// isValueAllowed checks if a value matches any of the allowed patterns.
-// Supports wildcard suffix matching (e.g., "my-org/*" matches "my-org/any-repo").
-func isValueAllowed(value string, allowedValues []string) bool {
-	for _, av := range allowedValues {
-		if strings.HasSuffix(av, "*") {
-			pattern := strings.TrimSuffix(av, "*")
-			if strings.HasPrefix(value, pattern) {
-				return true
-			}
-		} else if value == av {
-			return true
-		}
-	}
-	return false
-}

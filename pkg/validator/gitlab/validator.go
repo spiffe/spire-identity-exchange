@@ -111,29 +111,15 @@ func (v *Validator) Validate(ctx context.Context, token string, purpose validato
 func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
 	if len(v.allowedProjectPaths) > 0 {
 		projectPath, _ := raw["project_path"].(string)
-		if !isValueAllowed(projectPath, v.allowedProjectPaths) {
+		if !validator.IsValueAllowed(projectPath, v.allowedProjectPaths) {
 			return fmt.Errorf("project path %q is not in the allowed list", projectPath)
 		}
 	}
 	if len(v.allowedNamespacePaths) > 0 {
 		namespacePath, _ := raw["namespace_path"].(string)
-		if !isValueAllowed(namespacePath, v.allowedNamespacePaths) {
+		if !validator.IsValueAllowed(namespacePath, v.allowedNamespacePaths) {
 			return fmt.Errorf("namespace path %q is not in the allowed list", namespacePath)
 		}
 	}
 	return nil
-}
-
-func isValueAllowed(value string, allowedValues []string) bool {
-	for _, av := range allowedValues {
-		if strings.HasSuffix(av, "*") {
-			pattern := strings.TrimSuffix(av, "*")
-			if strings.HasPrefix(value, pattern) {
-				return true
-			}
-		} else if value == av {
-			return true
-		}
-	}
-	return false
 }
