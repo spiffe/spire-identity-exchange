@@ -61,7 +61,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
-      - name: Request Custom JWT
+      - name: Request Optional Custom JWT
         id: token_request
         run: |
           AUDIENCE="spire-identity-exchange"
@@ -69,15 +69,17 @@ jobs:
             -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             --data-urlencode "audience=$AUDIENCE" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL")
-          if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
-            echo "::error::GitHub did not return valid JSON. Response was: $RESPONSE"
-            exit 1
+          JWT=$(echo "$RESPONSE" | jq -r '.value // empty')
+          if [ -n "$JWT" ] && [ "$JWT" != "null" ]; then
+            echo "::add-mask::$JWT"
+            echo "jwt=$JWT" >> $GITHUB_OUTPUT
+            echo "Successfully fetched custom JWT."
+          else
+            echo "::warning::Could not fetch custom JWT. Skipping."
           fi
-          JWT=$(echo "$RESPONSE" | jq -r '.value')
-          echo "::add-mask::$JWT"
-          echo "jwt=$JWT" >> $GITHUB_OUTPUT
       - name: Install and test integration
         run: |
           export GITHUB_TOKEN="${{ steps.token_request.outputs.jwt }}"
+          if [ -z "$GITHUB_TOKEN" ]; then unset GITHUB_TOKEN; fi
           ${{ matrix.integrationtest }}/run-tests.sh
 

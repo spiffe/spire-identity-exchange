@@ -35,9 +35,9 @@
   },
   "githubOIDC": {
     "enabled": true,
-    "issuer": "https://token.actions.githubusercontent.com",
+    "issuer": "http://localhost:9999",
     "audiences": ["spire-identity-exchange"],
-    "jwksUri": "https://token.actions.githubusercontent.com/.well-known/jwks",
+    "jwksUri": "http://localhost:9999/.well-known/jwks",
     "spiffeIdTemplate": "spiffe://{{.trust_domain}}/spire-identity-exchange/github/{{.enterprise}}/{{.repository}}",
     "allowedRepositories": ["*"],
     "requiredClaims": [
