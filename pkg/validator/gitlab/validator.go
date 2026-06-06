@@ -44,7 +44,7 @@ func (c *Config) ValidateConfig() error {
 		return errors.New("at least one audience must be specified")
 	}
 	if len(c.AllowedProjectPaths) == 0 && len(c.AllowedNamespacePaths) == 0 {
-		return errors.New("at least one of alowedProjectPaths or allowedNamespacePaths must be specified")
+		return errors.New("at least one of allowedProjectPaths or allowedNamespacePaths must be specified")
 	}
 	return nil
 }
