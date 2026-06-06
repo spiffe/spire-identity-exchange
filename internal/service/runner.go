@@ -221,7 +221,8 @@ func runSpireIdentityExchangeServer(
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
-		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, delegatedClient, logger))
+		purposeResolver := validator.NewPurposeResolver(validator.PurposeMode(cfg.PurposeMode))
+		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, delegatedClient, purposeResolver, logger))
 
 		httpServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
@@ -361,7 +362,7 @@ type x509SVIDResponse struct {
 //   - delegated client found no matching entry → 404
 //   - delegated client unavailable / denied  → 503
 //   - any other error                        → 500
-func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBundleCache, dc *delegated.Client, logger *zap.Logger) http.HandlerFunc {
+func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBundleCache, dc *delegated.Client, pr *validator.PurposeResolver, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, err := extractBearerToken(r)
 		if err != nil {
@@ -380,7 +381,7 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			return
 		}
 
-		claims, err := v.Validate(r.Context(), token, validator.X509Purpose())
+		claims, err := v.Validate(r.Context(), token, pr.X509())
 		if err != nil {
 			logger.Info("token validation failed", zap.String("stack", stack), zap.Error(err))
 			http.Error(w, "Invalid token", http.StatusUnauthorized)

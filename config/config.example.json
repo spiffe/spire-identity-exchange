@@ -1,6 +1,7 @@
 {
   "name": "spire-identity-exchange",
   "logLevel": "info",
+  "purposeMode": "shared",
   "server": {
     "port": 8443,
     "metricsPort": 4950,

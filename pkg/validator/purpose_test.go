@@ -35,3 +35,40 @@ func TestJWTPurpose_DoesNotMutateInput(t *testing.T) {
 	_ = JWTPurpose(input)
 	assert.Equal(t, original, input, "JWTPurpose should not mutate the input slice")
 }
+
+func TestSharedPurpose(t *testing.T) {
+	p := SharedPurpose()
+	assert.Equal(t, "shared", p.String())
+}
+
+func TestPurposeResolver_PurposeMode(t *testing.T) {
+	r := NewPurposeResolver(PurposeModePurpose)
+
+	x509 := r.X509()
+	jwt := r.JWT([]string{"api.example.com"})
+
+	assert.Equal(t, "x509", x509.String())
+	assert.Contains(t, jwt.String(), "jwt:")
+	assert.NotEqual(t, x509.String(), jwt.String(), "purpose mode should produce distinct keys")
+}
+
+func TestPurposeResolver_SharedMode(t *testing.T) {
+	r := NewPurposeResolver(PurposeModeShared)
+
+	x509 := r.X509()
+	jwt := r.JWT([]string{"api.example.com"})
+
+	assert.Equal(t, "shared", x509.String())
+	assert.Equal(t, "shared", jwt.String())
+	assert.Equal(t, x509.String(), jwt.String(), "shared mode should produce identical keys")
+}
+
+func TestPurposeResolver_DefaultMode(t *testing.T) {
+	r := NewPurposeResolver("")
+
+	x509 := r.X509()
+	jwt := r.JWT([]string{"api.example.com"})
+
+	assert.Equal(t, "shared", x509.String(), "empty mode should default to shared mode")
+	assert.Equal(t, "shared", jwt.String(), "empty mode should default to shared mode")
+}

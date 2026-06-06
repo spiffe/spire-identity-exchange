@@ -25,13 +25,14 @@ type authHandler struct {
 // SpireIdentityExchangeServer is the server for the spire-identity-exchange service.
 type SpireIdentityExchangeServer struct {
 	proto.UnimplementedSpireIdentityExchangeApiServer
-	spireClient server_util.ServerClient
-	githubOIDC  *authHandler // nil if not configured
-	k8sSAToken  *authHandler // nil if not configured
-	config      *config.SpireIdentityExchangeConfig
-	metrics     metrics.Metrics
-	logger      *zap.Logger
-	trustDomain spiffeid.TrustDomain
+	spireClient     server_util.ServerClient
+	githubOIDC      *authHandler // nil if not configured
+	k8sSAToken      *authHandler // nil if not configured
+	config          *config.SpireIdentityExchangeConfig
+	purposeResolver *v.PurposeResolver
+	metrics         metrics.Metrics
+	logger          *zap.Logger
+	trustDomain     spiffeid.TrustDomain
 }
 
 // NewGRPCHandler creates a new GRPC server handler.
@@ -50,11 +51,12 @@ func NewGRPCHandler(
 	}
 
 	server := &SpireIdentityExchangeServer{
-		spireClient: spireClient,
-		trustDomain: trustDomain,
-		config:      cfg,
-		metrics:     metrics,
-		logger:      logger,
+		spireClient:     spireClient,
+		trustDomain:     trustDomain,
+		config:          cfg,
+		purposeResolver: v.NewPurposeResolver(v.PurposeMode(cfg.PurposeMode)),
+		metrics:         metrics,
+		logger:          logger,
 	}
 
 	if githubOIDCValidator != nil {
