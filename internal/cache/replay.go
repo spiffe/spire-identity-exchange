@@ -8,6 +8,10 @@ import (
 
 // ReplayCache tracks seen token IDs to detect replay attacks.
 type ReplayCache interface {
+	// Contains returns true if the token ID has already been recorded.
+	// This is a read-only check used for early replay rejection before
+	// expensive token verification.
+	Contains(jti string) bool
 	// Add records a token ID as seen. Returns false if already present (replay detected).
 	Add(jti string, expiry time.Time) bool
 }
@@ -27,6 +31,13 @@ func NewInMemoryReplayCache(ctx context.Context) ReplayCache {
 	}
 	go c.evict(ctx)
 	return c
+}
+
+func (c *inMemoryReplayCache) Contains(jti string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, seen := c.entries[jti]
+	return seen
 }
 
 func (c *inMemoryReplayCache) Add(jti string, expiry time.Time) bool {

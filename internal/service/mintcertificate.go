@@ -15,6 +15,7 @@ import (
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	constant "github.com/spiffe/spire-identity-exchange/internal/const"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
+	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	spiretypes "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
@@ -43,14 +44,15 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 		return nil, status.Error(codes.InvalidArgument, "GithubOIDC is not set")
 	}
 
-	claims, err := h.githubOIDC.validator.Validate(ctx, githubOIDC.GithubToken)
+	purpose := determinePurpose(req)
+	claims, err := h.githubOIDC.validator.Validate(ctx, githubOIDC.GithubToken, purpose)
 	if err != nil {
 		audit.FailedStage = stageTokenValidation
 		audit.RejectionReason = err.Error()
 		audit.logRejection(logger)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("failed to validate OIDC token: %v", err))
 	}
-	audit.TokenIssuer = claims.Issuer
+	audit.TokenIssuer, _ = claims.GetRaw()["iss"].(string)
 
 	resp, err := h.mintFromClaims(ctx, claims, h.githubOIDC, req, audit)
 	if err != nil {
@@ -81,14 +83,15 @@ func (h *SpireIdentityExchangeServer) MintCertificateByK8sSAToken(ctx context.Co
 		return nil, status.Error(codes.InvalidArgument, "K8sSA is not set")
 	}
 
-	claims, err := h.k8sSAToken.validator.Validate(ctx, k8sSA.K8SSAToken)
+	purpose := determinePurpose(req)
+	claims, err := h.k8sSAToken.validator.Validate(ctx, k8sSA.K8SSAToken, purpose)
 	if err != nil {
 		audit.FailedStage = stageTokenValidation
 		audit.RejectionReason = err.Error()
 		audit.logRejection(logger)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("failed to validate K8s SA token: %v", err))
 	}
-	audit.TokenIssuer = claims.Issuer
+	audit.TokenIssuer, _ = claims.GetRaw()["iss"].(string)
 
 	resp, err := h.mintFromClaims(ctx, claims, h.k8sSAToken, req, audit)
 	if err != nil {
@@ -109,7 +112,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByK8sSAToken(ctx context.Co
 // or serverKeyGenRequest must be non-nil.
 func (h *SpireIdentityExchangeServer) mintFromClaims(
 	ctx context.Context,
-	claims *utils.Claims,
+	claims v.Claims,
 	handler *authHandler,
 	req *proto.MintCertificateRequest,
 	audit *auditEntry,
@@ -174,9 +177,9 @@ func clampRequestedTTL(requested, max int32) int32 {
 // resolveTTL returns the SVID TTL for the given claims, applying any per-workflow override.
 // For GitHub OIDC requests, if the token's job_workflow_ref matches a key in
 // workflowTTLOverrides, that TTL is used instead of the default svidTTL.
-func (h *authHandler) resolveTTL(claims *utils.Claims) int32 {
+func (h *authHandler) resolveTTL(claims v.Claims) int32 {
 	if len(h.workflowTTLOverrides) > 0 {
-		if wfRef, ok := claims.RawClaims["job_workflow_ref"].(string); ok && wfRef != "" {
+		if wfRef, ok := claims.GetRaw()["job_workflow_ref"].(string); ok && wfRef != "" {
 			if ttl, found := h.workflowTTLOverrides[wfRef]; found {
 				return ttl
 			}
@@ -189,13 +192,13 @@ func (h *authHandler) resolveTTL(claims *utils.Claims) int32 {
 // CSR against it, and mints an X.509 SVID via the SPIRE Server API.
 func (h *SpireIdentityExchangeServer) mintX509SVIDFromClaims(
 	ctx context.Context,
-	claims *utils.Claims,
+	claims v.Claims,
 	tmpl *template.Template,
 	csr []byte,
 	ttl int32,
 	audit *auditEntry,
 ) (*proto.MintCertificateResponse, error) {
-	spiffeID, err := utils.GenerateSPIFFEID(claims, tmpl, h.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.GetRaw(), tmpl, h.config.SPIRE.TrustDomain)
 	if err != nil {
 		audit.FailedStage = stageSpiffeIDGeneration
 		audit.RejectionReason = err.Error()
@@ -265,7 +268,7 @@ func (h *SpireIdentityExchangeServer) mintX509SVIDFromClaims(
 // the SPIRE Server API. No CSR is required.
 func (h *SpireIdentityExchangeServer) mintJWTSVIDFromClaims(
 	ctx context.Context,
-	claims *utils.Claims,
+	claims v.Claims,
 	tmpl *template.Template,
 	audiences []string,
 	ttl int32,
@@ -278,7 +281,7 @@ func (h *SpireIdentityExchangeServer) mintJWTSVIDFromClaims(
 		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
 	}
 
-	spiffeID, err := utils.GenerateSPIFFEID(claims, tmpl, h.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.GetRaw(), tmpl, h.config.SPIRE.TrustDomain)
 	if err != nil {
 		audit.FailedStage = stageSpiffeIDGeneration
 		audit.RejectionReason = err.Error()
@@ -317,12 +320,12 @@ func (h *SpireIdentityExchangeServer) mintJWTSVIDFromClaims(
 // never stored or logged.
 func (h *SpireIdentityExchangeServer) mintX509SVIDServerKeyGen(
 	ctx context.Context,
-	claims *utils.Claims,
+	claims v.Claims,
 	tmpl *template.Template,
 	ttl int32,
 	audit *auditEntry,
 ) (*proto.MintCertificateResponse, error) {
-	spiffeID, err := utils.GenerateSPIFFEID(claims, tmpl, h.config.SPIRE.TrustDomain)
+	spiffeID, err := utils.GenerateSPIFFEID(claims.GetRaw(), tmpl, h.config.SPIRE.TrustDomain)
 	if err != nil {
 		audit.FailedStage = stageSpiffeIDGeneration
 		audit.RejectionReason = err.Error()
@@ -388,6 +391,15 @@ func (h *SpireIdentityExchangeServer) mintX509SVIDServerKeyGen(
 		X509Svid:      resp.Svid,
 		PrivateKeyPem: privKeyPEM,
 	}, nil
+}
+
+// determinePurpose derives the replay cache Purpose from the mint request.
+// JWT-SVID requests include audience-scoped hashing; all others default to X.509.
+func determinePurpose(req *proto.MintCertificateRequest) v.Purpose {
+	if jwtReq := req.GetMintJWTSVIDRequest(); jwtReq != nil {
+		return v.JWTPurpose(jwtReq.GetAudiences())
+	}
+	return v.X509Purpose()
 }
 
 // populateX509AuditFields extracts the serial number and TTL from an X.509 SVID

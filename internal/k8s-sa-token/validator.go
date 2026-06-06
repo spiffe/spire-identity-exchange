@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"go.uber.org/zap"
 )
 
@@ -62,7 +63,7 @@ func NewValidator(cfg config.K8sSATokenConfig, logger *zap.Logger) (*Validator, 
 //
 // The TokenReview is always sent to the operator-configured apiHost — never to a host
 // derived from the token's iss claim, which would be attacker-controlled before verification.
-func (v *Validator) Validate(ctx context.Context, token string) (*utils.Claims, error) {
+func (v *Validator) Validate(ctx context.Context, token string, _ validator.Purpose) (validator.Claims, error) {
 	if len(token) == 0 {
 		return nil, fmt.Errorf("token cannot be empty")
 	}
@@ -103,14 +104,37 @@ func (v *Validator) Validate(ctx context.Context, token string) (*utils.Claims, 
 
 	// Inject the operator-configured cluster name so templates can reference
 	// {{.k8s_cluster_name}} bound to the cluster this Validator authenticates against.
+	raw := claims.RawClaims
+	if raw == nil {
+		raw = make(map[string]interface{}, 1)
+	}
 	if v.clusterName != "" {
-		if claims.RawClaims == nil {
-			claims.RawClaims = make(map[string]interface{}, 1)
-		}
-		claims.RawClaims["k8s_cluster_name"] = v.clusterName
+		raw["k8s_cluster_name"] = v.clusterName
 	}
 
 	v.logger.Info("Token validated successfully", zap.String("issuer", claims.Issuer), zap.String("subject", claims.Subject))
 
-	return &claims, nil
+	// Convert internal utils.Claims to the shared pkg/validator.JWTClaims interface.
+	var expiry int64
+	if claims.ExpiresAt != nil {
+		expiry = claims.ExpiresAt.Unix()
+	}
+	var notBefore int64
+	if claims.NotBefore != nil {
+		notBefore = claims.NotBefore.Unix()
+	}
+	var issuedAt int64
+	if claims.IssuedAt != nil {
+		issuedAt = claims.IssuedAt.Unix()
+	}
+
+	return &validator.JWTClaims{
+		Issuer:    claims.Issuer,
+		Subject:   claims.Subject,
+		JTI:       claims.ID,
+		Expiry:    expiry,
+		NotBefore: notBefore,
+		IssuedAt:  issuedAt,
+		Raw:       raw,
+	}, nil
 }

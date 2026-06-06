@@ -19,7 +19,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
-	"github.com/spiffe/spire-identity-exchange/internal/validator"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -380,7 +380,7 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			return
 		}
 
-		claims, err := v.Validate(r.Context(), token)
+		claims, err := v.Validate(r.Context(), token, validator.X509Purpose())
 		if err != nil {
 			logger.Info("token validation failed", zap.String("stack", stack), zap.Error(err))
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
