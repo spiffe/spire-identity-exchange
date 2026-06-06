@@ -41,6 +41,13 @@ var ErrPermissionDenied = errors.New("caller not in authorized_delegates")
 // Translated to HTTP 503 by callers.
 var ErrUnavailable = errors.New("delegated identity API unavailable")
 
+// ErrInvalidArgument indicates the agent rejected the request as malformed —
+// most commonly a selector with an unsupported type or an empty value. This
+// is almost always a server-side bug in SIE's selector generator rather than
+// something the HTTP client can correct, so callers translate it to HTTP 500
+// and log the underlying agent message.
+var ErrInvalidArgument = errors.New("delegated identity API rejected the request as invalid")
+
 // X509SVID is the wire-decoded result of an X.509 SVID fetch.
 type X509SVID struct {
 	SpiffeID   string
@@ -75,6 +82,9 @@ func New(socketPath string) (*Client, error) {
 	if socketPath == "" {
 		return nil, errors.New("delegated socket path is required")
 	}
+	if socketPath[0] != '/' {
+		return nil, fmt.Errorf("delegated socket path must be absolute: %q", socketPath)
+	}
 	conn, err := grpc.NewClient(
 		"unix://"+socketPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -108,11 +118,11 @@ func (c *Client) FetchX509SVID(ctx context.Context, selectors []*types.Selector)
 		return nil, errors.New("at least one selector is required")
 	}
 
-	// A short cancel context guards against the stream hanging if the agent
+	// A short timeout guards against the stream hanging if the agent
 	// accepts the connection but never sends a message. The first message is
 	// the agent's snapshot of matching SVIDs, which it should produce
 	// immediately after attesting the caller.
-	streamCtx, cancel := context.WithCancel(ctx)
+	streamCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	stream, err := c.api.SubscribeToX509SVIDs(streamCtx, &delegatedidentityv1.SubscribeToX509SVIDsRequest{
@@ -201,8 +211,10 @@ func translateRPCError(err error) error {
 	switch st.Code() {
 	case codes.PermissionDenied:
 		return fmt.Errorf("%w: %s", ErrPermissionDenied, st.Message())
-	case codes.NotFound, codes.InvalidArgument:
+	case codes.NotFound:
 		return fmt.Errorf("%w: %s", ErrNoMatchingEntry, st.Message())
+	case codes.InvalidArgument:
+		return fmt.Errorf("%w: %s", ErrInvalidArgument, st.Message())
 	case codes.Unavailable, codes.DeadlineExceeded:
 		return fmt.Errorf("%w: %s", ErrUnavailable, st.Message())
 	default:

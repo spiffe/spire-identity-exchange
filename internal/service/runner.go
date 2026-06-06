@@ -185,12 +185,23 @@ func runSpireIdentityExchangeServer(
 		logger.Info("gRPC server port is 0; gRPC server is disabled.")
 	}
 
-	// --- REST server (optional) ---
+	// --- REST server ---
 	var (
 		httpServer      *http.Server
 		delegatedClient *delegated.Client
 	)
 	if cfg.Server.RestPort != 0 {
+		// Build all REST deps before spawning the watcher goroutine — otherwise an
+		// error from a later init step (e.g. delegated.New) returns with the watcher
+		// still running and wlaClient never explicitly closed; the goroutine only
+		// unwinds on context cancellation, which leaks an FD/goroutine in any caller
+		// that doesn't cancel ctx on the error path (notably tests).
+		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
+		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
+		if err != nil {
+			return fmt.Errorf("failed to create delegated identity client: %w", err)
+		}
+
 		// Trust bundle cache fed by Main agent's Workload API.
 		cache := &trustBundleCache{logger: logger}
 		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath
@@ -198,6 +209,7 @@ func runSpireIdentityExchangeServer(
 
 		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
 		if err != nil {
+			_ = delegatedClient.Close()
 			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
 		go func() {
@@ -206,13 +218,6 @@ func runSpireIdentityExchangeServer(
 				logger.Error("workload API watcher stopped with error", zap.Error(watchErr))
 			}
 		}()
-
-		// Delegated Identity client to SIX's admin socket.
-		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
-		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to create delegated identity client: %w", err)
-		}
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
@@ -366,25 +371,25 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 
 		stack := r.PathValue("stack")
 		if stack == "" {
-			http.Error(w, "stack parameter is missing", http.StatusBadRequest)
+			http.Error(w, "Stack parameter is missing", http.StatusBadRequest)
 			return
 		}
 		v, exists := cfg.Auth.LoadedStacks[stack]
 		if !exists {
-			http.Error(w, fmt.Sprintf("unknown stack: %q", stack), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Unknown stack: %q", stack), http.StatusBadRequest)
 			return
 		}
 
 		claims, err := v.Validate(r.Context(), token)
 		if err != nil {
 			logger.Info("token validation failed", zap.String("stack", stack), zap.Error(err))
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
 		selectors := v.GenerateSelectors(claims)
 		if len(selectors) == 0 {
-			http.Error(w, "no selectors derivable from token claims", http.StatusBadRequest)
+			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
 			return
 		}
 
@@ -395,19 +400,38 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 				zap.String("stack", stack),
 				zap.Int("selector_count", len(selectors)),
 				zap.Any("selectors", debugSelectors(selectors)))
-			http.Error(w, "no registration entry matches the validated identity", http.StatusNotFound)
+			http.Error(w, "No registration entry matches the validated identity", http.StatusNotFound)
 			return
 		case errors.Is(err, delegated.ErrPermissionDenied):
 			logger.Error("delegated API rejected this exchange — check authorized_delegates", zap.Error(err))
-			http.Error(w, "delegated issuance unavailable", http.StatusServiceUnavailable)
+			http.Error(w, "Delegated issuance unavailable", http.StatusServiceUnavailable)
 			return
 		case errors.Is(err, delegated.ErrUnavailable):
 			logger.Error("delegated API unavailable", zap.Error(err))
-			http.Error(w, "delegated issuance unavailable", http.StatusServiceUnavailable)
+			http.Error(w, "Delegated issuance unavailable", http.StatusServiceUnavailable)
+			return
+		case errors.Is(err, delegated.ErrInvalidArgument):
+			// The agent rejected the selectors as malformed. SIE built the
+			// selectors from claims it just validated, so this is a server-side
+			// bug, not a client request error — 500, log the agent's reason.
+			logger.Error("delegated API rejected selectors as invalid",
+				zap.String("stack", stack),
+				zap.Any("selectors", debugSelectors(selectors)),
+				zap.Error(err))
+			http.Error(w, "Issuance failed", http.StatusInternalServerError)
 			return
 		case err != nil:
 			logger.Error("delegated svid fetch failed", zap.Error(err))
-			http.Error(w, "issuance failed", http.StatusInternalServerError)
+			http.Error(w, "Issuance failed", http.StatusInternalServerError)
+			return
+		}
+
+		// Refuse to return a partial response: clients need the bundle to chain-validate
+		// the cert, so an empty bundle would leave them unable to use the SVID.
+		bundle := cache.Get()
+		if len(bundle) == 0 {
+			logger.Warn("SVID issued but trust bundle cache is empty or warming up")
+			http.Error(w, "Trust bundle warming up or unavailable", http.StatusServiceUnavailable)
 			return
 		}
 
@@ -415,9 +439,14 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			SpiffeID:  svid.SpiffeID,
 			Cert:      encodeCertChainPEM(svid.CertChain),
 			Key:       encodePKCS8KeyPEM(svid.PrivateKey),
-			Bundle:    string(cache.Get()),
+			Bundle:    string(bundle),
 			ExpiresAt: svid.ExpiresAt.Unix(),
 		}
+		// The response body contains a private key. Forbid every layer of
+		// caching: TLS-terminating proxies, CDNs, and the client's own disk
+		// cache must not retain this material.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(&resp); err != nil {
 			logger.Error("response encode failed", zap.Error(err))
@@ -428,15 +457,15 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 func extractBearerToken(r *http.Request) (string, error) {
 	header := r.Header.Get("Authorization")
 	if header == "" {
-		return "", errors.New("missing Authorization header")
+		return "", errors.New("Missing Authorization header")
 	}
 	const prefix = "bearer "
 	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
-		return "", errors.New("invalid Authorization header format")
+		return "", errors.New("Invalid Authorization header format")
 	}
 	token := strings.TrimSpace(header[len(prefix):])
 	if token == "" {
-		return "", errors.New("empty bearer token")
+		return "", errors.New("Empty bearer token")
 	}
 	return token, nil
 }

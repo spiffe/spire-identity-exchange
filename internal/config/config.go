@@ -86,7 +86,7 @@ type SPIREConfig struct {
 	AgentWorkloadSocketPath string `json:"agentWorkloadSocketPath"`
 
 	// Unix domain socket path for SPIRE Agent Delegated Identity API.
-	// When set, the REST /svid/{plugin}/x509 endpoint issues SVIDs by fetching
+	// When set, the REST /api/v1/svid/{stack}/x509 endpoint issues SVIDs by fetching
 	// them through this socket rather than calling SPIRE Server directly. The
 	// agent listening on this socket must include this exchange's SPIFFE ID in
 	// its authorized_delegates configuration.
