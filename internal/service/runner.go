@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"crypto/tls"
+	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,9 +14,11 @@ import (
 	"time"
 
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
+	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	"github.com/spiffe/spire-identity-exchange/internal/validator"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
@@ -45,6 +48,7 @@ const (
 type trustBundleCache struct {
 	mu       sync.RWMutex
 	pemBytes []byte
+	logger   *zap.Logger
 }
 
 func (c *trustBundleCache) Get() []byte {
@@ -76,11 +80,14 @@ func (c *trustBundleCache) OnX509ContextUpdate(x509Ctx *workloadapi.X509Context)
 }
 
 // OnX509ContextWatchError matches the real workloadapi.X509ContextWatcher interface signature.
+// go-spiffe handles reconnect internally so these are transient.
 func (c *trustBundleCache) OnX509ContextWatchError(err error) {
-	// Hooks error channel updates from the streaming socket connection context gracefully
+	if c.logger != nil {
+		c.logger.Info("workload API watcher transient error", zap.Error(err))
+	}
 }
 
-// Run runs spire-identity-exchange gRPC server (and optionally HTTP gateway) and waits for
+// Run runs spire-identity-exchange gRPC server (and optionally HTTP REST server) and waits for
 // termination signals. Pass nil for a validator to disable that auth method.
 // Returns the first error encountered during startup or runtime so the caller can exit
 // non-zero — a swallowed bind/TLS failure looks identical to a clean shutdown to a
@@ -178,32 +185,43 @@ func runSpireIdentityExchangeServer(
 		logger.Info("gRPC server port is 0; gRPC server is disabled.")
 	}
 
-	// --- Initialize go-spiffe background watcher stream ---
-	cache := &trustBundleCache{}
+	// --- REST server ---
+	var (
+		httpServer      *http.Server
+		delegatedClient *delegated.Client
+	)
 	if cfg.Server.RestPort != 0 {
-		socketAddr := fmt.Sprintf("unix://%s", cfg.SPIRE.AgentWorkloadSocketPath)
-		logger.Info("Initializing go-spiffe workload API stream client", zap.String("socket_path", socketAddr))
-
-		client, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
+		// Build all REST deps before spawning the watcher goroutine — otherwise an
+		// error from a later init step (e.g. delegated.New) returns with the watcher
+		// still running and wlaClient never explicitly closed; the goroutine only
+		// unwinds on context cancellation, which leaks an FD/goroutine in any caller
+		// that doesn't cancel ctx on the error path (notably tests).
+		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
+		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
 		if err != nil {
-			return fmt.Errorf("failed to create workload API client: %w", err)
+			return fmt.Errorf("failed to create delegated identity client: %w", err)
 		}
 
+		// Trust bundle cache fed by Main agent's Workload API.
+		cache := &trustBundleCache{logger: logger}
+		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath
+		logger.Info("initializing workload API watcher", zap.String("socket_path", socketAddr))
+
+		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
+		if err != nil {
+			_ = delegatedClient.Close()
+			return fmt.Errorf("failed to create workload API client: %w", err)
+		}
 		go func() {
-			defer client.Close()
-			if watchErr := client.WatchX509Context(ctx, cache); watchErr != nil {
-				logger.Error("SPIRE trust bundle context watcher runtime error", zap.Error(watchErr))
+			defer wlaClient.Close()
+			if watchErr := wlaClient.WatchX509Context(ctx, cache); watchErr != nil {
+				logger.Error("workload API watcher stopped with error", zap.Error(watchErr))
 			}
 		}()
-	}
 
-	// --- Custom Hand-Crafted REST API ---
-	var httpServer *http.Server
-	if cfg.Server.RestPort != 0 {
 		mux := http.NewServeMux()
-
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
-		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, logger))
+		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, delegatedClient, logger))
 
 		httpServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
@@ -229,7 +247,7 @@ func runSpireIdentityExchangeServer(
 
 	// stopStarted tears down anything we already brought up. Used when one server fails to
 	// start while the other is already listening — without this, a bind failure on the HTTP
-	// gateway would leak the gRPC listener (port stays bound, supervisor restarts re-fail).
+	// REST server would leak the gRPC listener (port stays bound, supervisor restarts re-fail).
 	stopStarted := func() {
 		if grpcServer != nil {
 			grpcServer.Stop()
@@ -238,6 +256,9 @@ func runSpireIdentityExchangeServer(
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
 			_ = httpServer.Shutdown(shutdownCtx)
+		}
+		if delegatedClient != nil {
+			_ = delegatedClient.Close()
 		}
 	}
 
@@ -293,6 +314,9 @@ func runSpireIdentityExchangeServer(
 			}
 		}
 
+		if delegatedClient != nil {
+			_ = delegatedClient.Close()
+		}
 		return nil
 
 	case err := <-errCh:
@@ -312,54 +336,166 @@ func handleTrustBundleX509(cache *trustBundleCache, logger *zap.Logger) http.Han
 		}
 
 		w.Header().Set("Content-Type", "application/x-pem-file")
-		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(pemBytes)
 	}
 }
 
-// handleGetX509SVID Verify the token from the user and return 1 valid x509 svid if available including chain
-func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBundleCache, logger *zap.Logger) http.HandlerFunc {
+// x509SVIDResponse is the JSON body returned by POST /api/v1/svid/{stack}/x509.
+type x509SVIDResponse struct {
+	SpiffeID  string `json:"spiffeId"`
+	Cert      string `json:"cert"`      // PEM, leaf first
+	Key       string `json:"key"`       // PEM-encoded PKCS#8 private key
+	Bundle    string `json:"bundle"`    // PEM, trust bundle
+	ExpiresAt int64  `json:"expiresAt"` // Unix seconds
+}
+
+// handleGetX509SVID validates the bearer token, derives selectors via the
+// stack's SelectorGenerator, fetches an SVID via the delegated client, and
+// returns it as JSON.
+//
+// Error mapping:
+//   - missing/malformed Authorization header → 401
+//   - unknown {stack} path-param             → 400
+//   - token rejected by validator            → 401
+//   - validator returned no selectors        → 400
+//   - delegated client found no matching entry → 404
+//   - delegated client unavailable / denied  → 503
+//   - any other error                        → 500
+func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBundleCache, dc *delegated.Client, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stack := r.PathValue("stack")
-
-		if stack == "" {
-			http.Error(w, "stack parameter is missing", http.StatusBadRequest)
-			return
-		}
-		validator, exists := cfg.Auth.LoadedStacks[stack]
-		if !exists {
-			http.Error(w, "stack is unknown", http.StatusBadRequest)
-			return
-		}
-
-		//w.Header().Set("Content-Type", "application/x-pem-file")
-		w.Header().Set("Content-Type", "text/plain")
-
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Missing Authorization Header", http.StatusUnauthorized)
-			return
-		}
-
-		if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-			http.Error(w, "Invalid Authorization Header Format", http.StatusUnauthorized)
-			return
-		}
-
-		token := strings.TrimSpace(authHeader[7:])
-		if token == "" {
-			http.Error(w, "Empty Token", http.StatusUnauthorized)
-			return
-		}
-
-		claims, err := validator.Validate(r.Context(), token)
+		token, err := extractBearerToken(r)
 		if err != nil {
-			logger.Info("Failed to validate", zap.Error(err))
-			http.Error(w, "Failed to validate your token", http.StatusUnauthorized)
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
-		selectors := validator.GenerateSelectors(claims)
-		selectorsJSON, _ := json.Marshal(selectors)
-		_, _ = w.Write([]byte("Hello: "  + r.PathValue("stack") + " "  + string(selectorsJSON) + "\n" ))
+
+		stack := r.PathValue("stack")
+		if stack == "" {
+			http.Error(w, "Stack parameter is missing", http.StatusBadRequest)
+			return
+		}
+		v, exists := cfg.Auth.LoadedStacks[stack]
+		if !exists {
+			http.Error(w, fmt.Sprintf("Unknown stack: %q", stack), http.StatusBadRequest)
+			return
+		}
+
+		claims, err := v.Validate(r.Context(), token)
+		if err != nil {
+			logger.Info("token validation failed", zap.String("stack", stack), zap.Error(err))
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		selectors := v.GenerateSelectors(claims)
+		if len(selectors) == 0 {
+			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
+			return
+		}
+
+		svid, err := dc.FetchX509SVID(r.Context(), selectors)
+		switch {
+		case errors.Is(err, delegated.ErrNoMatchingEntry):
+			logger.Info("no entry matched selectors",
+				zap.String("stack", stack),
+				zap.Int("selector_count", len(selectors)),
+				zap.Any("selectors", debugSelectors(selectors)))
+			http.Error(w, "No registration entry matches the validated identity", http.StatusNotFound)
+			return
+		case errors.Is(err, delegated.ErrPermissionDenied):
+			logger.Error("delegated API rejected this exchange — check authorized_delegates", zap.Error(err))
+			http.Error(w, "Delegated issuance unavailable", http.StatusServiceUnavailable)
+			return
+		case errors.Is(err, delegated.ErrUnavailable):
+			logger.Error("delegated API unavailable", zap.Error(err))
+			http.Error(w, "Delegated issuance unavailable", http.StatusServiceUnavailable)
+			return
+		case errors.Is(err, delegated.ErrInvalidArgument):
+			// The agent rejected the selectors as malformed. SIE built the
+			// selectors from claims it just validated, so this is a server-side
+			// bug, not a client request error — 500, log the agent's reason.
+			logger.Error("delegated API rejected selectors as invalid",
+				zap.String("stack", stack),
+				zap.Any("selectors", debugSelectors(selectors)),
+				zap.Error(err))
+			http.Error(w, "Issuance failed", http.StatusInternalServerError)
+			return
+		case err != nil:
+			logger.Error("delegated svid fetch failed", zap.Error(err))
+			http.Error(w, "Issuance failed", http.StatusInternalServerError)
+			return
+		}
+
+		// Refuse to return a partial response: clients need the bundle to chain-validate
+		// the cert, so an empty bundle would leave them unable to use the SVID.
+		bundle := cache.Get()
+		if len(bundle) == 0 {
+			logger.Warn("SVID issued but trust bundle cache is empty or warming up")
+			http.Error(w, "Trust bundle warming up or unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		resp := x509SVIDResponse{
+			SpiffeID:  svid.SpiffeID,
+			Cert:      encodeCertChainPEM(svid.CertChain),
+			Key:       encodePKCS8KeyPEM(svid.PrivateKey),
+			Bundle:    string(bundle),
+			ExpiresAt: svid.ExpiresAt.Unix(),
+		}
+		// The response body contains a private key. Forbid every layer of
+		// caching: TLS-terminating proxies, CDNs, and the client's own disk
+		// cache must not retain this material.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+			logger.Error("response encode failed", zap.Error(err))
+		}
 	}
+}
+
+func extractBearerToken(r *http.Request) (string, error) {
+	header := r.Header.Get("Authorization")
+	if header == "" {
+		return "", errors.New("Missing Authorization header")
+	}
+	const prefix = "bearer "
+	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
+		return "", errors.New("Invalid Authorization header format")
+	}
+	token := strings.TrimSpace(header[len(prefix):])
+	if token == "" {
+		return "", errors.New("Empty bearer token")
+	}
+	return token, nil
+}
+
+// encodeCertChainPEM concatenates the DER-encoded chain into a multi-block
+// PEM bundle, leaf first.
+func encodeCertChainPEM(chain [][]byte) string {
+	var out []byte
+	for _, der := range chain {
+		out = append(out, pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: der,
+		})...)
+	}
+	return string(out)
+}
+
+// encodePKCS8KeyPEM wraps the PKCS#8 DER-encoded private key the agent
+// returns into a PEM block. PKCS#8 covers ECDSA, RSA, and Ed25519.
+func encodePKCS8KeyPEM(der []byte) string {
+	return string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: der,
+	}))
+}
+
+func debugSelectors(selectors []*types.Selector) []string {
+	out := make([]string, 0, len(selectors))
+	for _, s := range selectors {
+		out = append(out, s.Type+":"+s.Value)
+	}
+	return out
 }
