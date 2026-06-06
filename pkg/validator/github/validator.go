@@ -48,8 +48,9 @@ func (c *Config) ValidateConfig() error {
 	if c.IssuerURL == "" {
 		c.IssuerURL = DefaultIssuer
 	}
-	if !c.AllowHTTP && strings.HasPrefix(c.IssuerURL, "http://") {
-		return errors.New("http:// issuer URLs are not allowed unless AllowHTTP is true")
+	err := jwtvalidator.ValidateIssuerURL(c.IssuerURL, c.AllowHTTP)
+	if err != nil {
+		return err
 	}
 	if len(c.Audiences) == 0 {
 		return errors.New("at least one audience must be specified")

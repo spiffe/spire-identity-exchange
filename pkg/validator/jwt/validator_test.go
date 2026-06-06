@@ -412,7 +412,7 @@ func TestValidateIssuerURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateIssuerURL(tt.issuer, tt.allowHTTP)
+			err := ValidateIssuerURL(tt.issuer, tt.allowHTTP)
 			if tt.expectErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
