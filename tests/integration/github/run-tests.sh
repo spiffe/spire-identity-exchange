@@ -17,6 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
+  sudo spire-server agent show -spiffeID spiffe://example.com/spire/agent/x509pop/spire-identity-exchange/node1
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main 2>&1 || true
   sudo spire-server entry show 2>&1 || true
@@ -74,6 +75,11 @@ wait_for_jwt() {
   done
   return 1
 }
+
+# Add credential composer
+go build -o spire-credentialcomposer-identity-exchnage cmd/spire-credentialcomposer-identity-exchnage/main.go
+sudo mkdir -p /usr/libexec/spire/plugins
+sudo cp -a spire-credentialcomposer-identity-exchnage /usr/libexec/spire/plugins/credentialcomposer-identity-exchnage
 
 # Setup github mock service. Consider moving this out to a systemd service
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
