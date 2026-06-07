@@ -450,11 +450,11 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		// cache must not retain this material.
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Content-Type", "application/json")
 		params := r.URL.Query()
 		format := params.Get("format")
 		switch format {
 		case "spiffe-fd-tar":
+			w.Header().Set("Content-Type", "application/x-tar")
 			t, err := createInMemTar(cfg.SPIRE.TrustDomain, resp.Key + resp.Cert, resp.Bundle)
 			if err != nil {
 				logger.Error("response tar failed", zap.Error(err))
@@ -463,12 +463,13 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 				w.Write(t)
 			}
 		case "spire-identity-exchange-json", "":
+			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(&resp); err != nil {
 				logger.Error("response encode failed", zap.Error(err))
 				http.Error(w, "encoding failed", http.StatusInternalServerError)
 			}
 		default:
-			logger.Error("response encode failed", zap.Error(err))
+			logger.Error("response encode failed")
 			http.Error(w, "Invalid format", http.StatusBadRequest)
 		}
 	}
