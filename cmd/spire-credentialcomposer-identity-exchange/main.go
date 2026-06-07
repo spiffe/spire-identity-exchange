@@ -21,7 +21,8 @@ func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcom
 	attrs := req.Attributes
 	id, err := spiffeid.FromString(req.SpiffeId)
 	if err != nil {
-		return nil, fmt.Errorf("invalid SPIFFE ID: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid SPIFFE ID: %v", err)
+
 	}
 	if attrs.Subject == nil {
 		attrs.Subject = &credentialcomposerv1.DistinguishedName{}
