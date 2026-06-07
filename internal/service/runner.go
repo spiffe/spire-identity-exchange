@@ -1,6 +1,8 @@
 package service
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -449,8 +451,25 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+		params := r.URL.Query()
+		format := params.Get("format")
+		switch format {
+		case "spire-fd-tar":
+			t, err := createInMemTar(cfg.SPIRE.TrustDomain, resp.Key + resp.Cert, resp.Bundle)
+			if err != nil {
+				logger.Error("response tar failed", zap.Error(err))
+				http.Error(w, "tarring failed", http.StatusInternalServerError)
+			} else {
+				w.Write(t)
+			}
+		case "spire-identity-exchange-json", "":
+			if err := json.NewEncoder(w).Encode(&resp); err != nil {
+				logger.Error("response encode failed", zap.Error(err))
+				http.Error(w, "encoding failed", http.StatusInternalServerError)
+			}
+		default:
 			logger.Error("response encode failed", zap.Error(err))
+			http.Error(w, "Invalid format", http.StatusBadRequest)
 		}
 	}
 }
@@ -499,4 +518,36 @@ func debugSelectors(selectors []*types.Selector) []string {
 		out = append(out, s.Type+":"+s.Value)
 	}
 	return out
+}
+
+func createInMemTar(trustDomain string, certData string, bundleData string) ([]byte, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	files := []struct {
+		Name    string
+		Content string
+		Mode    int64
+	}{
+		{"x509/0/credential-bundle.pem", certData, 0600},
+		{"x509/0/" + trustDomain + ".spiffe-trust-bundle.pem", bundleData, 0644},
+	}
+	for _, file := range files {
+		body := []byte(file.Content)
+		hdr := &tar.Header{
+			Name:    file.Name,
+			Mode:    file.Mode,
+			Size:    int64(len(body)),
+			ModTime: time.Now(),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return nil, fmt.Errorf("failed to write header for %s: %w", file.Name, err)
+		}
+		if _, err := tw.Write(body); err != nil {
+			return nil, fmt.Errorf("failed to write content for %s: %w", file.Name, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close tar writer: %w", err)
+	}
+	return buf.Bytes(), nil
 }
