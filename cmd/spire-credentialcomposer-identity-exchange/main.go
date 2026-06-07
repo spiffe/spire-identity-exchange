@@ -29,10 +29,9 @@ func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcom
 	cleanedPath := path.Clean(strings.TrimPrefix(id.Path(), "/"))
 	dir, _ := path.Split(cleanedPath)
 	dir = strings.TrimSuffix(dir, "/")
-	if strings.HasPrefix(cleanedPath, "spire-exchange/identity-exchange") {
+	if strings.HasPrefix(cleanedPath, "spire-exchange/spire-identity-exchange") {
 		attrs.Subject.CommonName = dir
 	}
-	attrs.Subject.CommonName = "foo/" + dir
 	return &credentialcomposerv1.ComposeWorkloadX509SVIDResponse{
 		Attributes: attrs,
 	}, nil
