@@ -24,6 +24,7 @@ teardown() {
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@six 2>&1 || true
+  more /var/lib/spire/server/main/config | cat || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
