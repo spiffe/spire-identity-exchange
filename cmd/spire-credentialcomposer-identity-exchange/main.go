@@ -32,6 +32,7 @@ func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcom
 	if strings.HasPrefix(cleanedPath, "spire-exchange/identity-exchange") {
 		attrs.Subject.CommonName = dir
 	}
+	attrs.Subject.CommonName = "foo/" + dir
 	return &credentialcomposerv1.ComposeWorkloadX509SVIDResponse{
 		Attributes: attrs,
 	}, nil
