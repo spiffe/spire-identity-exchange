@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,18 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// stubVerifier is a SaTokenVerifier that returns canned results, letting the
-// validator tests exercise the Validate() path without spinning up a real K8s
-// API server. The real TokenReview client is covered separately in verifier_test.go.
-type stubVerifier struct {
-	username string
-	err      error
-}
-
-func (s *stubVerifier) Verify(ctx context.Context, token string) (string, error) {
-	return s.username, s.err
-}
 
 func TestValidateConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -136,14 +123,14 @@ func TestNewValidator(t *testing.T) {
 			cfg: Config{
 				APIHost:           "https://kubernetes.default.svc:443",
 				AllowedNamespaces: []string{"prod"},
-				Verifier:          &stubVerifier{username: "ignored"},
+				AuthClient:        &mockAuthV1Client{tokenValid: true},
 			},
 		},
 		{
 			name: "missing_apiHost",
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
-				Verifier:          &stubVerifier{username: "ignored"},
+				AuthClient:        &mockAuthV1Client{tokenValid: true},
 			},
 			expectErr: true,
 			errMsg:    "apiHost is required",
@@ -151,8 +138,8 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "missing_allowlists",
 			cfg: Config{
-				APIHost:  "https://kubernetes.default.svc:443",
-				Verifier: &stubVerifier{username: "ignored"},
+				APIHost:    "https://kubernetes.default.svc:443",
+				AuthClient: &mockAuthV1Client{tokenValid: true},
 			},
 			expectErr: true,
 			errMsg:    "at least one of allowed_namespaces or allowed_service_accounts",
@@ -174,207 +161,140 @@ func TestNewValidator(t *testing.T) {
 	}
 }
 
-func TestValidate(t *testing.T) {
-	type stubClaims struct {
-		Sub       string                 `json:"sub"`
-		Iss       string                 `json:"iss"`
-		Aud       []string               `json:"aud,omitempty"`
-		Exp       int64                  `json:"exp,omitempty"`
-		Nbf       int64                  `json:"nbf,omitempty"`
-		Iat       int64                  `json:"iat,omitempty"`
-		Jti       string                 `json:"jti,omitempty"`
-		K8sIONest map[string]interface{} `json:"kubernetes.io,omitempty"`
-	}
-
-	mkToken := func(c stubClaims) string {
-		header := map[string]string{"alg": "RS256", "kid": "test", "typ": "JWT"}
-		hb, _ := json.Marshal(header)
-		cb, _ := json.Marshal(c)
-		return base64.RawURLEncoding.EncodeToString(hb) + "." +
-			base64.RawURLEncoding.EncodeToString(cb) + ".signature"
-	}
-
-	// k8sIO returns a kubernetes.io claim nest for namespace "ns", SA "sa".
-	k8sIO := func() map[string]interface{} {
-		return map[string]interface{}{
-			"namespace": "ns",
-			"serviceaccount": map[string]interface{}{
-				"name": "sa",
-				"uid":  "11111111-2222-3333-4444-555555555555",
-			},
-		}
-	}
-
+// TestCheckAllowLists exercises the wrapper-specific allowlist logic directly,
+// without plumbing through a TokenReviewValidator. Mirrors gitlab/github's
+// approach.
+func TestCheckAllowLists(t *testing.T) {
 	tests := []struct {
 		name                   string
-		token                  string
-		verifier               *stubVerifier
-		clusterName            string
 		allowedNamespaces      []string
 		allowedServiceAccounts []string
-		expectErr              string
-		assert                 func(t *testing.T, c validator.Claims)
+		raw                    map[string]interface{}
+		expectErr              bool
+		errMsg                 string
 	}{
 		{
-			name:              "empty_token_rejected",
-			token:             "",
-			verifier:          &stubVerifier{username: "system:serviceaccount:ns:sa"},
+			name:              "namespace_allowed",
 			allowedNamespaces: []string{"ns"},
-			expectErr:         "token cannot be empty",
+			raw:               projectedClaims("ns", "sa"),
 		},
 		{
-			name:              "malformed_token_rejected",
-			token:             "not.a.jwt",
-			verifier:          &stubVerifier{username: "system:serviceaccount:ns:sa"},
-			allowedNamespaces: []string{"ns"},
-			expectErr:         "failed to extract JWT claims",
-		},
-		{
-			name: "verifier_error_propagated",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:sa", Iss: "k8s", Aud: []string{"a"}, Exp: 200,
-				K8sIONest: k8sIO(),
-			}),
-			verifier:          &stubVerifier{err: errors.New("boom")},
-			allowedNamespaces: []string{"ns"},
-			expectErr:         "token verification failed",
-		},
-		{
-			name: "sub_mismatch_rejected",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:other", Iss: "k8s", Aud: []string{"a"}, Exp: 200,
-				K8sIONest: k8sIO(),
-			}),
-			verifier:          &stubVerifier{username: "system:serviceaccount:ns:sa"},
-			allowedNamespaces: []string{"ns"},
-			expectErr:         "does not match TokenReview principal",
-		},
-		{
-			name: "happy_path_with_cluster_name_injected",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:sa", Iss: "k8s", Aud: []string{"a"}, Exp: 200, Nbf: 100, Iat: 150, Jti: "abc",
-				K8sIONest: k8sIO(),
-			}),
-			verifier:          &stubVerifier{username: "system:serviceaccount:ns:sa"},
-			clusterName:       "prod",
-			allowedNamespaces: []string{"ns"},
-			assert: func(t *testing.T, c validator.Claims) {
-				raw := c.GetRaw()
-				assert.Equal(t, "prod", raw["k8s_cluster_name"])
-				assert.Equal(t, "abc", c.GetUniqueID())
-				assert.Equal(t, int64(200), c.GetExpiration())
-				j := c.(*validator.JWTClaims)
-				assert.Equal(t, "system:serviceaccount:ns:sa", j.Subject)
-				assert.Equal(t, "k8s", j.Issuer)
-				assert.Equal(t, []string{"a"}, j.Audience)
-				assert.Equal(t, int64(100), j.NotBefore)
-				assert.Equal(t, int64(150), j.IssuedAt)
-			},
-		},
-		{
-			name: "empty_cluster_name_not_injected",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:sa", Iss: "k8s", Aud: []string{"a"}, Exp: 200,
-				K8sIONest: k8sIO(),
-			}),
-			verifier:          &stubVerifier{username: "system:serviceaccount:ns:sa"},
-			allowedNamespaces: []string{"ns"},
-			assert: func(t *testing.T, c validator.Claims) {
-				_, ok := c.GetRaw()["k8s_cluster_name"]
-				assert.False(t, ok, "k8s_cluster_name must not be injected when unset")
-			},
-		},
-		{
-			name: "namespace_allowlist_rejects_other_namespace",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:other:sa", Iss: "k8s", Exp: 200,
-				K8sIONest: map[string]interface{}{
-					"namespace":      "other",
-					"serviceaccount": map[string]interface{}{"name": "sa"},
-				},
-			}),
-			verifier:          &stubVerifier{username: "system:serviceaccount:other:sa"},
-			allowedNamespaces: []string{"ns"},
-			expectErr:         `namespace "other" is not in the allowed list`,
-		},
-		{
-			name: "namespace_allowlist_wildcard_accepted",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:prod-1:sa", Iss: "k8s", Exp: 200,
-				K8sIONest: map[string]interface{}{
-					"namespace":      "prod-1",
-					"serviceaccount": map[string]interface{}{"name": "sa"},
-				},
-			}),
-			verifier:          &stubVerifier{username: "system:serviceaccount:prod-1:sa"},
+			name:              "namespace_wildcard_allowed",
 			allowedNamespaces: []string{"prod-*"},
+			raw:               projectedClaims("prod-1", "sa"),
 		},
 		{
-			name: "service_account_allowlist_rejects_other_sa",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:other", Iss: "k8s", Exp: 200,
-				K8sIONest: map[string]interface{}{
-					"namespace":      "ns",
-					"serviceaccount": map[string]interface{}{"name": "other"},
-				},
-			}),
-			verifier:               &stubVerifier{username: "system:serviceaccount:ns:other"},
+			name:              "namespace_rejected",
+			allowedNamespaces: []string{"ns"},
+			raw:               projectedClaims("other", "sa"),
+			expectErr:         true,
+			errMsg:            `namespace "other"`,
+		},
+		{
+			name:                   "service_account_allowed",
 			allowedServiceAccounts: []string{"ns/web"},
-			expectErr:              `service account "ns/other" is not in the allowed list`,
+			raw:                    projectedClaims("ns", "web"),
 		},
 		{
-			name: "service_account_allowlist_exact_match_accepted",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:web", Iss: "k8s", Exp: 200,
-				K8sIONest: map[string]interface{}{
-					"namespace":      "ns",
-					"serviceaccount": map[string]interface{}{"name": "web"},
-				},
-			}),
-			verifier:               &stubVerifier{username: "system:serviceaccount:ns:web"},
+			name:                   "service_account_rejected",
 			allowedServiceAccounts: []string{"ns/web"},
+			raw:                    projectedClaims("ns", "other"),
+			expectErr:              true,
+			errMsg:                 `service account "ns/other"`,
 		},
 		{
-			name: "both_allowlists_require_both_to_match",
-			token: mkToken(stubClaims{
-				Sub: "system:serviceaccount:ns:other", Iss: "k8s", Exp: 200,
-				K8sIONest: map[string]interface{}{
-					"namespace":      "ns",
-					"serviceaccount": map[string]interface{}{"name": "other"},
-				},
-			}),
-			verifier:               &stubVerifier{username: "system:serviceaccount:ns:other"},
+			name:                   "both_required_and_match",
 			allowedNamespaces:      []string{"ns"},
 			allowedServiceAccounts: []string{"ns/web"},
-			expectErr:              `service account "ns/other"`,
+			raw:                    projectedClaims("ns", "web"),
+		},
+		{
+			name:                   "both_required_namespace_fails",
+			allowedNamespaces:      []string{"ns"},
+			allowedServiceAccounts: []string{"ns/web"},
+			raw:                    projectedClaims("other", "web"),
+			expectErr:              true,
+			errMsg:                 `namespace "other"`,
+		},
+		{
+			name:                   "both_required_sa_fails",
+			allowedNamespaces:      []string{"ns"},
+			allowedServiceAccounts: []string{"ns/web"},
+			raw:                    projectedClaims("ns", "other"),
+			expectErr:              true,
+			errMsg:                 `service account "ns/other"`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v, err := NewValidator(Config{
-				APIHost:                "https://kubernetes.default.svc:443",
-				ClusterName:            tt.clusterName,
-				AllowedNamespaces:      tt.allowedNamespaces,
-				AllowedServiceAccounts: tt.allowedServiceAccounts,
-				Verifier:               tt.verifier,
-			})
-			require.NoError(t, err)
-
-			claims, err := v.Validate(context.Background(), tt.token, validator.X509Purpose())
-			if tt.expectErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectErr)
-				assert.Nil(t, claims)
-				return
+			v := &Validator{
+				allowedNamespaces:      tt.allowedNamespaces,
+				allowedServiceAccounts: tt.allowedServiceAccounts,
 			}
-			require.NoError(t, err)
-			require.NotNil(t, claims)
-			if tt.assert != nil {
-				tt.assert(t, claims)
+			err := v.checkAllowLists(tt.raw)
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
+}
+
+// TestValidateWrapsInner is a smoke test confirming the wrapper passes
+// authentication through to the inner TokenReviewValidator, injects
+// k8s_cluster_name from operator config, and rejects on allowlist failure.
+// The exhaustive TokenReview-side cases live in tokenreview_test.go.
+func TestValidateWrapsInner(t *testing.T) {
+	cfg := Config{
+		APIHost:           "https://kubernetes.default.svc:443",
+		ClusterName:       "prod-cluster",
+		AllowedNamespaces: []string{"ns"},
+		AuthClient: &mockAuthV1Client{
+			tokenValid:     true,
+			returnUsername: "system:serviceaccount:ns:sa",
+		},
+	}
+
+	v, err := NewValidator(cfg)
+	require.NoError(t, err)
+
+	t.Run("happy_path_injects_cluster_name", func(t *testing.T) {
+		// Token shaped for projected SA — namespace from kubernetes.io is what
+		// checkAllowLists reads, so synthesize via a richer token.
+		token := mkProjectedToken("system:serviceaccount:ns:sa", "ns", "sa")
+		claims, err := v.Validate(context.Background(), token, validator.X509Purpose())
+		require.NoError(t, err)
+		assert.Equal(t, "prod-cluster", claims.GetRaw()["k8s_cluster_name"])
+	})
+
+	t.Run("inner_errors_bubble_up", func(t *testing.T) {
+		// Empty token is rejected by the inner TokenReviewValidator.
+		_, err := v.Validate(context.Background(), "", validator.X509Purpose())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "token cannot be empty")
+	})
+
+	t.Run("allowlist_failure_after_successful_inner", func(t *testing.T) {
+		// Configure a different validator whose mock returns the same username
+		// the token's sub will carry, but whose namespace is outside the allowlist.
+		denyCfg := Config{
+			APIHost:           "https://kubernetes.default.svc:443",
+			AllowedNamespaces: []string{"prod-only"},
+			AuthClient: &mockAuthV1Client{
+				tokenValid:     true,
+				returnUsername: "system:serviceaccount:ns:sa",
+			},
+		}
+		denyV, err := NewValidator(denyCfg)
+		require.NoError(t, err)
+
+		_, err = denyV.Validate(context.Background(), mkProjectedToken("system:serviceaccount:ns:sa", "ns", "sa"), validator.X509Purpose())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `namespace "ns" is not in the allowed list`)
+	})
 }
 
 func TestGenerateSelectors(t *testing.T) {
@@ -458,6 +378,36 @@ func TestGenerateSelectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// projectedClaims returns a raw claims map shaped like a modern projected SA
+// token with the given namespace and service-account name.
+func projectedClaims(namespace, sa string) map[string]interface{} {
+	return map[string]interface{}{
+		"sub": "system:serviceaccount:" + namespace + ":" + sa,
+		"kubernetes.io": map[string]interface{}{
+			"namespace":      namespace,
+			"serviceaccount": map[string]interface{}{"name": sa},
+		},
+	}
+}
+
+// mkProjectedToken mints an unsigned JWT shaped like a modern projected SA token.
+// Used by wrapper tests where the inner TokenReviewValidator's JWT-parse step
+// needs to see kubernetes.io claims so the allowlist check can read them.
+func mkProjectedToken(sub, namespace, sa string) string {
+	header := map[string]string{"alg": "RS256", "kid": "test", "typ": "JWT"}
+	claims := map[string]interface{}{
+		"sub": sub,
+		"kubernetes.io": map[string]interface{}{
+			"namespace":      namespace,
+			"serviceaccount": map[string]interface{}{"name": sa},
+		},
+	}
+	hb, _ := json.Marshal(header)
+	cb, _ := json.Marshal(claims)
+	return base64.RawURLEncoding.EncodeToString(hb) + "." +
+		base64.RawURLEncoding.EncodeToString(cb) + ".signature"
 }
 
 func sortedKeys(m map[string]struct{}) []string {

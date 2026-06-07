@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"os"
 
-	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	authenticationv1 "k8s.io/client-go/kubernetes/typed/authentication/v1"
 )
 
 // TokenValidatorLoaderGenerator returns a fresh Config that can be unmarshaled,
@@ -57,9 +57,11 @@ type Config struct {
 	// TLS holds the mTLS materials used to authenticate to the Kubernetes API server.
 	TLS TLSConfig `json:"tls"`
 
-	// Verifier allows injecting a pre-built TokenReview verifier (primarily for
-	// testing). When nil, NewValidator builds one from APIHost+TLS.
-	Verifier SaTokenVerifier `json:"-"`
+	// AuthClient overrides the default-built TokenReview client. Primarily a
+	// test seam — passed through to the inner TokenReviewValidator. Mirrors how
+	// pkg/validator/github.Config carries KeyProvider through to the inner
+	// pkg/validator/jwt.Validator.
+	AuthClient authenticationv1.AuthenticationV1Interface `json:"-"`
 
 	// Metrics allows injecting a metrics collector for operation tracking.
 	// If nil, metrics collection is silently skipped.
@@ -126,20 +128,19 @@ func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, e
 	return NewValidator(*c)
 }
 
-// Validator validates K8s service-account tokens via TokenReview and emits
-// selectors from the resulting claims.
+// Validator wraps a TokenReviewValidator to add operator policy: cluster-name
+// injection into the claim map and namespace / service-account allowlists.
+// Mirrors how pkg/validator/github.Validator wraps pkg/validator/jwt.Validator.
 type Validator struct {
-	apiHost                string
+	inner                  *TokenReviewValidator
 	clusterName            string
 	allowedNamespaces      []string
 	allowedServiceAccounts []string
-	verifier               SaTokenVerifier
 	metrics                validator.Metrics
 }
 
-// NewValidator constructs a Validator. When cfg.Verifier is non-nil it is used
-// directly (intended for tests); otherwise a TokenReview-backed verifier is
-// built from APIHost + TLS materials.
+// NewValidator constructs a Validator wrapping a freshly-built
+// TokenReviewValidator.
 func NewValidator(cfg Config) (*Validator, error) {
 	if cfg.APIHost == "" {
 		return nil, fmt.Errorf("apiHost is required")
@@ -148,60 +149,39 @@ func NewValidator(cfg Config) (*Validator, error) {
 		return nil, fmt.Errorf("at least one of allowed_namespaces or allowed_service_accounts must be configured")
 	}
 
-	verifier := cfg.Verifier
-	if verifier == nil {
-		v, err := NewSaTokenVerifier(cfg.APIHost, cfg.Audiences, cfg.TLS.CertFile, cfg.TLS.KeyFile, cfg.TLS.CAFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create token verifier: %w", err)
-		}
-		verifier = v
+	inner, err := NewTokenReviewValidator(TokenReviewConfig{
+		APIHost:    cfg.APIHost,
+		Audiences:  cfg.Audiences,
+		CAFile:     cfg.TLS.CAFile,
+		CertFile:   cfg.TLS.CertFile,
+		KeyFile:    cfg.TLS.KeyFile,
+		AuthClient: cfg.AuthClient,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create token review validator: %w", err)
 	}
 
 	return &Validator{
-		apiHost:                cfg.APIHost,
+		inner:                  inner,
 		clusterName:            cfg.ClusterName,
 		allowedNamespaces:      cfg.AllowedNamespaces,
 		allowedServiceAccounts: cfg.AllowedServiceAccounts,
-		verifier:               verifier,
 		metrics:                cfg.Metrics,
 	}, nil
 }
 
-// Validate validates a Kubernetes service account token via the K8s TokenReview API
-// and returns the JWT claims. Implements validator.TokenValidator.
-//
-// The TokenReview is always sent to the operator-configured apiHost — never to a host
-// derived from the token's iss claim, which would be attacker-controlled before verification.
-func (v *Validator) Validate(ctx context.Context, token string, _ validator.Purpose) (validator.Claims, error) {
-	if len(token) == 0 {
-		return nil, fmt.Errorf("token cannot be empty")
-	}
-
-	// Parse the token unverified solely to surface claims for SPIFFE ID derivation
-	// and selector generation. The TokenReview call below is the authoritative
-	// authentication step.
-	rawClaims := gojwt.MapClaims{}
-	if _, _, err := new(gojwt.Parser).ParseUnverified(token, rawClaims); err != nil {
-		return nil, fmt.Errorf("failed to extract JWT claims: %w", err)
-	}
-
-	username, err := v.verifier.Verify(ctx, token)
+// Validate delegates token authentication to the inner TokenReviewValidator,
+// then injects k8s_cluster_name into the claim map and enforces the configured
+// allowlists. Implements validator.TokenValidator.
+func (v *Validator) Validate(ctx context.Context, token string, purpose validator.Purpose) (validator.Claims, error) {
+	claims, err := v.inner.Validate(ctx, token, purpose)
 	if err != nil {
-		return nil, fmt.Errorf("token verification failed: %w", err)
-	}
-
-	// The TokenReview-authenticated principal must match the JWT `sub`. Without
-	// this cross-check, a different (non-SA-but-API-server-accepted) JWT could
-	// supply arbitrary claims for SPIFFE ID derivation; the Verify-side SA-prefix
-	// check is the first half of this defense, and matching sub completes it.
-	jwtSub, _ := rawClaims["sub"].(string)
-	if jwtSub != username {
-		return nil, fmt.Errorf("JWT sub %q does not match TokenReview principal %q", jwtSub, username)
+		return nil, err
 	}
 
 	// Inject the operator-configured cluster name so templates can reference
 	// {{.k8s_cluster_name}} bound to the cluster this Validator authenticates against.
-	raw := map[string]interface{}(rawClaims)
+	raw := claims.GetRaw()
 	if v.clusterName != "" {
 		raw["k8s_cluster_name"] = v.clusterName
 	}
@@ -209,25 +189,7 @@ func (v *Validator) Validate(ctx context.Context, token string, _ validator.Purp
 	if err := v.checkAllowLists(raw); err != nil {
 		return nil, err
 	}
-
-	issuer, _ := rawClaims["iss"].(string)
-	jti, _ := rawClaims["jti"].(string)
-
-	var aud []string
-	if a, err := rawClaims.GetAudience(); err == nil {
-		aud = []string(a)
-	}
-
-	return &validator.JWTClaims{
-		Issuer:    issuer,
-		Subject:   jwtSub,
-		Audience:  aud,
-		JTI:       jti,
-		Expiry:    numericDateUnix(rawClaims, "exp"),
-		NotBefore: numericDateUnix(rawClaims, "nbf"),
-		IssuedAt:  numericDateUnix(rawClaims, "iat"),
-		Raw:       raw,
-	}, nil
+	return claims, nil
 }
 
 // checkAllowLists enforces AND logic: when both lists are configured, the
@@ -248,21 +210,4 @@ func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
 		}
 	}
 	return nil
-}
-
-// numericDateUnix returns a JWT NumericDate claim as a Unix timestamp. JSON
-// decoding may surface the value as float64 (default), json.Number, or int64
-// depending on the encoder; tolerate all three.
-func numericDateUnix(raw gojwt.MapClaims, key string) int64 {
-	switch v := raw[key].(type) {
-	case float64:
-		return int64(v)
-	case int64:
-		return v
-	case json.Number:
-		if n, err := v.Int64(); err == nil {
-			return n
-		}
-	}
-	return 0
 }
