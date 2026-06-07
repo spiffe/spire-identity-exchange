@@ -9,6 +9,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	k8svalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/k8s"
 	"go.uber.org/zap"
 )
 
@@ -22,7 +23,7 @@ type Validator struct {
 	clusterName string
 	// Pre-built TokenReview verifier. The underlying clientset is goroutine-safe and
 	// reuses HTTP/TLS connections to the API server across requests.
-	verifier utils.K8sSaTokenVerifier
+	verifier k8svalidator.SaTokenVerifier
 	// Logger for logging
 	logger *zap.Logger
 }
@@ -35,7 +36,7 @@ func NewValidator(cfg config.K8sSATokenConfig, logger *zap.Logger) (*Validator, 
 		return nil, fmt.Errorf("k8sSAToken.apiHost is required")
 	}
 
-	verifier, err := utils.NewK8sSaTokenVerifier(
+	verifier, err := k8svalidator.NewSaTokenVerifier(
 		cfg.APIHost,
 		cfg.Audiences,
 		cfg.TLS.CertFile,

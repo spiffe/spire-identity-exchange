@@ -1,4 +1,4 @@
-package utils
+package k8s
 
 import (
 	"context"
@@ -29,27 +29,22 @@ type mockAuthV1Client struct {
 	returnUsername    string // defaults to a valid SA username when empty
 }
 
-// TokenReviews implements AuthenticationV1Interface
 func (m *mockAuthV1Client) TokenReviews() authenticationv1.TokenReviewInterface {
 	return &mockTokenReviewsClient{parent: m}
 }
 
-// SelfSubjectReviews implements AuthenticationV1Interface (required by interface)
 func (m *mockAuthV1Client) SelfSubjectReviews() authenticationv1.SelfSubjectReviewInterface {
 	return nil
 }
 
-// RESTClient implements AuthenticationV1Interface (required by interface)
 func (m *mockAuthV1Client) RESTClient() rest.Interface {
 	return nil
 }
 
-// mockTokenReviewsClient mocks the TokenReviewInterface
 type mockTokenReviewsClient struct {
 	parent *mockAuthV1Client
 }
 
-// Create implements TokenReviewInterface
 func (m *mockTokenReviewsClient) Create(ctx context.Context, tokenReview *authv1.TokenReview, opts metav1.CreateOptions) (*authv1.TokenReview, error) {
 	m.parent.gotAudiences = tokenReview.Spec.Audiences
 
@@ -76,7 +71,7 @@ func (m *mockTokenReviewsClient) Create(ctx context.Context, tokenReview *authv1
 	return result, nil
 }
 
-func TestNewK8sSaTokenVerifierInternal(t *testing.T) {
+func TestNewSaTokenVerifierInternal(t *testing.T) {
 	tests := []struct {
 		name       string
 		authClient authenticationv1.AuthenticationV1Interface
@@ -99,15 +94,15 @@ func TestNewK8sSaTokenVerifierInternal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := newK8sSaTokenVerifier(tt.authClient, nil)
+			got := newSaTokenVerifier(tt.authClient, nil)
 			if (got == nil) != tt.wantNil {
-				t.Errorf("newK8sSaTokenVerifier() = %v, wantNil %v", got, tt.wantNil)
+				t.Errorf("newSaTokenVerifier() = %v, wantNil %v", got, tt.wantNil)
 			}
 		})
 	}
 }
 
-func TestNewK8sSaTokenVerifier(t *testing.T) {
+func TestNewSaTokenVerifier(t *testing.T) {
 	tests := []struct {
 		name              string
 		k8sAPIHost        string
@@ -139,10 +134,10 @@ func TestNewK8sSaTokenVerifier(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewK8sSaTokenVerifier(tt.k8sAPIHost, nil, tt.k8sClientCertFile, tt.k8sClientKeyFile, tt.k8sCAFile)
+			got, err := NewSaTokenVerifier(tt.k8sAPIHost, nil, tt.k8sClientCertFile, tt.k8sClientKeyFile, tt.k8sCAFile)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("NewK8sSaTokenVerifier() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewSaTokenVerifier() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
@@ -164,7 +159,7 @@ func TestNewK8sSaTokenVerifier(t *testing.T) {
 	}
 }
 
-func TestK8sSaTokenVerifierImplVerify(t *testing.T) {
+func TestSaTokenVerifierImplVerify(t *testing.T) {
 	tests := []struct {
 		name          string
 		authClient    authenticationv1.AuthenticationV1Interface
@@ -218,7 +213,7 @@ func TestK8sSaTokenVerifierImplVerify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			verifier := newK8sSaTokenVerifier(tt.authClient, nil)
+			verifier := newSaTokenVerifier(tt.authClient, nil)
 			_, err := verifier.Verify(tt.ctx, tt.token)
 
 			if tt.expectError {
@@ -236,14 +231,14 @@ func TestK8sSaTokenVerifierImplVerify(t *testing.T) {
 	}
 }
 
-func TestK8sSaTokenVerifierWithContextCancellation(t *testing.T) {
+func TestSaTokenVerifierWithContextCancellation(t *testing.T) {
 	t.Run("context cancellation should be passed to API", func(t *testing.T) {
 		mockClient := &mockAuthV1Client{
 			shouldReturnError: false,
 			tokenValid:        true,
 		}
 
-		verifier := newK8sSaTokenVerifier(mockClient, nil)
+		verifier := newSaTokenVerifier(mockClient, nil)
 
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -258,7 +253,7 @@ func TestK8sSaTokenVerifierWithContextCancellation(t *testing.T) {
 			tokenValid:        true,
 		}
 
-		verifier := newK8sSaTokenVerifier(mockClient, nil)
+		verifier := newSaTokenVerifier(mockClient, nil)
 
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -270,13 +265,13 @@ func TestK8sSaTokenVerifierWithContextCancellation(t *testing.T) {
 	})
 }
 
-func TestK8sSaTokenVerifierAudienceBinding(t *testing.T) {
+func TestSaTokenVerifierAudienceBinding(t *testing.T) {
 	t.Run("audiences are forwarded to TokenReview Spec", func(t *testing.T) {
 		mockClient := &mockAuthV1Client{
 			tokenValid:      true,
 			returnAudiences: []string{"spire-identity-exchange"},
 		}
-		verifier := newK8sSaTokenVerifier(mockClient, []string{"spire-identity-exchange"})
+		verifier := newSaTokenVerifier(mockClient, []string{"spire-identity-exchange"})
 		if _, err := verifier.Verify(context.Background(), validToken); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -290,7 +285,7 @@ func TestK8sSaTokenVerifierAudienceBinding(t *testing.T) {
 			tokenValid:      true,
 			returnAudiences: []string{"some-other-service"},
 		}
-		verifier := newK8sSaTokenVerifier(mockClient, []string{"spire-identity-exchange"})
+		verifier := newSaTokenVerifier(mockClient, []string{"spire-identity-exchange"})
 		_, err := verifier.Verify(context.Background(), validToken)
 		if err == nil || !strings.Contains(err.Error(), "do not match expected audiences") {
 			t.Errorf("expected audience-mismatch rejection, got %v", err)
@@ -302,14 +297,14 @@ func TestK8sSaTokenVerifierAudienceBinding(t *testing.T) {
 			tokenValid:      true,
 			returnAudiences: []string{"any-audience"},
 		}
-		verifier := newK8sSaTokenVerifier(mockClient, nil)
+		verifier := newSaTokenVerifier(mockClient, nil)
 		if _, err := verifier.Verify(context.Background(), validToken); err != nil {
 			t.Errorf("expected no error with audience binding disabled, got: %v", err)
 		}
 	})
 }
 
-func TestK8sSaTokenVerifierRejectsNonServiceAccountPrincipals(t *testing.T) {
+func TestSaTokenVerifierRejectsNonServiceAccountPrincipals(t *testing.T) {
 	cases := []struct {
 		name     string
 		username string
@@ -321,7 +316,7 @@ func TestK8sSaTokenVerifierRejectsNonServiceAccountPrincipals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockClient := &mockAuthV1Client{tokenValid: true, returnUsername: tc.username}
-			verifier := newK8sSaTokenVerifier(mockClient, nil)
+			verifier := newSaTokenVerifier(mockClient, nil)
 			user, err := verifier.Verify(context.Background(), validToken)
 			if err == nil || !strings.Contains(err.Error(), "not a service account") {
 				t.Errorf("expected non-SA rejection for %q, got user=%q err=%v", tc.username, user, err)
@@ -331,7 +326,7 @@ func TestK8sSaTokenVerifierRejectsNonServiceAccountPrincipals(t *testing.T) {
 
 	t.Run("service-account principal accepted", func(t *testing.T) {
 		mockClient := &mockAuthV1Client{tokenValid: true, returnUsername: "system:serviceaccount:prod:payment"}
-		verifier := newK8sSaTokenVerifier(mockClient, nil)
+		verifier := newSaTokenVerifier(mockClient, nil)
 		user, err := verifier.Verify(context.Background(), validToken)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

@@ -1,4 +1,4 @@
-package utils
+package k8s
 
 import (
 	"context"
@@ -17,39 +17,37 @@ import (
 // be a non-SA bearer token and must not be accepted by this validator.
 const saUsernamePrefix = "system:serviceaccount:"
 
-// K8sSaTokenVerifier interface defines the token verification contract.
-// Verify returns the authenticated username (e.g. system:serviceaccount:ns:sa) on success
-// so callers can cross-check it against the JWT sub claim before deriving identity from
-// the unverified JWT.
-type K8sSaTokenVerifier interface {
+// SaTokenVerifier defines the contract for verifying a Kubernetes service-account
+// token via the TokenReview API. Verify returns the authenticated username
+// (e.g. system:serviceaccount:ns:sa) on success so callers can cross-check it
+// against the JWT sub claim before deriving identity from the unverified JWT.
+type SaTokenVerifier interface {
 	Verify(ctx context.Context, token string) (string, error)
 }
 
-// k8sSaTokenVerifierImpl implements K8sSaTokenVerifier
-type k8sSaTokenVerifierImpl struct {
+type saTokenVerifierImpl struct {
 	authClient authenticationv1.AuthenticationV1Interface
 	audiences  []string
 }
 
-// newK8sSaTokenVerifier creates a new token verifier with the given authentication client and expected audiences.
-func newK8sSaTokenVerifier(authClient authenticationv1.AuthenticationV1Interface, audiences []string) K8sSaTokenVerifier {
-	return &k8sSaTokenVerifierImpl{authClient: authClient, audiences: audiences}
+// newSaTokenVerifier creates a verifier from a typed authentication client.
+func newSaTokenVerifier(authClient authenticationv1.AuthenticationV1Interface, audiences []string) SaTokenVerifier {
+	return &saTokenVerifierImpl{authClient: authClient, audiences: audiences}
 }
 
-// NewK8sSaTokenVerifier creates a new token verifier with the given client set.
-// audiences are forwarded to the TokenReview Spec.Audiences so Kubernetes binds the
-// authentication decision to the audience this service expects; the returned status
-// audiences are checked to intersect with this list.
-func NewK8sSaTokenVerifier(k8sAPIHost string, audiences []string, k8sClientCertFile, k8sClientKeyFile, k8sCAFile string) (K8sSaTokenVerifier, error) {
+// NewSaTokenVerifier builds a TokenReview-backed verifier from API server connection
+// parameters. audiences are forwarded to the TokenReview Spec.Audiences so Kubernetes
+// binds the authentication decision to the audience this service expects; the returned
+// status audiences are checked to intersect with this list.
+func NewSaTokenVerifier(k8sAPIHost string, audiences []string, k8sClientCertFile, k8sClientKeyFile, k8sCAFile string) (SaTokenVerifier, error) {
 	cfg := newK8sClientConfig(k8sAPIHost, k8sClientCertFile, k8sClientKeyFile, k8sCAFile)
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
-	return newK8sSaTokenVerifier(clientset.AuthenticationV1(), audiences), nil
+	return newSaTokenVerifier(clientset.AuthenticationV1(), audiences), nil
 }
 
-// newK8sClientConfig creates a Kubernetes client config for the given parameters
 func newK8sClientConfig(k8sAPIHost, k8sClientCertFile, k8sClientKeyFile, k8sCAFile string) *rest.Config {
 	var c rest.Config
 	c.Host = k8sAPIHost
@@ -65,7 +63,7 @@ func newK8sClientConfig(k8sAPIHost, k8sClientCertFile, k8sClientKeyFile, k8sCAFi
 // When audiences are configured, they are sent in TokenReview Spec.Audiences so
 // Kubernetes will only authenticate tokens minted for one of those audiences, and
 // the response's status audiences must intersect with the configured list.
-func (v *k8sSaTokenVerifierImpl) Verify(ctx context.Context, token string) (string, error) {
+func (v *saTokenVerifierImpl) Verify(ctx context.Context, token string) (string, error) {
 	if v.authClient == nil {
 		return "", fmt.Errorf("authentication client is nil")
 	}
