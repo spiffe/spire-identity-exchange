@@ -454,7 +454,7 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		params := r.URL.Query()
 		format := params.Get("format")
 		switch format {
-		case "spire-fd-tar":
+		case "spiffe-fd-tar":
 			t, err := createInMemTar(cfg.SPIRE.TrustDomain, resp.Key + resp.Cert, resp.Bundle)
 			if err != nil {
 				logger.Error("response tar failed", zap.Error(err))
