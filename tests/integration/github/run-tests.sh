@@ -80,6 +80,7 @@ wait_for_jwt() {
 go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
 sudo mkdir -p /usr/libexec/spire/plugins
 sudo cp -a spire-credentialcomposer-identity-exchange /usr/libexec/spire/plugins/credentialcomposer-identity-exchange
+/usr/libexec/spire/plugins/credentialcomposer-identity-exchange || true
 
 # Setup github mock service. Consider moving this out to a systemd service
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
