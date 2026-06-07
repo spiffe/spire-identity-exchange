@@ -181,5 +181,5 @@ if [ -n "$GITHUB_TOKEN" ]; then
 	curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 fi
 
-curl -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST 'https://localhost:8444/api/v1/svid/mockhub/x509?format=spiffe-fd-tar' --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS | tar -xvf -
+curl -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST 'https://localhost:8444/api/v1/svid/mockhub/x509?format=spiffe-fd-tar' --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 more x509/0/* | cat
