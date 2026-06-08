@@ -2,6 +2,8 @@ package k8ssatoken
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spiffe/spire-identity-exchange/internal/config"
@@ -13,32 +15,63 @@ import (
 func TestNewValidator(t *testing.T) {
 	logger := zap.NewNop()
 
+	// Isolate from any host kubeconfig the loader would otherwise discover via
+	// $KUBECONFIG or $HOME/.kube/config — the test should depend only on what
+	// the test case configures, and on the in-cluster probe (which fails on
+	// the dev host, falling through to the kubeconfig path).
+	t.Setenv("KUBECONFIG", "")
+	t.Setenv("HOME", t.TempDir())
+
+	// Need a real-on-disk kubeconfig for the happy path; the loader requires a
+	// resolvable config, and we never dial — kubernetes.NewForConfig is lazy.
+	kubeconfigPath := filepath.Join(t.TempDir(), "kubeconfig")
+	const validKubeconfigYAML = `
+apiVersion: v1
+kind: Config
+clusters:
+- name: stub
+  cluster:
+    server: https://127.0.0.1:6443
+    insecure-skip-tls-verify: true
+users:
+- name: stub
+  user:
+    token: stub-token
+contexts:
+- name: stub
+  context:
+    cluster: stub
+    user: stub
+current-context: stub
+`
+	if err := os.WriteFile(kubeconfigPath, []byte(validKubeconfigYAML), 0o600); err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
+	}
+
 	testCases := []struct {
 		name      string
 		config    config.K8sSATokenConfig
 		expectErr bool
 	}{
 		{
-			name: "missing apiHost rejected",
+			name: "explicit nonexistent kubeconfig path: errors",
 			config: config.K8sSATokenConfig{
-				TLS: config.K8sAPIClientTlsConfig{},
+				Kubeconfig: "/nonexistent/kubeconfig",
 			},
 			expectErr: true,
 		},
 		{
-			name: "minimum required: apiHost set",
+			name: "valid kubeconfig: builds client",
 			config: config.K8sSATokenConfig{
-				APIHost: "https://kubernetes.default.svc:443",
+				Kubeconfig: kubeconfigPath,
 			},
-			expectErr: false,
 		},
 		{
 			name: "with audiences configured",
 			config: config.K8sSATokenConfig{
-				APIHost:   "https://kubernetes.default.svc:443",
-				Audiences: []string{"spire-identity-exchange"},
+				Kubeconfig: kubeconfigPath,
+				Audiences:  []string{"spire-identity-exchange"},
 			},
-			expectErr: false,
 		},
 	}
 
@@ -59,9 +92,38 @@ func TestNewValidator(t *testing.T) {
 
 func TestValidateToken(t *testing.T) {
 	logger := zap.NewNop()
-	cfg := config.K8sSATokenConfig{
-		APIHost: "https://kubernetes.default.svc:443",
+
+	t.Setenv("KUBECONFIG", "")
+	t.Setenv("HOME", t.TempDir())
+
+	// Build a minimal but syntactically valid kubeconfig so NewValidator
+	// succeeds; we never dial the API server in this test — kubernetes.NewForConfig
+	// is lazy and Validate exits before the network call for the bad-token cases.
+	kubeconfigPath := filepath.Join(t.TempDir(), "kubeconfig")
+	const validKubeconfigYAML = `
+apiVersion: v1
+kind: Config
+clusters:
+- name: stub
+  cluster:
+    server: https://127.0.0.1:6443
+    insecure-skip-tls-verify: true
+users:
+- name: stub
+  user:
+    token: stub-token
+contexts:
+- name: stub
+  context:
+    cluster: stub
+    user: stub
+current-context: stub
+`
+	if err := os.WriteFile(kubeconfigPath, []byte(validKubeconfigYAML), 0o600); err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
 	}
+
+	cfg := config.K8sSATokenConfig{Kubeconfig: kubeconfigPath}
 
 	val, err := NewValidator(cfg, logger)
 	if err != nil {

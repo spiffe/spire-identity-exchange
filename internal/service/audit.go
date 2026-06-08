@@ -13,7 +13,7 @@ const (
 // auditEntry accumulates structured fields for a single MintCertificate request.
 // Call logSuccess or logRejection exactly once at the end of each request.
 type auditEntry struct {
-	AttestorType string // "github_oidc" or "k8s_sa_token"
+	AttestorType string // "github_oidc" or "k8s_psat"
 	SVIDType     string // "x509" or "jwt"
 	TokenIssuer  string // iss claim value; populated after token validation
 	SpiffeID     string // derived SPIFFE ID; populated after SPIFFE ID generation

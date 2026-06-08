@@ -60,14 +60,9 @@
   },
   "k8sSAToken": {
     "enabled": false,
-    "apiHost": "https://kubernetes.default.svc:443",
     "clusterName": "my-cluster",
     "audiences": ["spire-identity-exchange"],
     "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
-    "tls": {
-      "caFile": "",
-      "certFile": "",
-      "keyFile": ""
-    }
+    "kubeconfig": ""
   }
 }
