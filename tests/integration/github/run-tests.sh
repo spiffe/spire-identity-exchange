@@ -207,4 +207,6 @@ sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
 
+sudo /bin/bash -c "export SPIFFE_ENDPOINT_SOCKET=unix:///var/run/spire/agent/sockets/main/public/api.sock; timeout 5 /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml"
+
 cat /etc/kubernetes/pki/auth-config.yaml
