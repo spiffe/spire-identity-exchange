@@ -8,6 +8,10 @@ concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  KIND_VERSION: v0.24.0
+  KIND_NODE_VERSION: v1.35.1
+
 jobs:
   basic-tests:
     name: Run Basic Tests
@@ -61,6 +65,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
+      - name: Create kind ${{ matrix.k8s }} cluster
+        uses: helm/kind-action@v1.14.0
+        #FIXME make this k8s later
+        if: contains(fromJSON('["github"]'), matrix.integrationtest)
+        with:
+          version: ${{ env.KIND_VERSION }}
+          node_image: kindest/node:${{ env.KIND_NODE_VERSION }}
+          config: .github/kind/conf/kind-config.yaml
+          verbosity: 1
       - name: Request Optional Custom JWT
         id: token_request
         run: |
