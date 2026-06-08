@@ -68,6 +68,60 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 	return resp, nil
 }
 
+// MintCertificateByPlugin mints an SVID using the pkg/validator-registered
+// plugin named in PluginAuth.pluginName. Mirrors the REST
+// /api/v1/svid/{stack}/x509 dispatch — plugin name resolves to a pre-built
+// authHandler (validator + SPIFFE ID template + TTL) at startup; this handler
+// just validates the token, derives the SPIFFE ID from the operator template,
+// and delegates to mintFromClaims for SVID issuance.
+//
+// Auth-method symmetry with the legacy MintCertificateByGithubOIDC /
+// MintCertificateByK8sSAToken paths is intentional so audit/metrics behavior
+// is identical regardless of which oneof variant the caller used.
+func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
+	pluginAuth := req.GetPluginAuth()
+	if pluginAuth == nil {
+		return nil, status.Error(codes.InvalidArgument, "PluginAuth is not set")
+	}
+	pluginName := pluginAuth.GetPluginName()
+	if pluginName == "" {
+		return nil, status.Error(codes.InvalidArgument, "pluginName is required")
+	}
+
+	handler, ok := h.pluginHandlers[pluginName]
+	if !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "unknown plugin %q", pluginName)
+	}
+
+	audit := &auditEntry{AttestorType: pluginName}
+	statusCode := codes.InvalidArgument
+	now := time.Now()
+	defer func() {
+		h.metrics.IncOperationCount(constant.ComponentLabel, constant.PluginLabel, pluginName, statusCode.String())
+		h.metrics.ObserveOperationDuration(constant.ComponentLabel, constant.PluginLabel, pluginName, statusCode.String(), time.Since(now).Seconds())
+	}()
+
+	purpose := h.determinePurpose(req)
+	claims, err := handler.validator.Validate(ctx, pluginAuth.GetToken(), purpose)
+	if err != nil {
+		audit.FailedStage = stageTokenValidation
+		audit.RejectionReason = err.Error()
+		audit.logRejection(logger)
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("failed to validate %s token: %v", pluginName, err))
+	}
+	audit.TokenIssuer, _ = claims.GetRaw()["iss"].(string)
+
+	resp, err := h.mintFromClaims(ctx, claims, handler, req, audit)
+	if err != nil {
+		statusCode = status.Code(err)
+		return nil, err
+	}
+
+	statusCode = codes.OK
+	audit.logSuccess(logger)
+	return resp, nil
+}
+
 // MintCertificateByK8sSAToken mints an SVID using a Kubernetes service account token.
 func (h *SpireIdentityExchangeServer) MintCertificateByK8sSAToken(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
 	audit := &auditEntry{AttestorType: "k8s_psat"}

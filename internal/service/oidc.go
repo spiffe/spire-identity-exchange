@@ -27,6 +27,9 @@ func (h *SpireIdentityExchangeServer) MintCertificate(ctx context.Context, req *
 		}
 		response, err = h.MintCertificateByK8sSAToken(ctx, req, h.logger)
 
+	case *proto.MintCertificateRequest_PluginAuth:
+		response, err = h.MintCertificateByPlugin(ctx, req, h.logger)
+
 	default:
 		h.logger.Warn("unknown AuthMethod type", zap.Any("AuthMethod", req.AuthMethod))
 		return nil, status.Error(codes.InvalidArgument, "unknown AuthMethod type")

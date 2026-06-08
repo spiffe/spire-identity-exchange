@@ -26,8 +26,9 @@ type authHandler struct {
 type SpireIdentityExchangeServer struct {
 	proto.UnimplementedSpireIdentityExchangeApiServer
 	spireClient     server_util.ServerClient
-	githubOIDC      *authHandler // nil if not configured
-	k8sSAToken      *authHandler // nil if not configured
+	githubOIDC      *authHandler            // legacy hard-coded auth, nil if not configured
+	k8sSAToken      *authHandler            // legacy hard-coded auth, nil if not configured
+	pluginHandlers  map[string]*authHandler // keyed by cfg.Auth.Plugins[].name; mirrors LoadedStacks for the gRPC PluginAuth path
 	config          *config.SpireIdentityExchangeConfig
 	purposeResolver *v.PurposeResolver
 	metrics         metrics.Metrics
@@ -81,6 +82,31 @@ func NewGRPCHandler(
 			validator:        k8sSATokenValidator,
 			spiffeIDTemplate: tmpl,
 			svidTTL:          effectiveTTL(cfg.K8sSAToken.SVIDTTL, cfg.SPIRE.SVIDTTL),
+		}
+	}
+
+	// Build a per-plugin authHandler map so the gRPC PluginAuth path can route
+	// by plugin name through the pkg/validator registry — symmetric with how the
+	// REST /api/v1/svid/{stack}/x509 handler reads cfg.Auth.LoadedStacks.
+	if len(cfg.Auth.LoadedPlugins) > 0 {
+		server.pluginHandlers = make(map[string]*authHandler, len(cfg.Auth.LoadedPlugins))
+		for _, pc := range cfg.Auth.Plugins {
+			loaded, ok := cfg.Auth.LoadedPlugins[pc.Name]
+			if !ok {
+				continue
+			}
+			if pc.SPIFFEIDTemplate == "" {
+				return nil, fmt.Errorf("plugin %q: spiffeIdTemplate is required for gRPC PluginAuth", pc.Name)
+			}
+			tmpl, err := template.New(spiffeTemplateName).Parse(pc.SPIFFEIDTemplate)
+			if err != nil {
+				return nil, fmt.Errorf("invalid SPIFFE ID template for plugin %q: %w", pc.Name, err)
+			}
+			server.pluginHandlers[pc.Name] = &authHandler{
+				validator:        loaded,
+				spiffeIDTemplate: tmpl,
+				svidTTL:          effectiveTTL(pc.SVIDTTL, cfg.SPIRE.SVIDTTL),
+			}
 		}
 	}
 
