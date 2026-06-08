@@ -191,7 +191,7 @@ fi
 
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 
-kubectl apply -f spire-identity-exchange-clusterrole.yaml
+kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
 docker ps
