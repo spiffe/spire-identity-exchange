@@ -12,13 +12,13 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
+	spiretypes "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	constant "github.com/spiffe/spire-identity-exchange/internal/const"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
 	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
-	"github.com/spiffe/go-spiffe/v2/spiffeid"
-	spiretypes "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
-	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -70,7 +70,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 
 // MintCertificateByK8sSAToken mints an SVID using a Kubernetes service account token.
 func (h *SpireIdentityExchangeServer) MintCertificateByK8sSAToken(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
-	audit := &auditEntry{AttestorType: "k8s_sa_token"}
+	audit := &auditEntry{AttestorType: "k8s_psat"}
 	statusCode := codes.InvalidArgument
 	now := time.Now()
 	defer func() {
@@ -417,4 +417,3 @@ func populateX509AuditFields(audit *auditEntry, svid *spiretypes.X509SVID) {
 		}
 	}
 }
-
