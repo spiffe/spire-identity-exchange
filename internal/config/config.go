@@ -63,7 +63,7 @@ type TLSConfig struct {
 
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
-	Plugins       []PluginConfig `json:"plugins"`
+	Plugins       []PluginConfig                                          `json:"plugins"`
 	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 }

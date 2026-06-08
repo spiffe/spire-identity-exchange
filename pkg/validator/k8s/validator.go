@@ -117,10 +117,14 @@ type Validator struct {
 }
 
 // NewValidator constructs a Validator wrapping a freshly-built
-// TokenReviewValidator.
+// TokenReviewValidator. Operator-facing config invariants are enforced by
+// ValidateConfig; this defensive re-check protects programmatic callers
+// that build a Config directly (e.g., tests) and would otherwise produce
+// a Validator that accepts every token. Error message matches
+// ValidateConfig's wording for consistency.
 func NewValidator(cfg Config) (*Validator, error) {
 	if len(cfg.AllowedNamespaces) == 0 && len(cfg.AllowedServiceAccounts) == 0 {
-		return nil, fmt.Errorf("at least one of allowed_namespaces or allowed_service_accounts must be configured")
+		return nil, fmt.Errorf("at least one of allowedNamespaces or allowedServiceAccounts must be specified")
 	}
 
 	inner, err := NewTokenReviewValidator(TokenReviewConfig{
@@ -165,8 +169,9 @@ func (v *Validator) Validate(ctx context.Context, token string, purpose validato
 
 // checkAllowLists enforces AND logic: when both lists are configured, the
 // token must match both the namespace allowlist and the service-account allowlist.
-// Reads from the typed Claims (which tolerates both modern projected and
-// legacy in-cluster token shapes) rather than the raw map.
+// Takes the raw claim map as input and converts it via claimsFromRaw, which
+// tolerates both modern projected and legacy in-cluster SA token shapes; the
+// allowlist comparisons read the typed Claims rather than the raw keys.
 func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
 	c := claimsFromRaw(raw)
 	if len(v.allowedNamespaces) > 0 {

@@ -1,7 +1,9 @@
 package k8s
 
 // Claims holds Kubernetes service-account token specific fields used
-// internally for typed access when generating selectors.
+// internally for typed access — selector generation reads it to emit
+// k8s_psat selectors, and the wrapper Validator reads it for allowlist
+// enforcement (namespace and service-account checks).
 type Claims struct {
 	Subject            string
 	ClusterName        string

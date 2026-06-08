@@ -96,7 +96,7 @@ func TestNewValidator(t *testing.T) {
 				AuthClient: &mockAuthV1Client{tokenValid: true},
 			},
 			expectErr: true,
-			errMsg:    "at least one of allowed_namespaces or allowed_service_accounts",
+			errMsg:    "at least one of allowedNamespaces or allowedServiceAccounts",
 		},
 	}
 
@@ -234,7 +234,7 @@ func TestValidateWrapsInner(t *testing.T) {
 		// Configure a different validator whose mock returns the same username
 		// the token's sub will carry, but whose namespace is outside the allowlist.
 		denyCfg := Config{
-				AllowedNamespaces: []string{"prod-only"},
+			AllowedNamespaces: []string{"prod-only"},
 			AuthClient: &mockAuthV1Client{
 				tokenValid:     true,
 				returnUsername: "system:serviceaccount:ns:sa",
@@ -291,8 +291,8 @@ func TestGenerateSelectors(t *testing.T) {
 		{
 			name: "legacy_in_cluster_token_shape",
 			raw: map[string]interface{}{
-				"sub": "system:serviceaccount:ns:sa",
-				"kubernetes.io/serviceaccount/namespace":            "ns",
+				"sub":                                    "system:serviceaccount:ns:sa",
+				"kubernetes.io/serviceaccount/namespace": "ns",
 				"kubernetes.io/serviceaccount/service-account.name": "sa",
 				"kubernetes.io/serviceaccount/service-account.uid":  "sa-uid",
 			},
