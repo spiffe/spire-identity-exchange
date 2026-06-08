@@ -198,6 +198,10 @@ kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-id
 sudo systemctl stop apparmor
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper
 sudo sed -i 's/MemoryDenyWriteExecute=true/MemoryDenyWriteExecute=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+sudo sed -i 's/RestrictNamespaces=true/RestrictNamespaces=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+sudo sed -i 's/NoNewPrivileges=true/NoNewPrivileges=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+sudo sed -i 's/ProtectSystem=strict/ProtectSystem=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
 sudo systemctl daemon-reload
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 sudo mkdir -p /etc/kubernetes/pki
