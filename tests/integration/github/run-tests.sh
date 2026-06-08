@@ -17,6 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
+  sudo systemctl status k8s-spiffe-workload-auth-config || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main -n 50 2>&1 || true
