@@ -65,7 +65,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
-      - name: Create kind ${{ matrix.k8s }} cluster
+      - name: Create kind cluster
         uses: helm/kind-action@v1.14.0
         #FIXME make this k8s later
         if: contains(fromJSON('["github"]'), matrix.integrationtest)
