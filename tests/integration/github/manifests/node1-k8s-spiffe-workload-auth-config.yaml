@@ -1,0 +1,9 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: node1-k8s-spiffe-workload-auth-config
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/k8s-spiffe-workload-auth-config
+  selectors:
+  - systemd:id:k8s-spiffe-workload-auth-config.service

@@ -194,7 +194,10 @@ curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:84
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
-docker ps
+sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth
+sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
+sudo systemctl start k8s-spiffe-workload-auth-config
+
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
