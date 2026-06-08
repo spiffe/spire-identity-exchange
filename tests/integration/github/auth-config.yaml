@@ -1,13 +1,16 @@
-apiVersion: apiserver.config.k8s.io/v1beta1
+apiVersion: apiserver.config.k8s.io/v1alpha1
 kind: AuthenticationConfiguration
 jwt:
-  - issuer:
-    url: https://oidc-discovery-provider.example.org
+- issuer:
+    url: https://oidc-discovery-provider.${SPIFFE_TRUST_DOMAIN}
     audiences:
-      - k8s-chart-testing
-    certificateAuthority: changeme
+    - k8s-${K8S_CLUSTER_NAME}
+    certificateAuthority: ""
   claimMappings:
     username:
-      expression: 'claims.sub.startsWith("spiffe://example.org/k8s/chart-testing/nodes/")? claims.sub.replace("spiffe://example.org/k8s/chart-testing/nodes/", "system:node:"): claims.sub'
+      expression: |
+        claims.sub.startsWith("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/")? claims.sub.replace("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/", "system:node:").replace(".${SPIFFE_TRUST_DOMAIN}", ""): cl
+aims.sub
     groups:
-      expression: 'claims.sub.startsWith("spiffe://example.com/k8s/chart-testing/nodes/")? ["system:nodes"]: []'
+      expression: |
+        claims.sub.startsWith("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/")? ["system:nodes"]: []
