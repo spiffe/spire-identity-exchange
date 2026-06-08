@@ -197,6 +197,7 @@ kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-id
 
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
+sudo mkdir -p /etc/kubernetes/pki
 sudo systemctl start k8s-spiffe-workload-auth-config
 
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
