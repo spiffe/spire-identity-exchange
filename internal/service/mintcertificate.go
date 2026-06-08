@@ -70,7 +70,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 
 // MintCertificateByK8sSAToken mints an SVID using a Kubernetes service account token.
 func (h *SpireIdentityExchangeServer) MintCertificateByK8sSAToken(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
-	audit := &auditEntry{AttestorType: "k8s_sa_token"}
+	audit := &auditEntry{AttestorType: "k8s_psat"}
 	statusCode := codes.InvalidArgument
 	now := time.Now()
 	defer func() {

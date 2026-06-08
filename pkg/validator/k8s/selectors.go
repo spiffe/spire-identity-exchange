@@ -7,7 +7,10 @@ import (
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 )
 
-const SelectorType = "k8s_sa_token"
+// SelectorType is the SPIRE selector type emitted for K8s SA token claims.
+// Matches SPIRE's k8s_psat node attestor naming so operators see a single
+// consistent identifier across both attestation and exchange surfaces.
+const SelectorType = "k8s_psat"
 
 // GenerateSelectors produces SPIRE selectors from validated K8s service-account
 // token claims. Implements validator.SelectorGenerator.

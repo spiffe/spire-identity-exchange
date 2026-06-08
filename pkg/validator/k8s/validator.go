@@ -17,7 +17,8 @@ import (
 
 // TokenValidatorLoaderGenerator returns a fresh Config that can be unmarshaled,
 // validated, and used to construct a Validator. It is registered with the
-// validator registry under the "k8s_sa_token" plugin name.
+// validator registry under the "k8s_psat" plugin name — matching SPIRE's
+// node-attestor naming for projected SA tokens.
 func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 	return &Config{}, nil
 }
