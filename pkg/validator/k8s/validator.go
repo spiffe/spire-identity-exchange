@@ -51,13 +51,19 @@ type Config struct {
 	AllowedServiceAccounts []string `json:"allowedServiceAccounts"`
 
 	// Kubeconfig is an optional path to a kubeconfig file used to reach the
-	// Kubernetes API server for TokenReview calls. Leave empty to use the
-	// standard fallback chain: in-cluster credentials first (when SIE itself
-	// runs as a pod), then $KUBECONFIG, then $HOME/.kube/config. A kubeconfig
-	// natively expresses every K8s auth flavor (in-cluster SA token, mTLS,
-	// bearer token, AWS IAM / GKE / Azure exec plugins, SPIRE-issued SVID via
-	// exec plugin), so a single field replaces what would otherwise be
-	// apiHost + caFile + certFile + keyFile.
+	// Kubernetes API server for TokenReview calls.
+	//
+	// Resolution order (independent of this field): the runtime always probes
+	// in-cluster credentials first — when SIE runs as a pod, the kubelet-injected
+	// ServiceAccount token wins outright and this field is ignored. Only when
+	// SIE is NOT running in-cluster does kubeconfig loading happen, and only
+	// then does this field matter: when set, it is the single file loaded;
+	// when empty, the loader falls back to $KUBECONFIG, then $HOME/.kube/config.
+	//
+	// A kubeconfig file natively expresses every K8s auth flavor (in-cluster
+	// SA token, mTLS, bearer token, AWS IAM / GKE / Azure exec plugins,
+	// SPIRE-issued SVID via exec plugin), so a single field replaces what
+	// would otherwise be apiHost + caFile + certFile + keyFile.
 	Kubeconfig string `json:"kubeconfig"`
 
 	// AuthClient overrides the default-built TokenReview client. Primarily a

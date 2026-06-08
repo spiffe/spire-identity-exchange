@@ -46,12 +46,20 @@ type TokenReviewConfig struct {
 
 	// Kubeconfig is an optional explicit path to a kubeconfig file that
 	// describes the API server endpoint, the CA used to verify it, and the
-	// credentials used to authenticate to it. Leave empty to use the standard
-	// in-cluster → KUBECONFIG env → $HOME/.kube/config fallback chain handled
-	// by getKubernetesConfig. A kubeconfig composes natively with every K8s
-	// authentication style (in-cluster SA token, mTLS client certs, bearer
-	// token, AWS IAM / GKE / Azure exec plugins, SPIRE-issued client SVID via
-	// exec plugin or cert/key paths).
+	// credentials used to authenticate to it.
+	//
+	// This field only matters when SIE is NOT running in-cluster:
+	// getKubernetesConfig unconditionally probes rest.InClusterConfig() first
+	// and returns those credentials if the probe succeeds — Kubeconfig is
+	// ignored in that case. When the probe fails (ErrNotInCluster), the
+	// kubeconfig loader runs: with Kubeconfig set, that path is the single
+	// file loaded; with Kubeconfig empty, the loader falls back to $KUBECONFIG,
+	// then $HOME/.kube/config.
+	//
+	// A kubeconfig composes natively with every K8s authentication style
+	// (in-cluster SA token, mTLS client certs, bearer token, AWS IAM / GKE /
+	// Azure exec plugins, SPIRE-issued client SVID via exec plugin or
+	// cert/key paths).
 	Kubeconfig string
 
 	// AuthClient overrides the default-built TokenReview client. Primarily a
@@ -62,8 +70,9 @@ type TokenReviewConfig struct {
 
 // NewTokenReviewValidator constructs a TokenReviewValidator. When
 // cfg.AuthClient is non-nil it is used directly (intended for tests);
-// otherwise a TokenReview-backed client is built via getKubernetesConfig
-// (which honors in-cluster credentials first, then kubeconfig).
+// otherwise a TokenReview-backed client is built via getKubernetesConfig,
+// which always tries in-cluster credentials first and only falls through to
+// kubeconfig when the in-cluster probe returns ErrNotInCluster.
 // The underlying clientset is goroutine-safe and reuses HTTP/TLS connections to
 // the API server across requests.
 func NewTokenReviewValidator(cfg TokenReviewConfig) (*TokenReviewValidator, error) {
