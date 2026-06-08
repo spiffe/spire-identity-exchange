@@ -16,12 +16,8 @@ import (
 
 func TestValidateConfig(t *testing.T) {
 	dir := t.TempDir()
-	ca := filepath.Join(dir, "ca.pem")
-	cert := filepath.Join(dir, "cert.pem")
-	key := filepath.Join(dir, "key.pem")
-	for _, p := range []string{ca, cert, key} {
-		require.NoError(t, os.WriteFile(p, []byte("stub"), 0o600))
-	}
+	kubeconfig := filepath.Join(dir, "kubeconfig")
+	require.NoError(t, os.WriteFile(kubeconfig, []byte("stub"), 0o600))
 
 	tests := []struct {
 		name      string
@@ -32,69 +28,38 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "valid_config_namespaces",
 			cfg: Config{
-				APIHost:           "https://kubernetes.default.svc:443",
 				AllowedNamespaces: []string{"prod"},
-				TLS:               TLSConfig{CAFile: ca, CertFile: cert, KeyFile: key},
 			},
 		},
 		{
 			name: "valid_config_service_accounts",
 			cfg: Config{
-				APIHost:                "https://kubernetes.default.svc:443",
 				AllowedServiceAccounts: []string{"prod/web"},
-				TLS:                    TLSConfig{CAFile: ca, CertFile: cert, KeyFile: key},
 			},
 		},
 		{
-			name: "missing_apiHost",
+			name: "valid_config_with_explicit_kubeconfig",
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
-				TLS:               TLSConfig{CAFile: ca, CertFile: cert, KeyFile: key},
+				Kubeconfig:        kubeconfig,
 			},
-			expectErr: true,
-			errMsg:    "apiHost is required",
-		},
-		{
-			name: "non_https_apiHost",
-			cfg: Config{
-				APIHost:           "http://kubernetes.default.svc:443",
-				AllowedNamespaces: []string{"prod"},
-				TLS:               TLSConfig{CAFile: ca, CertFile: cert, KeyFile: key},
-			},
-			expectErr: true,
-			errMsg:    "apiHost must use https://",
 		},
 		{
 			name: "missing_allowlists",
 			cfg: Config{
-				APIHost: "https://kubernetes.default.svc:443",
-				TLS:     TLSConfig{CAFile: ca, CertFile: cert, KeyFile: key},
+				Kubeconfig: kubeconfig,
 			},
 			expectErr: true,
 			errMsg:    "at least one of allowedNamespaces or allowedServiceAccounts",
 		},
 		{
-			name: "missing_tls_files",
+			name: "kubeconfig_path_not_found",
 			cfg: Config{
-				APIHost:           "https://kubernetes.default.svc:443",
 				AllowedNamespaces: []string{"prod"},
+				Kubeconfig:        filepath.Join(dir, "missing-kubeconfig"),
 			},
 			expectErr: true,
-			errMsg:    "tls.caFile is required",
-		},
-		{
-			name: "tls_file_not_found",
-			cfg: Config{
-				APIHost:           "https://kubernetes.default.svc:443",
-				AllowedNamespaces: []string{"prod"},
-				TLS: TLSConfig{
-					CAFile:   filepath.Join(dir, "missing-ca.pem"),
-					CertFile: cert,
-					KeyFile:  key,
-				},
-			},
-			expectErr: true,
-			errMsg:    "tls.caFile not found",
+			errMsg:    "kubeconfig not found",
 		},
 	}
 
@@ -121,24 +86,13 @@ func TestNewValidator(t *testing.T) {
 		{
 			name: "minimum_required",
 			cfg: Config{
-				APIHost:           "https://kubernetes.default.svc:443",
 				AllowedNamespaces: []string{"prod"},
 				AuthClient:        &mockAuthV1Client{tokenValid: true},
 			},
-		},
-		{
-			name: "missing_apiHost",
-			cfg: Config{
-				AllowedNamespaces: []string{"prod"},
-				AuthClient:        &mockAuthV1Client{tokenValid: true},
-			},
-			expectErr: true,
-			errMsg:    "apiHost is required",
 		},
 		{
 			name: "missing_allowlists",
 			cfg: Config{
-				APIHost:    "https://kubernetes.default.svc:443",
 				AuthClient: &mockAuthV1Client{tokenValid: true},
 			},
 			expectErr: true,
@@ -249,7 +203,6 @@ func TestCheckAllowLists(t *testing.T) {
 // The exhaustive TokenReview-side cases live in tokenreview_test.go.
 func TestValidateWrapsInner(t *testing.T) {
 	cfg := Config{
-		APIHost:           "https://kubernetes.default.svc:443",
 		ClusterName:       "prod-cluster",
 		AllowedNamespaces: []string{"ns"},
 		AuthClient: &mockAuthV1Client{
@@ -281,8 +234,7 @@ func TestValidateWrapsInner(t *testing.T) {
 		// Configure a different validator whose mock returns the same username
 		// the token's sub will carry, but whose namespace is outside the allowlist.
 		denyCfg := Config{
-			APIHost:           "https://kubernetes.default.svc:443",
-			AllowedNamespaces: []string{"prod-only"},
+				AllowedNamespaces: []string{"prod-only"},
 			AuthClient: &mockAuthV1Client{
 				tokenValid:     true,
 				returnUsername: "system:serviceaccount:ns:sa",

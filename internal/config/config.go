@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"regexp"
 	"time"
@@ -148,17 +147,11 @@ type K8sSATokenConfig struct {
 	// Whether this validator is enabled
 	Enabled bool `json:"enabled"`
 
-	// Required. Kubernetes API server URL used for the TokenReview call.
-	// Must be a trusted, operator-configured value; the token's iss claim is NEVER
-	// used as a network destination because it is attacker-controlled until the
-	// token has been verified.
-	APIHost string `json:"apiHost"`
-
 	// Optional. Operator-defined cluster identifier exposed to the SPIFFE ID template
 	// as {{.k8s_cluster_name}}. This MUST come from configuration — never from the
 	// request — because each Validator authenticates against exactly one cluster
-	// (apiHost) and accepting a caller-supplied value would allow cross-cluster
-	// identity impersonation.
+	// (the one its kubeconfig / in-cluster credentials target) and accepting a
+	// caller-supplied value would allow cross-cluster identity impersonation.
 	ClusterName string `json:"clusterName"`
 
 	// Optional. Expected audiences for incoming service-account tokens. When set,
@@ -172,24 +165,19 @@ type K8sSATokenConfig struct {
 	// Available variables are raw JWT claims, e.g. "spiffe://example.org/k8s/{{.sub}}"
 	SPIFFEIDTemplate string `json:"spiffeIdTemplate"`
 
-	// TLS configuration for authenticating with the Kubernetes API server
-	TLS K8sAPIClientTlsConfig `json:"tls"`
+	// Optional path to a kubeconfig file used to reach the Kubernetes API
+	// server for TokenReview calls. Leave empty to use the standard fallback
+	// chain: in-cluster credentials first (when SIE itself runs as a pod),
+	// then $KUBECONFIG, then $HOME/.kube/config. A kubeconfig file natively
+	// expresses every K8s auth flavor (in-cluster SA token, mTLS, bearer
+	// token, AWS IAM / GKE / Azure exec plugins, SPIRE-issued SVID via exec
+	// plugin), so this single field replaces what would otherwise be
+	// apiHost + caFile + certFile + keyFile.
+	Kubeconfig string `json:"kubeconfig"`
 
 	// SVID TTL for certificates issued via this auth method.
 	// Overrides spire.svidTTL when set. Falls back to spire.svidTTL if zero.
 	SVIDTTL Duration `json:"svidTTL"`
-}
-
-// K8sAPIClientTlsConfig contains Kubernetes API server configuration for mutual TLS with k8s API server.
-type K8sAPIClientTlsConfig struct {
-	// CA certificate file used to verify the K8s API server certificate
-	CAFile string `json:"caFile"`
-
-	// Client certificate presented to authenticate with the k8s API server
-	CertFile string `json:"certFile"`
-
-	// Client key presented to authenticate with the k8s API server
-	KeyFile string `json:"keyFile"`
 }
 
 func (c *AuthConfig) Validate() error {
@@ -263,30 +251,6 @@ func (c *SPIREConfig) Validate() error {
 	return errors.Join(errs...)
 }
 
-func (c *K8sAPIClientTlsConfig) Validate() error {
-	var errs []error
-
-	if c.CAFile == "" {
-		errs = append(errs, errors.New("tls.caFile is required"))
-	} else if _, err := os.Stat(c.CAFile); err != nil {
-		errs = append(errs, fmt.Errorf("tls.caFile not found at %q: %w", c.CAFile, err))
-	}
-
-	if c.CertFile == "" {
-		errs = append(errs, errors.New("tls.certFile is required"))
-	} else if _, err := os.Stat(c.CertFile); err != nil {
-		errs = append(errs, fmt.Errorf("tls.certFile not found at %q: %w", c.CertFile, err))
-	}
-
-	if c.KeyFile == "" {
-		errs = append(errs, errors.New("tls.keyFile is required"))
-	} else if _, err := os.Stat(c.KeyFile); err != nil {
-		errs = append(errs, fmt.Errorf("tls.keyFile not found at %q: %w", c.KeyFile, err))
-	}
-
-	return errors.Join(errs...)
-}
-
 func (c *GitHubOIDCConfig) Validate() error {
 	if !c.Enabled {
 		return nil
@@ -318,23 +282,19 @@ func (c *K8sSATokenConfig) Validate() error {
 		return nil
 	}
 	var errs []error
-	if c.APIHost == "" {
-		errs = append(errs, errors.New("k8sSAToken.apiHost is required when k8sSAToken is enabled"))
-	} else {
-		// TokenReview sends the caller's bearer token; require TLS to prevent
-		// cleartext credential exposure to a misconfigured plain-HTTP endpoint.
-		u, err := url.Parse(c.APIHost)
-		switch {
-		case err != nil:
-			errs = append(errs, fmt.Errorf("k8sSAToken.apiHost %q is not a valid URL: %w", c.APIHost, err))
-		case u.Scheme != "https":
-			errs = append(errs, fmt.Errorf("k8sSAToken.apiHost must use https:// (got %q)", c.APIHost))
-		}
-	}
 	if c.SPIFFEIDTemplate == "" {
 		errs = append(errs, errors.New("k8sSAToken.spiffeIdTemplate is required when k8sSAToken is enabled"))
 	}
-	errs = append(errs, c.TLS.Validate())
+	// API server connectivity comes from the kubeconfig / in-cluster fallback
+	// resolved at runtime in pkg/validator/k8s. Only check that an explicit
+	// kubeconfig path, when set, points at an existing file; absence is fine
+	// because the resolver will fall back to in-cluster credentials, then
+	// $KUBECONFIG, then $HOME/.kube/config.
+	if c.Kubeconfig != "" {
+		if _, err := os.Stat(c.Kubeconfig); err != nil {
+			errs = append(errs, fmt.Errorf("k8sSAToken.kubeconfig not found at %q: %w", c.Kubeconfig, err))
+		}
+	}
 	return errors.Join(errs...)
 }
 

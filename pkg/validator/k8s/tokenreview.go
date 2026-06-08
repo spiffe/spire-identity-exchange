@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	authenticationv1 "k8s.io/client-go/kubernetes/typed/authentication/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // saUsernamePrefix is the K8s convention for service-account principals returned
@@ -38,33 +40,41 @@ type TokenReviewValidator struct {
 
 // TokenReviewConfig holds configuration for a TokenReviewValidator.
 type TokenReviewConfig struct {
-	// APIHost is the Kubernetes API server URL used for TokenReview. Must be a
-	// trusted, operator-configured value; the token's iss claim is NEVER used as
-	// a network destination because it is attacker-controlled until verified.
-	APIHost string
 	// Audiences are forwarded to the TokenReview Spec.Audiences so Kubernetes
 	// binds the authentication decision to the audiences this service expects.
 	Audiences []string
-	// CAFile, CertFile, KeyFile are the mTLS materials for authenticating to the
-	// Kubernetes API server.
-	CAFile   string
-	CertFile string
-	KeyFile  string
+
+	// Kubeconfig is an optional explicit path to a kubeconfig file that
+	// describes the API server endpoint, the CA used to verify it, and the
+	// credentials used to authenticate to it. Leave empty to use the standard
+	// in-cluster → KUBECONFIG env → $HOME/.kube/config fallback chain handled
+	// by getKubernetesConfig. A kubeconfig composes natively with every K8s
+	// authentication style (in-cluster SA token, mTLS client certs, bearer
+	// token, AWS IAM / GKE / Azure exec plugins, SPIRE-issued client SVID via
+	// exec plugin or cert/key paths).
+	Kubeconfig string
+
 	// AuthClient overrides the default-built TokenReview client. Primarily a
-	// test seam — when nil, NewTokenReviewValidator builds a client from
-	// APIHost + TLS materials.
+	// test seam — when nil, NewTokenReviewValidator builds a client via
+	// getKubernetesConfig.
 	AuthClient authenticationv1.AuthenticationV1Interface
 }
 
 // NewTokenReviewValidator constructs a TokenReviewValidator. When
 // cfg.AuthClient is non-nil it is used directly (intended for tests);
-// otherwise a TokenReview-backed client is built from APIHost + TLS materials.
+// otherwise a TokenReview-backed client is built via getKubernetesConfig
+// (which honors in-cluster credentials first, then kubeconfig).
 // The underlying clientset is goroutine-safe and reuses HTTP/TLS connections to
 // the API server across requests.
 func NewTokenReviewValidator(cfg TokenReviewConfig) (*TokenReviewValidator, error) {
 	authClient := cfg.AuthClient
 	if authClient == nil {
-		restCfg := newK8sClientConfig(cfg.APIHost, cfg.CertFile, cfg.KeyFile, cfg.CAFile)
+		restCfg, err := getKubernetesConfig(cfg.Kubeconfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build kubernetes client config: %w", err)
+		}
+		restCfg.QPS = 20.0
+		restCfg.Burst = 30.0
 		clientset, err := kubernetes.NewForConfig(restCfg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
@@ -77,15 +87,36 @@ func NewTokenReviewValidator(cfg TokenReviewConfig) (*TokenReviewValidator, erro
 	}, nil
 }
 
-func newK8sClientConfig(k8sAPIHost, k8sClientCertFile, k8sClientKeyFile, k8sCAFile string) *rest.Config {
-	var c rest.Config
-	c.Host = k8sAPIHost
-	c.TLSClientConfig.CAFile = k8sCAFile
-	c.TLSClientConfig.CertFile = k8sClientCertFile
-	c.TLSClientConfig.KeyFile = k8sClientKeyFile
-	c.QPS = 20.0
-	c.Burst = 30.0
-	return &c
+// getKubernetesConfig builds a *rest.Config using the standard K8s client
+// resolution order:
+//
+//  1. In-cluster — kubelet-injected ServiceAccount token, CA, and
+//     KUBERNETES_SERVICE_{HOST,PORT}. Works automatically when SIE runs as a
+//     pod; no operator-supplied paths needed.
+//  2. Kubeconfig — explicit path from cfg.Kubeconfig wins; otherwise the
+//     loading rules fall back to $KUBECONFIG (env), then $HOME/.kube/config.
+//     A kubeconfig file expresses every K8s auth flavor (mTLS, bearer token,
+//     exec plugin for AWS/GKE/Azure/SPIRE), so a single field replaces what
+//     would otherwise be apiHost + caFile + certFile + keyFile.
+func getKubernetesConfig(kubeconfigPath string) (*rest.Config, error) {
+	if cfg, err := rest.InClusterConfig(); err == nil {
+		return cfg, nil
+	} else if !errors.Is(err, rest.ErrNotInCluster) {
+		return nil, fmt.Errorf("in-cluster config probe failed: %w", err)
+	}
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfigPath != "" {
+		loadingRules.ExplicitPath = kubeconfigPath
+	}
+	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules,
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+	}
+	return cfg, nil
 }
 
 // Validate authenticates a Kubernetes service-account token via TokenReview and

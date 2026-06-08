@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
@@ -25,16 +24,12 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 
 // Config holds configuration for the K8s SA token validator.
 type Config struct {
-	// APIHost is the Kubernetes API server URL used for TokenReview. Must be a
-	// trusted, operator-configured value; the token's iss claim is NEVER used as a
-	// network destination because it is attacker-controlled until verified.
-	APIHost string `json:"apiHost"`
-
 	// ClusterName is an operator-defined cluster identifier exposed to the SPIFFE
 	// ID template as {{.k8s_cluster_name}} and emitted as a selector. It MUST
 	// come from configuration — never from the request — because each Validator
-	// authenticates against exactly one cluster (apiHost) and accepting a
-	// caller-supplied value would allow cross-cluster identity impersonation.
+	// authenticates against exactly one cluster (the one its kubeconfig / in-cluster
+	// credentials target) and accepting a caller-supplied value would allow
+	// cross-cluster identity impersonation.
 	ClusterName string `json:"clusterName"`
 
 	// Audiences are forwarded to the TokenReview Spec.Audiences so Kubernetes
@@ -54,8 +49,15 @@ type Config struct {
 	// AllowedServiceAccounts must be set.
 	AllowedServiceAccounts []string `json:"allowedServiceAccounts"`
 
-	// TLS holds the mTLS materials used to authenticate to the Kubernetes API server.
-	TLS TLSConfig `json:"tls"`
+	// Kubeconfig is an optional path to a kubeconfig file used to reach the
+	// Kubernetes API server for TokenReview calls. Leave empty to use the
+	// standard fallback chain: in-cluster credentials first (when SIE itself
+	// runs as a pod), then $KUBECONFIG, then $HOME/.kube/config. A kubeconfig
+	// natively expresses every K8s auth flavor (in-cluster SA token, mTLS,
+	// bearer token, AWS IAM / GKE / Azure exec plugins, SPIRE-issued SVID via
+	// exec plugin), so a single field replaces what would otherwise be
+	// apiHost + caFile + certFile + keyFile.
+	Kubeconfig string `json:"kubeconfig"`
 
 	// AuthClient overrides the default-built TokenReview client. Primarily a
 	// test seam — passed through to the inner TokenReviewValidator. Mirrors how
@@ -68,13 +70,6 @@ type Config struct {
 	Metrics validator.Metrics `json:"-"`
 }
 
-// TLSConfig contains client mTLS materials for the Kubernetes API server.
-type TLSConfig struct {
-	CAFile   string `json:"caFile"`
-	CertFile string `json:"certFile"`
-	KeyFile  string `json:"keyFile"`
-}
-
 func (c *Config) Unmarshal(raw json.RawMessage) error {
 	return json.Unmarshal(raw, c)
 }
@@ -82,45 +77,20 @@ func (c *Config) Unmarshal(raw json.RawMessage) error {
 func (c *Config) ValidateConfig() error {
 	var errs []error
 
-	if c.APIHost == "" {
-		errs = append(errs, errors.New("apiHost is required"))
-	} else {
-		// TokenReview sends the caller's bearer token; require TLS to prevent
-		// cleartext credential exposure to a misconfigured plain-HTTP endpoint.
-		u, err := url.Parse(c.APIHost)
-		switch {
-		case err != nil:
-			errs = append(errs, fmt.Errorf("apiHost %q is not a valid URL: %w", c.APIHost, err))
-		case u.Scheme != "https":
-			errs = append(errs, fmt.Errorf("apiHost must use https:// (got %q)", c.APIHost))
-		}
-	}
-
 	if len(c.AllowedNamespaces) == 0 && len(c.AllowedServiceAccounts) == 0 {
 		errs = append(errs, errors.New("at least one of allowedNamespaces or allowedServiceAccounts must be specified"))
 	}
 
-	errs = append(errs, c.TLS.validate())
-	return errors.Join(errs...)
-}
+	// API server connectivity comes from the kubeconfig / in-cluster fallback,
+	// not from individual fields. Only validate that the explicit path exists
+	// if one is set; absence of a path is fine because the resolver will fall
+	// back to in-cluster credentials or to KUBECONFIG / $HOME/.kube/config.
+	if c.Kubeconfig != "" {
+		if _, err := os.Stat(c.Kubeconfig); err != nil {
+			errs = append(errs, fmt.Errorf("kubeconfig not found at %q: %w", c.Kubeconfig, err))
+		}
+	}
 
-func (t *TLSConfig) validate() error {
-	var errs []error
-	if t.CAFile == "" {
-		errs = append(errs, errors.New("tls.caFile is required"))
-	} else if _, err := os.Stat(t.CAFile); err != nil {
-		errs = append(errs, fmt.Errorf("tls.caFile not found at %q: %w", t.CAFile, err))
-	}
-	if t.CertFile == "" {
-		errs = append(errs, errors.New("tls.certFile is required"))
-	} else if _, err := os.Stat(t.CertFile); err != nil {
-		errs = append(errs, fmt.Errorf("tls.certFile not found at %q: %w", t.CertFile, err))
-	}
-	if t.KeyFile == "" {
-		errs = append(errs, errors.New("tls.keyFile is required"))
-	} else if _, err := os.Stat(t.KeyFile); err != nil {
-		errs = append(errs, fmt.Errorf("tls.keyFile not found at %q: %w", t.KeyFile, err))
-	}
 	return errors.Join(errs...)
 }
 
@@ -142,19 +112,13 @@ type Validator struct {
 // NewValidator constructs a Validator wrapping a freshly-built
 // TokenReviewValidator.
 func NewValidator(cfg Config) (*Validator, error) {
-	if cfg.APIHost == "" {
-		return nil, fmt.Errorf("apiHost is required")
-	}
 	if len(cfg.AllowedNamespaces) == 0 && len(cfg.AllowedServiceAccounts) == 0 {
 		return nil, fmt.Errorf("at least one of allowed_namespaces or allowed_service_accounts must be configured")
 	}
 
 	inner, err := NewTokenReviewValidator(TokenReviewConfig{
-		APIHost:    cfg.APIHost,
 		Audiences:  cfg.Audiences,
-		CAFile:     cfg.TLS.CAFile,
-		CertFile:   cfg.TLS.CertFile,
-		KeyFile:    cfg.TLS.KeyFile,
+		Kubeconfig: cfg.Kubeconfig,
 		AuthClient: cfg.AuthClient,
 	})
 	if err != nil {

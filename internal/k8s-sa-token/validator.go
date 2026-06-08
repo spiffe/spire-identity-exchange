@@ -15,7 +15,6 @@ import (
 // injects the operator-configured cluster name into the resulting claim map.
 // Implements validator.TokenValidator.
 type Validator struct {
-	apiHost     string
 	clusterName string
 	inner       *k8svalidator.TokenReviewValidator
 	logger      *zap.Logger
@@ -23,28 +22,23 @@ type Validator struct {
 
 // NewValidator creates a K8s SA token validator. The underlying TokenReview
 // client (and its HTTP/TLS state) is built once here and reused across requests.
+// API server connectivity comes from the kubeconfig / in-cluster fallback
+// resolved inside the inner TokenReviewValidator — not from individual
+// apiHost / TLS fields.
 func NewValidator(cfg config.K8sSATokenConfig, logger *zap.Logger) (*Validator, error) {
-	if cfg.APIHost == "" {
-		return nil, fmt.Errorf("k8sSAToken.apiHost is required")
-	}
-
 	inner, err := k8svalidator.NewTokenReviewValidator(k8svalidator.TokenReviewConfig{
-		APIHost:   cfg.APIHost,
-		Audiences: cfg.Audiences,
-		CAFile:    cfg.TLS.CAFile,
-		CertFile:  cfg.TLS.CertFile,
-		KeyFile:   cfg.TLS.KeyFile,
+		Audiences:  cfg.Audiences,
+		Kubeconfig: cfg.Kubeconfig,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token review validator: %w", err)
 	}
 
 	logger.Info("Initialized K8s SA token validator",
-		zap.String("apiHost", cfg.APIHost),
+		zap.String("kubeconfig", cfg.Kubeconfig),
 		zap.Strings("audiences", cfg.Audiences))
 
 	return &Validator{
-		apiHost:     cfg.APIHost,
 		clusterName: cfg.ClusterName,
 		inner:       inner,
 		logger:      logger,
@@ -54,11 +48,11 @@ func NewValidator(cfg config.K8sSATokenConfig, logger *zap.Logger) (*Validator, 
 // Validate delegates token authentication to the inner TokenReviewValidator and
 // injects k8s_cluster_name into the claim map. Implements validator.TokenValidator.
 //
-// The TokenReview is always sent to the operator-configured apiHost — never to
-// a host derived from the token's iss claim, which would be attacker-controlled
-// before verification.
+// The TokenReview always lands on the API server the inner client's kubeconfig
+// (or in-cluster credentials) target — never on a host derived from the token's
+// iss claim, which would be attacker-controlled before verification.
 func (v *Validator) Validate(ctx context.Context, token string, purpose validator.Purpose) (validator.Claims, error) {
-	v.logger.Info("Validating token via configured K8s API server", zap.String("apiHost", v.apiHost))
+	v.logger.Info("Validating token via configured K8s API server")
 
 	claims, err := v.inner.Validate(ctx, token, purpose)
 	if err != nil {

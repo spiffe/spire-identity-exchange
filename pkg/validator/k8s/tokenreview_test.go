@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,37 +92,59 @@ func mkToken(sub string, audiences ...string) string {
 }
 
 func TestNewTokenReviewValidator_BuildsRealClient(t *testing.T) {
+	// Build a minimal but syntactically valid kubeconfig the loader will accept.
+	// We never dial the server in this test — kubernetes.NewForConfig is lazy.
+	validKubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	const validKubeconfigYAML = `
+apiVersion: v1
+kind: Config
+clusters:
+- name: stub
+  cluster:
+    server: https://127.0.0.1:6443
+    insecure-skip-tls-verify: true
+users:
+- name: stub
+  user:
+    token: stub-token
+contexts:
+- name: stub
+  context:
+    cluster: stub
+    user: stub
+current-context: stub
+`
+	require.NoError(t, os.WriteFile(validKubeconfig, []byte(validKubeconfigYAML), 0o600))
+
+	// Isolate from any host kubeconfig the loader would otherwise discover via
+	// $KUBECONFIG or $HOME/.kube/config, so the test result depends only on
+	// what we pass in.
+	t.Setenv("KUBECONFIG", "")
+	t.Setenv("HOME", t.TempDir())
+
 	tests := []struct {
-		name              string
-		k8sAPIHost        string
-		k8sClientCertFile string
-		k8sClientKeyFile  string
-		k8sCAFile         string
-		wantErr           bool
-		errorContains     string
+		name          string
+		kubeconfig    string
+		wantErr       bool
+		errorContains string
 	}{
 		{
-			name:              "invalid configuration should return error",
-			k8sAPIHost:        "invalid-host",
-			k8sClientCertFile: "/nonexistent/cert.pem",
-			k8sClientKeyFile:  "/nonexistent/key.pem",
-			k8sCAFile:         "/nonexistent/ca.pem",
-			wantErr:           true,
-			errorContains:     "failed to create kubernetes client",
+			name:          "invalid kubeconfig path returns error",
+			kubeconfig:    "/nonexistent/kubeconfig",
+			wantErr:       true,
+			errorContains: "failed to load kubeconfig",
 		},
 		{
-			name:    "empty parameters should return no error (validation is deferred to ValidateConfig)",
-			wantErr: false,
+			name:       "valid kubeconfig builds client",
+			kubeconfig: validKubeconfig,
+			wantErr:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := NewTokenReviewValidator(TokenReviewConfig{
-				APIHost:  tt.k8sAPIHost,
-				CertFile: tt.k8sClientCertFile,
-				KeyFile:  tt.k8sClientKeyFile,
-				CAFile:   tt.k8sCAFile,
+				Kubeconfig: tt.kubeconfig,
 			})
 
 			if tt.wantErr {
