@@ -17,12 +17,14 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
+  sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
-  sudo systemctl status spire-server@main 2>&1 || true
+  sudo systemctl status spire-server@main -n 50 2>&1 || true
   sudo spire-server entry show 2>&1 || true
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@six 2>&1 || true
+  more /var/lib/spire/server/main/config | cat || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
@@ -75,6 +77,12 @@ wait_for_jwt() {
   return 1
 }
 
+# Add credential composer
+go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
+sudo mkdir -p /usr/libexec/spire/plugins
+sudo cp -a spire-credentialcomposer-identity-exchange /usr/libexec/spire/plugins/credentialcomposer-identity-exchange
+/usr/libexec/spire/plugins/credentialcomposer-identity-exchange || true
+
 # Setup github mock service. Consider moving this out to a systemd service
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
 rm -f token
@@ -106,7 +114,7 @@ sudo mkdir -p /etc/spire/server/main/manifests/
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
 # Startup server and make sure its ready
-sudo cp "${SCRIPTPATH}/server.conf" /etc/spire/server/main.conf
+sudo cp "${SCRIPTPATH}/server.conf" /etc/spire/server/main/config
 sudo systemctl start spire-server@main spire-controller-manager@main
 wait_for_healthcheck spire-server /run/spire/server/sockets/main/private/api.sock
 
@@ -178,7 +186,7 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
 
 if [ -n "$GITHUB_TOKEN" ]; then
-	curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+	curl -f -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 fi
 
-curl -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS

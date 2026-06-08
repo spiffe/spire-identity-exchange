@@ -1,0 +1,9 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: six-github-test
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/mockhub/test
+  selectors:
+  - github_actions:repository:my-org/my-repo
