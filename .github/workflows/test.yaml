@@ -68,7 +68,7 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1.14.0
         #FIXME make this k8s later
-        if: contains(fromJSON('["github"]'), matrix.integrationtest)
+        if: contains(fromJSON('["tests/integration/github"]'), matrix.integrationtest)
         with:
           version: ${{ env.KIND_VERSION }}
           node_image: kindest/node:${{ env.KIND_NODE_VERSION }}
