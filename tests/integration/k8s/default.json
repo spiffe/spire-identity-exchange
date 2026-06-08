@@ -1,0 +1,49 @@
+{
+  "name": "spire-identity-exchange",
+  "logLevel": "info",
+  "server": {
+    "port": 8443,
+    "metricsPort": 4950,
+    "restPort": 8444,
+    "tls": {
+      "certFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.pem",
+      "keyFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.key"
+    }
+  },
+  "spire": {
+    "unixSocketPath": "/var/run/spire/server/sockets/${SYSTEMD_INSTANCE}/private/api.sock",
+    "agentWorkloadSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}/public/api.sock",
+    "agentDelegatedSocketPath": "/var/run/spire/agent/sockets/six/private/admin.sock",
+    "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
+    "svidTTL": "5m"
+  },
+  "auth": {
+    "plugins": [{
+      "name": "k8s",
+      "plugin": "k8s_sa_token",
+      "config": {
+        "apiHost": "https://localhost:9998",
+        "clusterName": "mock-cluster",
+        "audiences": ["spire-identity-exchange"],
+        "allowedNamespaces": ["default"],
+        "tls": {
+          "caFile":   "/etc/spire/identity-exchange/mock-k8s/ca.pem",
+          "certFile": "/etc/spire/identity-exchange/mock-k8s/client.pem",
+          "keyFile":  "/etc/spire/identity-exchange/mock-k8s/client.key"
+        }
+      }
+    }]
+  },
+  "k8sSAToken": {
+    "enabled": true,
+    "apiHost": "https://localhost:9998",
+    "clusterName": "mock-cluster",
+    "audiences": ["spire-identity-exchange"],
+    "spiffeIdTemplate": "spiffe://{{.trust_domain}}/spire-identity-exchange/k8s/{{.k8s_cluster_name}}/{{index . \"kubernetes.io\" \"namespace\"}}/{{index . \"kubernetes.io\" \"serviceaccount\" \"name\"}}",
+    "tls": {
+      "caFile":   "/etc/spire/identity-exchange/mock-k8s/ca.pem",
+      "certFile": "/etc/spire/identity-exchange/mock-k8s/client.pem",
+      "keyFile":  "/etc/spire/identity-exchange/mock-k8s/client.key"
+    }
+  }
+}
