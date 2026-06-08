@@ -195,7 +195,7 @@ curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:84
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
-sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth
+sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 sudo mkdir -p /etc/kubernetes/pki
 sudo systemctl start k8s-spiffe-workload-auth-config
