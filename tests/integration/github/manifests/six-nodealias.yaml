@@ -1,10 +1,9 @@
 apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterStaticEntry
 metadata:
-  name: node1-six-nodealias
+  name: six-nodealias
 spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire/server
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
   selectors:
-    - spiffe_id:spiffe://${SPIFFE_TRUST_DOMAIN}/spire/agent/x509pop/spire-identity-exchange/node1
-
+    - x509pop:subject:cn:spire-exchange/spire-identity-exchange
