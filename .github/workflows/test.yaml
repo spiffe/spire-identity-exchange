@@ -66,11 +66,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
       - name: Prep kind environment
-        #FIXME make this k8s later
-        if: contains(fromJSON('["tests/integration/github"]'), matrix.integrationtest)
         run: |
-          mkdir -p /etc/kubernetes/pki
-          (echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml
+          sudo mkdir -p /etc/kubernetes/pki
+          sudo /bin/bash -c '(echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml'
       - name: Create kind cluster
         uses: helm/kind-action@v1.14.0
         #FIXME make this k8s later
