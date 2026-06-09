@@ -17,8 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  sudo systemctl | grep spire-identity-exchange-job 2>&1 || true
-  sudo systemctl status spire-identity-exchange-job 2>&1 || true
+  sudo systemctl status spire-identity-exchange-job -n 1000  2>&1 || true
   sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
   sudo systemctl status k8s-spiffe-oidc-discovery-provider.service 2>&1 || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
@@ -216,7 +215,7 @@ yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."cli
 cat spire-identity-exchange.kubeconfig
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 #timeout 10 sudo systemd-run --wait --unit=spire-identity-exchange-job $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
-timeout 10 sudo systemd-run --wait --unit=spire-identity-exchange-job /bin/strace -f -F /bin/k8s-spiffe-workload-jwt-exec-auth
+timeout 10 sudo systemd-run --wait --unit=spire-identity-exchange-job /bin/strace -f -F -s 1000 /bin/k8s-spiffe-workload-jwt-exec-auth
 #timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /bin/ls -l /var/run/spire/agent/sockets/main/public/api.sock
 #kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 #kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
