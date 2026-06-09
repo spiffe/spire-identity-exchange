@@ -214,8 +214,8 @@ docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --cl
 yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}, {"name": "SPIFFE_ENDPOINT_SOCKET", "value": "unix:///var/run/spire/agent/sockets/main/public/api.sock"}]})' spire-identity-exchange.kubeconfig
 cat spire-identity-exchange.kubeconfig
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
-timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /bin/strace -f -F -s 10000 $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
-#timeout 10 sudo systemd-run --wait --pipe --setenv=SPIFFE_ENDPOINT_SOCKET=unix:///var/run/spire/agent/sockets/main/public/api.sock --unit=spire-identity-exchange-job /bin/strace -f -F -s 1000 /bin/k8s-spiffe-workload-jwt-exec-auth
+#timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /bin/strace -f -F -s 10000 $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
+timeout 10 sudo systemd-run --wait --pipe --setenv=SPIFFE_ENDPOINT_SOCKET=unix:///var/run/spire/agent/sockets/main/public/api.sock --unit=spire-identity-exchange-job /bin/k8s-spiffe-workload-jwt-exec-auth
 #timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /bin/ls -l /var/run/spire/agent/sockets/main/public/api.sock
 #kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 #kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
