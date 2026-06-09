@@ -131,7 +131,7 @@ sudo systemctl start spire-agent@main spire-agent@six
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/main/public/api.sock
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.sock
 
-sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider
+sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 sudo systemctl start k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
 
