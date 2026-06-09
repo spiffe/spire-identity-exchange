@@ -4,6 +4,3 @@ fe00::0	ip6-localnet
 fe00::0	ip6-mcastprefix
 fe00::1	ip6-allnodes
 fe00::2	ip6-allrouters
-172.18.0.2	kind-control-plane
-
-192.168.1.50  my-service.local
