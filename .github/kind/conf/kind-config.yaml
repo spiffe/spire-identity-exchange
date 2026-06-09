@@ -9,6 +9,7 @@ kubeadmConfigPatches:
     apiServer:
       extraArgs:
         authentication-config: /etc/kubernetes/pki/auth-config.yaml
+        v: "4"
 nodes:
   - role: control-plane
     extraMounts:
