@@ -211,7 +211,7 @@ kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
-yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}, {"name": "SPIFFE_ENDPOINT_SOCKET", value: "unix:///var/run/spire/agent/sockets/main/public/api.sock"}]})' spire-identity-exchange.kubeconfig
+yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}, {"name": "SPIFFE_ENDPOINT_SOCKET", "value": "unix:///var/run/spire/agent/sockets/main/public/api.sock"}]})' spire-identity-exchange.kubeconfig
 cat spire-identity-exchange.kubeconfig
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /bin/strace -f -F -s 10000 $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
