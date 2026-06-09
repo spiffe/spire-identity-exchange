@@ -149,6 +149,8 @@ docker exec -i chart-testing-control-plane bash -c 'cat /etc/kubernetes/pki/auth
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
 docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration'
 
+sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
+
 sudo mkdir -p /usr/libexec/spire/
 sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
 
