@@ -100,6 +100,9 @@ func (p *DefaultKeyProvider) GetKey(ctx context.Context, kid string) (crypto.Pub
 		jwksURL = p.cache.jwksURI
 	}
 	if jwksURL == "" {
+		if p.issuerURL == "" {
+			return nil, fmt.Errorf("no JWKS URI available: set a jwksURIOverride or an issuerURL for OIDC discovery")
+		}
 		var err error
 		jwksURL, err = p.discoverJWKSURI(ctx)
 		if err != nil {
