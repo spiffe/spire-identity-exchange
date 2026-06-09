@@ -17,7 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  kubectl get pods -A || true
+  kubectl logs -n kube-system kube-controller-manager-chart-testing-control-plane || true
   sudo systemctl status spire-identity-exchange-job -n 1000  2>&1 || true
   sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
   sudo systemctl status k8s-spiffe-oidc-discovery-provider.service 2>&1 || true
