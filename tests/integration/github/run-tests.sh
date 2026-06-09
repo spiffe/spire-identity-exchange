@@ -197,20 +197,20 @@ curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:84
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
-sudo systemctl stop apparmor
+#sudo systemctl stop apparmor
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper
-sudo sed -i 's/MemoryDenyWriteExecute=true/MemoryDenyWriteExecute=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-sudo sed -i 's/RestrictNamespaces=true/RestrictNamespaces=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-sudo sed -i 's/NoNewPrivileges=true/NoNewPrivileges=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-sudo sed -i 's/ProtectSystem=strict/ProtectSystem=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+#sudo sed -i 's/MemoryDenyWriteExecute=true/MemoryDenyWriteExecute=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+#sudo sed -i 's/RestrictNamespaces=true/RestrictNamespaces=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+#sudo sed -i 's/NoNewPrivileges=true/NoNewPrivileges=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+#sudo sed -i 's/ProtectSystem=strict/ProtectSystem=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
+#sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
 
-cat > debug-strace.conf <<EOF
-[Service]
-ExecStart=
-ExecStart=/usr/bin/strace -s 1000 -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
-EOF
-sudo bash -c "mkdir -p /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/; cp -a debug-strace.conf /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/"
+#cat > debug-strace.conf <<EOF
+#[Service]
+#ExecStart=
+#ExecStart=/usr/bin/strace -s 1000 -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
+#EOF
+#sudo bash -c "mkdir -p /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/; cp -a debug-strace.conf /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/"
 	
 sudo systemctl daemon-reload
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml

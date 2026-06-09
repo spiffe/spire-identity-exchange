@@ -6,7 +6,13 @@ kubeadmConfigPatches:
     kind: ClusterConfiguration
     metadata:
       name: config
+    apiServer:
+      extraArgs:
+        authentication-config: /etc/kubernetes/pki/auth-config.yaml
 nodes:
   - role: control-plane
+    extraMounts:
+      - hostPath: /etc/kubernetes
+        containerPath: /etc/kubernetes
   - role: worker
   - role: worker
