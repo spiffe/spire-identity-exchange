@@ -210,6 +210,7 @@ kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
+cat spire-identity-exchange.kubeconfig
 kubectl get nodes --kubeconfig spire-identity-exchange.kubeconfig || true
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
