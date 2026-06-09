@@ -166,6 +166,9 @@ func NewValidator(cfg Config) (*Validator, error) {
 	// configuration when JWKSCheck is enabled.
 	jwksCheck := cfg.jwksValidator
 	if jwksCheck == nil && cfg.JWKSCheck {
+		if len(cfg.Audiences) == 0 {
+			return nil, fmt.Errorf("audiences is required when jwksCheck is enabled")
+		}
 		jwksCheck, err = newJWKSCheckValidator(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWKS check validator: %w", err)
