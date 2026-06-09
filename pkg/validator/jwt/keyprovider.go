@@ -33,6 +33,12 @@ type DefaultKeyProvider struct {
 	httpClient *http.Client
 	metrics    validator.Metrics
 
+	// jwksURIOverride, when set, is used as the JWKS URL directly and OIDC
+	// discovery is skipped. Used by callers that already know the JWKS URI
+	// (e.g. a K8s validator that learns it from the API server) and may need
+	// to supply an authenticated httpClient to reach it.
+	jwksURIOverride string
+
 	mu    sync.RWMutex
 	cache *jwksCache
 }
@@ -50,6 +56,19 @@ func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics va
 		issuerURL:  issuerURL,
 		httpClient: httpClient,
 		metrics:    metrics,
+	}
+}
+
+// NewKeyProviderWithJWKSURI creates a KeyProvider that fetches JWKS directly
+// from a known jwks_uri, skipping OIDC discovery. The caller supplies the
+// httpClient, which may be authenticated (e.g. a Kubernetes API server client)
+// when the JWKS endpoint requires authentication. Keys are cached and refetched
+// on cache miss or expiry, so brief endpoint downtime is tolerated.
+func NewKeyProviderWithJWKSURI(jwksURI string, httpClient *http.Client, metrics validator.Metrics) *DefaultKeyProvider {
+	return &DefaultKeyProvider{
+		jwksURIOverride: jwksURI,
+		httpClient:      httpClient,
+		metrics:         metrics,
 	}
 }
 
@@ -74,9 +93,10 @@ func (p *DefaultKeyProvider) GetKey(ctx context.Context, kid string) (crypto.Pub
 		}
 	}
 
-	// Reuse cached jwks_uri if available, otherwise discover it.
-	jwksURL := ""
-	if p.cache != nil {
+	// Resolve the JWKS URL: an explicit override wins, then a cached value,
+	// otherwise discover it via the issuer's OIDC discovery document.
+	jwksURL := p.jwksURIOverride
+	if jwksURL == "" && p.cache != nil {
 		jwksURL = p.cache.jwksURI
 	}
 	if jwksURL == "" {

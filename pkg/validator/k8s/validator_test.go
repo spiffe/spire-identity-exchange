@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,6 +61,23 @@ func TestValidateConfig(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "kubeconfig not found",
+		},
+		{
+			name: "jwks_check_requires_audiences",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         true,
+			},
+			expectErr: true,
+			errMsg:    "audiences is required when jwksCheck is enabled",
+		},
+		{
+			name: "jwks_check_with_audiences_ok",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         true,
+				Audiences:         []string{"spire-identity-exchange"},
+			},
 		},
 	}
 
@@ -246,6 +264,64 @@ func TestValidateWrapsInner(t *testing.T) {
 		_, err = denyV.Validate(context.Background(), mkProjectedToken("system:serviceaccount:ns:sa", "ns", "sa"), validator.X509Purpose())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `namespace "ns" is not in the allowed list`)
+	})
+}
+
+// fakeStageValidator is a test seam standing in for the JWKS check stage.
+// It records whether it ran and returns a configurable error.
+type fakeStageValidator struct {
+	err    error
+	called bool
+}
+
+func (f *fakeStageValidator) Validate(_ context.Context, _ string, _ validator.Purpose) (validator.Claims, error) {
+	f.called = true
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &validator.JWTClaims{}, nil
+}
+
+// TestJWKSCheckStage verifies the two-stage composition: the JWKS check
+// runs before TokenReview, and a JWKS check failure short-circuits before the
+// authoritative TokenReview call.
+func TestJWKSCheckStage(t *testing.T) {
+	mkValidator := func(jwksErr error) (*Validator, *fakeStageValidator) {
+		stage := &fakeStageValidator{err: jwksErr}
+		cfg := Config{
+			AllowedNamespaces: []string{"ns"},
+			// TokenReview is configured to succeed, so any failure must come from
+			// the JWKS check stage.
+			AuthClient: &mockAuthV1Client{
+				tokenValid:     true,
+				returnUsername: "system:serviceaccount:ns:sa",
+			},
+			jwksValidator: stage,
+		}
+		v, err := NewValidator(cfg)
+		require.NoError(t, err)
+		return v, stage
+	}
+
+	token := mkProjectedToken("system:serviceaccount:ns:sa", "ns", "sa")
+
+	t.Run("JWKS check passes then TokenReview runs", func(t *testing.T) {
+		v, stage := mkValidator(nil)
+		claims, err := v.Validate(context.Background(), token, validator.X509Purpose())
+		require.NoError(t, err)
+		assert.True(t, stage.called, "JWKS check stage should run")
+		assert.Equal(t, "system:serviceaccount:ns:sa", claims.GetRaw()["sub"])
+	})
+
+	t.Run("JWKS check failure short-circuits before TokenReview", func(t *testing.T) {
+		v, stage := mkValidator(errors.New("bad signature"))
+		_, err := v.Validate(context.Background(), token, validator.X509Purpose())
+		require.Error(t, err)
+		assert.True(t, stage.called, "JWKS check stage should run")
+		// TokenReview would have authenticated successfully, so an error here
+		// proves the JWKS check failure stopped the flow.
+		assert.Contains(t, err.Error(), "JWKS check failed")
+		assert.Contains(t, err.Error(), "bad signature")
 	})
 }
 
