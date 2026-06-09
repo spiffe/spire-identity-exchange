@@ -17,8 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  more /etc/kubernetes/strace.log | cat || true
-  sudo dmesg || true
+  #more /etc/kubernetes/strace.log | cat || true
   sudo systemctl show k8s-spiffe-workload-auth-config 2>&1 || true
   sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
@@ -225,4 +224,4 @@ sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
 
-cat /etc/kubernetes/pki/auth-config.yaml
+sudo cat /etc/kubernetes/pki/auth-config.yaml
