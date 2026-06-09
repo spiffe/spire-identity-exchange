@@ -213,7 +213,7 @@ docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --cl
 yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}]})' spire-identity-exchange.kubeconfig
 cat spire-identity-exchange.kubeconfig
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
-sudo systemd-run --wait --unit=spire-identity-exchange-job $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
+timeout 10 sudo systemd-run --wait --unit=spire-identity-exchange-job $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
 #kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 #kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
 
