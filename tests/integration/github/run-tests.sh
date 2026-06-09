@@ -17,9 +17,8 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  #more /etc/kubernetes/strace.log | cat || true
-  sudo systemctl show k8s-spiffe-workload-auth-config 2>&1 || true
   sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
+  sudo systemctl status k8s-spiffe-oidc-discovery-provider.service 2>&1 || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main -n 50 2>&1 || true
@@ -132,6 +131,10 @@ sudo systemctl start spire-agent@main spire-agent@six
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/main/public/api.sock
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.sock
 
+sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider
+sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
+sudo systemctl start k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
+
 make build
 
 sudo mkdir -p /usr/libexec/spire/
@@ -197,31 +200,8 @@ curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:84
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
-#sudo systemctl stop apparmor
-sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper
-#sudo sed -i 's/MemoryDenyWriteExecute=true/MemoryDenyWriteExecute=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-#sudo sed -i 's/RestrictNamespaces=true/RestrictNamespaces=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-#sudo sed -i 's/NoNewPrivileges=true/NoNewPrivileges=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-#sudo sed -i 's/ProtectSystem=strict/ProtectSystem=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-#sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
-
-#cat > debug-strace.conf <<EOF
-#[Service]
-#ExecStart=
-#ExecStart=/usr/bin/strace -s 1000 -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
-#EOF
-#sudo bash -c "mkdir -p /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/; cp -a debug-strace.conf /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/"
-	
-sudo systemctl daemon-reload
-sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
-sudo mkdir -p /etc/kubernetes/pki
-sudo systemctl start k8s-spiffe-workload-auth-config
-
-sleep 10
-
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
 
-sudo cat /etc/kubernetes/pki/auth-config.yaml
