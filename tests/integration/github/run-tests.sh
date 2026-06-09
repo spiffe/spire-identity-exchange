@@ -135,6 +135,7 @@ sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
+cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl start k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
 
 make build
@@ -209,6 +210,7 @@ kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
+kubectl get nodes --kubeconfig spire-identity-exchange.kubeconfig || true
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
 kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
