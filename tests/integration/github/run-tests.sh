@@ -137,7 +137,6 @@ sudo systemctl start k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-p
 
 make build
 
-docker exec -i chart-testing-control-plane bash -c 'docker ps'
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
 docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration'
 
