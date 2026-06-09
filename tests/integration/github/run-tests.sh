@@ -209,7 +209,7 @@ sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-s
 cat > debug-strace.conf <<EOF
 [Service]
 ExecStart=
-ExecStart=/usr/bin/strace -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
+ExecStart=/usr/bin/strace -s 1000 -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
 EOF
 sudo bash -c "mkdir -p /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/; cp -a debug-strace.conf /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/"
 	
