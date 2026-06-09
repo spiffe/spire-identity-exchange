@@ -144,7 +144,7 @@ sudo ss -pnl
 curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k -vvv
 
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
-docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration -vvv'
+docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration'
 
 sudo mkdir -p /usr/libexec/spire/
 sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
@@ -210,7 +210,7 @@ kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user=spire-identity-exchange
 
 docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
-yq -i '( .users[] | select(.name == "spire-identity-exchange") .user ) |= ( del(."client-certificate-data", ."client-key-data") + {"exec": {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}]}} )' spire-identity-exchange.kubeconfig
+yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}]})' spire-identity-exchange.kubeconfig
 cat spire-identity-exchange.kubeconfig
 kubectl get nodes --kubeconfig spire-identity-exchange.kubeconfig || true
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
