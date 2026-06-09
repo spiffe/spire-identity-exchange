@@ -208,8 +208,9 @@ sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-s
 sudo bash -c "cat > OVERRIDE_FILE="/etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/debug-strace.conf" <<EOF
 [Service]
 ExecStart=
-ExecStart=/usr/bin/strace -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
+ExecStart=ldd /bin/k8s-spiffe-workload-auth-config
 EOF"
+#ExecStart=/usr/bin/strace -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
 	
 sudo systemctl daemon-reload
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
