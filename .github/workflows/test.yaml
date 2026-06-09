@@ -69,6 +69,7 @@ jobs:
         run: |
           sudo mkdir -p /etc/kubernetes/pki
           sudo /bin/bash -c '(echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml'
+          sudo cp -a tests/integration/github/hosts /etc/kubernetes/hosts
       - name: Create kind cluster
         uses: helm/kind-action@v1.14.0
         #FIXME make this k8s later

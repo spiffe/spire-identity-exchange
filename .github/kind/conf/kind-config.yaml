@@ -14,7 +14,7 @@ nodes:
     extraMounts:
       - hostPath: /etc/kubernetes
         containerPath: /etc/kubernetes
-      - hostPath: ./custom-hosts
+      - hostPath: /etc/kubernetes/hosts
         containerPath: /etc/hosts
         readOnly: true
   - role: worker
