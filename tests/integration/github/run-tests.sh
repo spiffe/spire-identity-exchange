@@ -133,12 +133,14 @@ wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.soc
 
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
+IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl start k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
 
 make build
 
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
-docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration'
+docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration -vvv'
 
 sudo mkdir -p /usr/libexec/spire/
 sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
