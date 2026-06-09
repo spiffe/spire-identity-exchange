@@ -9,8 +9,7 @@ jwt:
   claimMappings:
     username:
       expression: |
-        claims.sub.startsWith("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/")? claims.sub.replace("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/", "system:node:").replace(".${SPIFFE_TRUST_DOMAIN}", ""): cl
-aims.sub
+        claims.sub.startsWith("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/")? claims.sub.replace("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/", "system:node:").replace(".${SPIFFE_TRUST_DOMAIN}", ""): claims.sub
     groups:
       expression: |
         claims.sub.startsWith("spiffe://${SPIFFE_TRUST_DOMAIN}/k8s/${K8S_CLUSTER_NAME}/node/")? ["system:nodes"]: []
