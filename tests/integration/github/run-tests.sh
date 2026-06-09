@@ -17,8 +17,8 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  dmesg || true
   more /etc/kubernetes/strace.log | cat || true
+  sudo dmesg || true
   sudo systemctl show k8s-spiffe-workload-auth-config 2>&1 || true
   sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
@@ -206,11 +206,12 @@ sudo sed -i 's/NoNewPrivileges=true/NoNewPrivileges=false/' /usr/lib/systemd/sys
 sudo sed -i 's/ProtectSystem=strict/ProtectSystem=false/' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
 sudo sed -i 's|ReadOnlyPaths=/|# ReadOnlyPaths=/|' /usr/lib/systemd/system/k8s-spiffe-workload-auth-config.service
 
-sudo bash -c "cat > /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/debug-strace.conf <<EOF
+cat > debug-strace.conf <<EOF
 [Service]
 ExecStart=
-#ExecStart=/usr/bin/strace -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
-EOF"
+ExecStart=/usr/bin/strace -f -o /etc/kubernetes/strace.log /bin/k8s-spiffe-workload-auth-config /etc/kubernetes/auth-config.yaml /etc/kubernetes/pki/auth-config.yaml
+EOF
+sudo bash -c "mkdir -p /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/; cp -a debug-strace.conf /etc/systemd/system/k8s-spiffe-workload-auth-config.service.d/"
 	
 sudo systemctl daemon-reload
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
