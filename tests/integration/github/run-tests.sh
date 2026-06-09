@@ -144,8 +144,8 @@ make build
 
 sudo ss -pnl
 curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k -vvv
-sudo cat /etc/kubernetes/pki/auth-config.yaml
 
+docker exec -i chart-testing-control-plane bash -c 'cat /etc/kubernetes/pki/auth-config.yaml'
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
 docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.example.org:8181/.well-known/openid-configuration'
 
