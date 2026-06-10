@@ -81,6 +81,22 @@ wait_for_jwt() {
   return 1
 }
 
+wait_for_oidc) {
+  local socket="$1"
+  local timeout=30
+  local count=0
+  while [ "$count" -lt "$timeout" ]; do
+      rc=0
+      curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k || rc=$?
+      if [ "$rc" -eq 0 ]; then
+        return 0
+      fi
+      sleep 1
+      ((count++)) || true
+  done
+  return 1
+}
+
 # Add credential composer
 go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
 sudo mkdir -p /usr/libexec/spire/plugins
@@ -140,6 +156,8 @@ sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
 
+wait_for_oidc
+
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user="spiffe://example.org/service/spire-identity-exchange"
 
@@ -151,8 +169,6 @@ sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job $(which kubectl) get --raw /.well-known/openid-configuration --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
 
 make build
-
-curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k
 
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/kubernetes/pki/auth-config.yaml'
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
