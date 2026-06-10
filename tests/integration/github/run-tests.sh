@@ -111,6 +111,7 @@ wait_for_kubectl() {
       fi
       sleep 1
       ((count++)) || true
+      sudo systemctl reset-failed spire-identity-exchange-job
   done
   return 1
 }
@@ -172,9 +173,11 @@ sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
-sudo systemctl restart k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
+sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
 wait_for_oidc
+
+sudo systemctl restart k8s-spiffe-workload-auth-config
 
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
 kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user="spiffe://example.org/service/spire-identity-exchange"
@@ -185,9 +188,9 @@ cat spire-identity-exchange.kubeconfig
 sudo mkdir -p /etc/spire/identity-exchange
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
 
-wait_for_kubectl
-
 make build
+
+wait_for_kubectl
 
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/kubernetes/pki/auth-config.yaml'
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
