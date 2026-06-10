@@ -32,6 +32,13 @@
         "allowedRepositories": ["my-org/my-repo"],
         "audiences": ["spire-identity-exchange"]
       }
+    },{
+      "plugin": "kis_psat",
+      "config": {
+        "kubeconfig": "/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig",
+        "audiences": ["spire-identity-exchange"],
+	"allowedServiceAccounts": ["default:default"]
+      }
     }]
   },
   "githubOIDC": {
