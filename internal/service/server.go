@@ -85,10 +85,10 @@ func NewGRPCHandler(
 		}
 	}
 
-	// Build a per-plugin authHandler map so the gRPC PluginAuth path can route
-	// by plugin name through the pkg/validator registry — symmetric with how the
-	// REST /api/v1/svid/{stack}/x509 handler reads cfg.Auth.LoadedStacks.
-	if len(cfg.Auth.LoadedPlugins) > 0 {
+	// Per-plugin authHandler map for the gRPC PluginAuth path. Gated on
+	// Server.Port != 0 because spiffeIdTemplate is only read by gRPC; REST
+	// derives identity from selectors via the delegated socket.
+	if cfg.Server.Port != 0 && len(cfg.Auth.LoadedPlugins) > 0 {
 		server.pluginHandlers = make(map[string]*authHandler, len(cfg.Auth.LoadedPlugins))
 		for _, pc := range cfg.Auth.Plugins {
 			loaded, ok := cfg.Auth.LoadedPlugins[pc.Name]
