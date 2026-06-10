@@ -203,6 +203,7 @@ sudo ls /etc/kubernetes/pki/
 
 sudo mkdir -p /usr/libexec/spire/
 #sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
+chmod +x spire-identity-exchange
 sudo cp -a spire-identity-exchange /usr/libexec/spire/
 
 sudo mkdir -p /etc/spire/identity-exchange/main/certs
