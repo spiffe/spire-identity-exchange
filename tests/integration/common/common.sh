@@ -87,7 +87,7 @@ wait_for_spire_identity_exchange() {
   local MAX_WAIT=30
   local ELAPSED=0
   while true; do
-    if curl -s -o /dev/null https://localhost:8443 -k; then
+    if curl -s -o /dev/null https://localhost:8444 -k; then
       return 0
     fi
     if [ $ELAPSED -ge $MAX_WAIT ]; then

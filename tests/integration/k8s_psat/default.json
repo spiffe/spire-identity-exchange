@@ -2,7 +2,7 @@
   "name": "spire-identity-exchange",
   "logLevel": "info",
   "server": {
-    "port": 8443,
+    "port": 0,
     "metricsPort": 4950,
     "restPort": 8444,
     "tls": {
