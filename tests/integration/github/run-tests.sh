@@ -98,6 +98,23 @@ wait_for_oidc() {
   return 1
 }
 
+wait_for_kubectl() {
+  local socket="$1"
+  local timeout=15
+  local count=0
+  local IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+  while [ "$count" -lt "$timeout" ]; do
+      rc=0
+      timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job $(which kubectl) get --raw /.well-known/openid-configuration --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig || rc=$?
+      if [ "$rc" -eq 0 ]; then
+        return 0
+      fi
+      sleep 1
+      ((count++)) || true
+  done
+  return 1
+}
+
 # Add credential composer
 go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
 sudo mkdir -p /usr/libexec/spire/plugins
@@ -167,7 +184,8 @@ yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."cli
 cat spire-identity-exchange.kubeconfig
 sudo mkdir -p /etc/spire/identity-exchange
 sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
-timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job $(which kubectl) get --raw /.well-known/openid-configuration --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
+
+wait_for_kubectl
 
 make build
 
