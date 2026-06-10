@@ -19,6 +19,12 @@
   },
   "auth": {
     "plugins": [{
+      "plugin": "github",
+      "config": {
+        "allowedRepositories": ["spiffe/spire-identity-exchange"],
+        "audiences": ["spire-identity-exchange"]
+      }
+    },{
       "plugin": "k8s_psat",
       "config": {
         "kubeconfig": "/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig",
