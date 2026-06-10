@@ -60,7 +60,7 @@ export MOCKHUB_TOKEN="$(cat token)"
 echo "::add-mask::${MOCKHUB_TOKEN}"
 set -x
 
-sudo mkdir -p /etc/spire/server/main
+sudo mkdir -p /etc/spire/server/main/manifests
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
 # Common spire setup bits
