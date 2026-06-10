@@ -151,7 +151,7 @@ docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.exam
 
 sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
 sudo ls /etc/kubernetes/pki/
-docker exec -i chart-testing-control-plane bash -c 'kubeadm config view'
+sudo cat /etc/kubernetes/kubeadm-config.yaml
 
 sudo mkdir -p /usr/libexec/spire/
 sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
