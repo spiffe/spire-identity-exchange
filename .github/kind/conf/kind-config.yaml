@@ -8,7 +8,7 @@ nodes:
         apiServer:
           extraArgs:
             authentication-config: /etc/kubernetes/pki/auth-config.yaml
-            v: "6"
+            #v: "6"
     extraMounts:
       - hostPath: /etc/kubernetes
         containerPath: /etc/kubernetes

@@ -142,8 +142,7 @@ sudo systemctl restart k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery
 
 make build
 
-sudo ss -pnl
-curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k -vvv
+curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k
 
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/kubernetes/pki/auth-config.yaml'
 docker exec -i chart-testing-control-plane bash -c 'cat /etc/hosts'
@@ -151,7 +150,6 @@ docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.exam
 
 sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
 sudo ls /etc/kubernetes/pki/
-sudo cat /etc/kubernetes/kubeadm-config.yaml
 
 sudo mkdir -p /usr/libexec/spire/
 sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
