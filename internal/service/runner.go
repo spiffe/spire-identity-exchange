@@ -144,8 +144,34 @@ func runSpireIdentityExchangeServer(
 		}
 	}
 
-	handler, err := NewGRPCHandler(spireClient, cfg, githubOIDCValidator, k8sSATokenValidator, metrics, logger)
+	// Delegated client to the SPIRE Agent. Both gRPC PluginAuth and REST
+	// /api/v1/svid/{stack}/x509 issue SVIDs through it, so build it once here
+	// (when either surface will use it) and share across handlers.
+	//
+	// REST needs it whenever RestPort != 0. gRPC needs it only when the
+	// PluginAuth path is reachable — i.e. when the gRPC port is open AND at
+	// least one plugin is registered in cfg.Auth.LoadedPlugins. The legacy
+	// GithubOIDC/K8sSA oneof variants stay on the SPIRE Server mint path and
+	// don't need it.
+	var (
+		delegatedClient *delegated.Client
+		err             error
+	)
+	needDelegated := cfg.Server.RestPort != 0 ||
+		(cfg.Server.Port != 0 && len(cfg.Auth.LoadedPlugins) > 0)
+	if needDelegated {
+		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
+		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
+		if err != nil {
+			return fmt.Errorf("failed to create delegated identity client: %w", err)
+		}
+	}
+
+	handler, err := NewGRPCHandler(spireClient, delegatedClient, cfg, githubOIDCValidator, k8sSATokenValidator, metrics, logger)
 	if err != nil {
+		if delegatedClient != nil {
+			_ = delegatedClient.Close()
+		}
 		return fmt.Errorf("failed to create gRPC server handler: %w", err)
 	}
 
@@ -188,22 +214,9 @@ func runSpireIdentityExchangeServer(
 	}
 
 	// --- REST server ---
-	var (
-		httpServer      *http.Server
-		delegatedClient *delegated.Client
-	)
+	var httpServer *http.Server
 	if cfg.Server.RestPort != 0 {
-		// Build all REST deps before spawning the watcher goroutine — otherwise an
-		// error from a later init step (e.g. delegated.New) returns with the watcher
-		// still running and wlaClient never explicitly closed; the goroutine only
-		// unwinds on context cancellation, which leaks an FD/goroutine in any caller
-		// that doesn't cancel ctx on the error path (notably tests).
-		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
-		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to create delegated identity client: %w", err)
-		}
-
+		// delegatedClient is already built above (shared with the gRPC PluginAuth path).
 		// Trust bundle cache fed by Main agent's Workload API.
 		cache := &trustBundleCache{logger: logger}
 		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath

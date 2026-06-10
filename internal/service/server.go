@@ -5,11 +5,12 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
+	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
-	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 )
@@ -26,9 +27,9 @@ type authHandler struct {
 type SpireIdentityExchangeServer struct {
 	proto.UnimplementedSpireIdentityExchangeApiServer
 	spireClient     server_util.ServerClient
-	githubOIDC      *authHandler            // legacy hard-coded auth, nil if not configured
-	k8sSAToken      *authHandler            // legacy hard-coded auth, nil if not configured
-	pluginHandlers  map[string]*authHandler // keyed by cfg.Auth.Plugins[].name; mirrors LoadedStacks for the gRPC PluginAuth path
+	delegated       *delegated.Client // used by the gRPC PluginAuth path; nil when not needed
+	githubOIDC      *authHandler      // legacy hard-coded auth, nil if not configured
+	k8sSAToken      *authHandler      // legacy hard-coded auth, nil if not configured
 	config          *config.SpireIdentityExchangeConfig
 	purposeResolver *v.PurposeResolver
 	metrics         metrics.Metrics
@@ -37,9 +38,13 @@ type SpireIdentityExchangeServer struct {
 }
 
 // NewGRPCHandler creates a new GRPC server handler.
-// Pass nil for a validator to disable that auth method.
+// Pass nil for a validator to disable that auth method. delegatedClient may be
+// nil when the gRPC PluginAuth path is not in use (no plugins registered or
+// gRPC disabled); the PluginAuth dispatch arm rejects the request loudly in
+// that case rather than nil-panicking.
 func NewGRPCHandler(
 	spireClient server_util.ServerClient,
+	delegatedClient *delegated.Client,
 	cfg *config.SpireIdentityExchangeConfig,
 	githubOIDCValidator v.TokenValidator,
 	k8sSATokenValidator v.TokenValidator,
@@ -53,6 +58,7 @@ func NewGRPCHandler(
 
 	server := &SpireIdentityExchangeServer{
 		spireClient:     spireClient,
+		delegated:       delegatedClient,
 		trustDomain:     trustDomain,
 		config:          cfg,
 		purposeResolver: v.NewPurposeResolver(v.PurposeMode(cfg.PurposeMode)),
@@ -85,31 +91,9 @@ func NewGRPCHandler(
 		}
 	}
 
-	// Per-plugin authHandler map for the gRPC PluginAuth path. Gated on
-	// Server.Port != 0 because spiffeIdTemplate is only read by gRPC; REST
-	// derives identity from selectors via the delegated socket.
-	if cfg.Server.Port != 0 && len(cfg.Auth.LoadedPlugins) > 0 {
-		server.pluginHandlers = make(map[string]*authHandler, len(cfg.Auth.LoadedPlugins))
-		for _, pc := range cfg.Auth.Plugins {
-			loaded, ok := cfg.Auth.LoadedPlugins[pc.Name]
-			if !ok {
-				continue
-			}
-			if pc.SPIFFEIDTemplate == "" {
-				return nil, fmt.Errorf("plugin %q: spiffeIdTemplate is required for gRPC PluginAuth", pc.Name)
-			}
-			tmpl, err := template.New(spiffeTemplateName).Parse(pc.SPIFFEIDTemplate)
-			if err != nil {
-				return nil, fmt.Errorf("invalid SPIFFE ID template for plugin %q: %w", pc.Name, err)
-			}
-			server.pluginHandlers[pc.Name] = &authHandler{
-				validator:        loaded,
-				spiffeIDTemplate: tmpl,
-				svidTTL:          effectiveTTL(pc.SVIDTTL, cfg.SPIRE.SVIDTTL),
-			}
-		}
-	}
-
+	// The gRPC PluginAuth path goes through the delegated Identity API on
+	// every request; no per-plugin handler is built here. cfg.Auth.LoadedPlugins
+	// is consulted directly at dispatch time.
 	return server, nil
 }
 

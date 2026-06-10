@@ -7,8 +7,10 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"text/template"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	spiretypes "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	constant "github.com/spiffe/spire-identity-exchange/internal/const"
+	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	"github.com/spiffe/spire-identity-exchange/internal/utils"
 	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"go.uber.org/zap"
@@ -69,15 +72,23 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 }
 
 // MintCertificateByPlugin mints an SVID using the pkg/validator-registered
-// plugin named in PluginAuth.pluginName. Mirrors the REST
-// /api/v1/svid/{stack}/x509 dispatch — plugin name resolves to a pre-built
-// authHandler (validator + SPIFFE ID template + TTL) at startup; this handler
-// just validates the token, derives the SPIFFE ID from the operator template,
-// and delegates to mintFromClaims for SVID issuance.
+// plugin named in PluginAuth.pluginName. Mirrors the REST /api/v1/svid/{stack}/x509
+// dispatch one-for-one:
 //
-// Auth-method symmetry with the legacy MintCertificateByGithubOIDC /
-// MintCertificateByK8sSAToken paths is intentional so audit/metrics behavior
-// is identical regardless of which oneof variant the caller used.
+//  1. Look up the validator in cfg.Auth.LoadedPlugins.
+//  2. Validate the bearer token; surface claims.
+//  3. Generate selectors from the claims via the plugin's SelectorGenerator.
+//  4. Issue the SVID through the SPIRE Agent's Delegated Identity API
+//     (FetchX509SVID or FetchJWTSVIDs depending on the SVID request type).
+//
+// Unlike the legacy MintCertificateByGithubOIDC / MintCertificateByK8sSAToken
+// paths, this handler does NOT call SPIRE Server's mint API and does NOT use
+// any SIE-side SPIFFE ID template — identity is whatever SPIFFE ID the agent
+// resolves from the registration entry whose selectors match the ones we
+// produce. CSR-based issuance is therefore not supported on this path
+// (agent always generates the keypair); a request with mintX509SVIDRequest.csr
+// set is rejected with InvalidArgument so callers see the limitation loudly
+// rather than silently getting a key they didn't ask for.
 func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
 	pluginAuth := req.GetPluginAuth()
 	if pluginAuth == nil {
@@ -88,7 +99,11 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 		return nil, status.Error(codes.InvalidArgument, "pluginName is required")
 	}
 
-	handler, ok := h.pluginHandlers[pluginName]
+	if h.delegated == nil {
+		return nil, status.Error(codes.Unavailable, "delegated identity client is not configured")
+	}
+
+	plugin, ok := h.config.Auth.LoadedPlugins[pluginName]
 	if !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "unknown plugin %q", pluginName)
 	}
@@ -102,7 +117,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	}()
 
 	purpose := h.determinePurpose(req)
-	claims, err := handler.validator.Validate(ctx, pluginAuth.GetToken(), purpose)
+	claims, err := plugin.Validate(ctx, pluginAuth.GetToken(), purpose)
 	if err != nil {
 		audit.FailedStage = stageTokenValidation
 		audit.RejectionReason = err.Error()
@@ -111,7 +126,60 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	}
 	audit.TokenIssuer, _ = claims.GetRaw()["iss"].(string)
 
-	resp, err := h.mintFromClaims(ctx, claims, handler, req, audit)
+	selectors := plugin.GenerateSelectors(claims)
+	if len(selectors) == 0 {
+		audit.FailedStage = stageCSRValidation
+		audit.RejectionReason = "no selectors derivable from token claims"
+		audit.logRejection(logger)
+		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
+	}
+
+	// Detect which SVID request was set. Exactly one of the three SVID-request
+	// fields must be set, same invariant as mintFromClaims.
+	svidRequestCount := 0
+	if req.GetMintX509SVIDRequest() != nil {
+		svidRequestCount++
+	}
+	if req.GetMintJWTSVIDRequest() != nil {
+		svidRequestCount++
+	}
+	if req.GetServerKeyGenRequest() != nil {
+		svidRequestCount++
+	}
+	if svidRequestCount > 1 {
+		audit.FailedStage = stageCSRValidation
+		audit.RejectionReason = "multiple SVID request fields set: exactly one of mintX509SVIDRequest, mintJWTSVIDRequest, or serverKeyGenRequest must be set"
+		audit.logRejection(logger)
+		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
+	}
+
+	var resp *proto.MintCertificateResponse
+	switch {
+	case req.GetMintX509SVIDRequest() != nil:
+		// PluginAuth issuance goes through the Delegated Identity API, which
+		// always generates its own keypair — there is no wire field for a CSR.
+		// Reject loudly so callers don't get a server-generated key when they
+		// asked the server to sign their own.
+		if len(req.GetMintX509SVIDRequest().GetCsr()) > 0 {
+			audit.FailedStage = stageCSRValidation
+			audit.RejectionReason = "CSR-based issuance is not supported via PluginAuth; use serverKeyGenRequest or mintJWTSVIDRequest"
+			audit.logRejection(logger)
+			return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
+		}
+		audit.SVIDType = "x509"
+		resp, err = h.mintPluginX509SVID(ctx, selectors, audit, logger, pluginName)
+	case req.GetServerKeyGenRequest() != nil:
+		audit.SVIDType = "x509"
+		resp, err = h.mintPluginX509SVID(ctx, selectors, audit, logger, pluginName)
+	case req.GetMintJWTSVIDRequest() != nil:
+		audit.SVIDType = "jwt"
+		resp, err = h.mintPluginJWTSVID(ctx, selectors, req.GetMintJWTSVIDRequest().GetAudiences(), audit, logger, pluginName)
+	default:
+		audit.FailedStage = stageCSRValidation
+		audit.RejectionReason = "no SVID request specified: set one of mintX509SVIDRequest, mintJWTSVIDRequest, or serverKeyGenRequest"
+		audit.logRejection(logger)
+		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
+	}
 	if err != nil {
 		statusCode = status.Code(err)
 		return nil, err
@@ -120,6 +188,118 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	statusCode = codes.OK
 	audit.logSuccess(logger)
 	return resp, nil
+}
+
+// mintPluginX509SVID fetches an X.509 SVID through the Delegated Identity API
+// matching the given selectors, and packages it into a MintCertificateResponse.
+// The private key is agent-generated (PKCS#8 DER); it is PEM-wrapped before
+// being returned in privateKeyPem. audit.SpiffeID is populated on success.
+func (h *SpireIdentityExchangeServer) mintPluginX509SVID(ctx context.Context, selectors []*spiretypes.Selector, audit *auditEntry, logger *zap.Logger, pluginName string) (*proto.MintCertificateResponse, error) {
+	svid, err := h.delegated.FetchX509SVID(ctx, selectors)
+	if err != nil {
+		return nil, translateDelegatedFetchError(err, audit, logger, pluginName, "X509")
+	}
+	id, err := parseSpiffeID(svid.SpiffeID)
+	if err != nil {
+		audit.FailedStage = stageSVIDMint
+		audit.RejectionReason = fmt.Sprintf("agent returned invalid SPIFFE ID %q: %v", svid.SpiffeID, err)
+		audit.logRejection(logger)
+		return nil, status.Error(codes.Internal, "issuance failed")
+	}
+	audit.SpiffeID = svid.SpiffeID
+
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: svid.PrivateKey})
+	return &proto.MintCertificateResponse{
+		X509Svid: &spiretypes.X509SVID{
+			CertChain: svid.CertChain,
+			Id:        id,
+			ExpiresAt: svid.ExpiresAt.Unix(),
+			Hint:      svid.Hint,
+		},
+		PrivateKeyPem: keyPEM,
+	}, nil
+}
+
+// mintPluginJWTSVID fetches a JWT-SVID through the Delegated Identity API
+// matching the given selectors and audiences, and packages it into a
+// MintCertificateResponse.
+func (h *SpireIdentityExchangeServer) mintPluginJWTSVID(ctx context.Context, selectors []*spiretypes.Selector, audiences []string, audit *auditEntry, logger *zap.Logger, pluginName string) (*proto.MintCertificateResponse, error) {
+	if len(audiences) == 0 {
+		audit.FailedStage = stageCSRValidation
+		audit.RejectionReason = "mintJWTSVIDRequest.audiences must be non-empty"
+		audit.logRejection(logger)
+		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
+	}
+	svid, err := h.delegated.FetchJWTSVID(ctx, selectors, audiences)
+	if err != nil {
+		return nil, translateDelegatedFetchError(err, audit, logger, pluginName, "JWT")
+	}
+	id, err := parseSpiffeID(svid.SpiffeID)
+	if err != nil {
+		audit.FailedStage = stageSVIDMint
+		audit.RejectionReason = fmt.Sprintf("agent returned invalid SPIFFE ID %q: %v", svid.SpiffeID, err)
+		audit.logRejection(logger)
+		return nil, status.Error(codes.Internal, "issuance failed")
+	}
+	audit.SpiffeID = svid.SpiffeID
+
+	return &proto.MintCertificateResponse{
+		JwtSvid: &spiretypes.JWTSVID{
+			Token:     svid.Token,
+			Id:        id,
+			ExpiresAt: svid.ExpiresAt.Unix(),
+			Hint:      svid.Hint,
+		},
+	}, nil
+}
+
+// translateDelegatedFetchError maps the delegated client's sentinel errors to
+// gRPC codes, mirroring the REST handler's error mapping at runner.go.
+func translateDelegatedFetchError(err error, audit *auditEntry, logger *zap.Logger, pluginName, svidKind string) error {
+	audit.FailedStage = stageSVIDMint
+	audit.RejectionReason = err.Error()
+	switch {
+	case errors.Is(err, delegated.ErrNoMatchingEntry):
+		logger.Info("no entry matched selectors", zap.String("plugin", pluginName), zap.String("svid_kind", svidKind))
+		audit.logRejection(logger)
+		return status.Error(codes.NotFound, "no registration entry matches the validated identity")
+	case errors.Is(err, delegated.ErrPermissionDenied):
+		logger.Error("delegated API rejected this exchange — check authorized_delegates", zap.String("plugin", pluginName), zap.Error(err))
+		audit.logRejection(logger)
+		return status.Error(codes.Unavailable, "delegated issuance unavailable")
+	case errors.Is(err, delegated.ErrUnavailable):
+		logger.Error("delegated API unavailable", zap.String("plugin", pluginName), zap.Error(err))
+		audit.logRejection(logger)
+		return status.Error(codes.Unavailable, "delegated issuance unavailable")
+	case errors.Is(err, delegated.ErrInvalidArgument):
+		// Agent rejected the selectors as malformed. SIE built them from
+		// claims it just validated, so this is a server-side bug.
+		logger.Error("delegated API rejected selectors as invalid", zap.String("plugin", pluginName), zap.Error(err))
+		audit.logRejection(logger)
+		return status.Error(codes.Internal, "issuance failed")
+	default:
+		logger.Error("delegated svid fetch failed", zap.String("plugin", pluginName), zap.Error(err))
+		audit.logRejection(logger)
+		return status.Error(codes.Internal, "issuance failed")
+	}
+}
+
+// parseSpiffeID splits a "spiffe://<td>/<path>" string into the typed proto
+// representation expected by spire.api.types.X509SVID / JWTSVID.
+func parseSpiffeID(s string) (*spiretypes.SPIFFEID, error) {
+	const prefix = "spiffe://"
+	if !strings.HasPrefix(s, prefix) {
+		return nil, fmt.Errorf("missing %q prefix", prefix)
+	}
+	rest := s[len(prefix):]
+	slash := strings.IndexByte(rest, '/')
+	if slash < 0 {
+		return &spiretypes.SPIFFEID{TrustDomain: rest}, nil
+	}
+	return &spiretypes.SPIFFEID{
+		TrustDomain: rest[:slash],
+		Path:        rest[slash:],
+	}, nil
 }
 
 // MintCertificateByK8sSAToken mints an SVID using a Kubernetes service account token.

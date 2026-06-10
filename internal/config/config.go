@@ -68,28 +68,16 @@ type AuthConfig struct {
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 }
 
-// PluginConfig contains the configuration for a single plugin.
-//
-// SPIFFEIDTemplate and SVIDTTL are operator-level fields that apply to gRPC
-// MintCertificate calls routed through this plugin (PluginAuth oneof variant)
-// and to any future surface that mints SVIDs directly off the plugin's claims.
-// They are NOT used by the REST /api/v1/svid/{stack}/x509 path, which derives
-// identity from selectors via SPIRE's Delegated Identity API rather than from a
-// caller-side template.
+// PluginConfig contains the configuration for a single plugin. Identity
+// derivation and SVID TTL are not configured here — both gRPC PluginAuth and
+// REST /api/v1/svid/{stack}/x509 issue SVIDs via SPIRE's Delegated Identity API,
+// which resolves SPIFFE ID + TTL from the SPIRE registration entry whose
+// selectors match the ones GenerateSelectors produces from the plugin's claims.
 type PluginConfig struct {
 	Name      string                         `json:"name"`
 	Plugin    string                         `json:"plugin"`
 	RawConfig json.RawMessage                `json:"config"`
 	Config    validator.TokenValidatorLoader `json:"-"`
-
-	// SPIFFEIDTemplate is the Go template used to derive the workload SPIFFE ID
-	// from the plugin's validated claims. Required for gRPC plugin auth; unused
-	// by the REST delegated path.
-	SPIFFEIDTemplate string `json:"spiffeIdTemplate"`
-
-	// SVIDTTL is the per-plugin SVID TTL applied to gRPC issuance. Overrides
-	// spire.svidTTL when set; falls back to spire.svidTTL if zero.
-	SVIDTTL Duration `json:"svidTTL"`
 }
 
 // SPIREConfig contains SPIRE server configurations
