@@ -17,6 +17,7 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
+  sudo journalctl -fu spire-identity-exchange@main.service || true
   kubectl logs -n kube-system kube-apiserver-chart-testing-control-plane || true
   sudo systemctl status spire-identity-exchange-job -n 1000  2>&1 || true
   sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
@@ -28,7 +29,6 @@ teardown() {
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@six 2>&1 || true
-  more /var/lib/spire/server/main/config | cat || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
@@ -259,3 +259,6 @@ fi
 
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 
+kubectl apply -f test-job.yaml
+kubectl wait --for=condition=complete --timeout=60s job/test && \
+kubectl logs job/test
