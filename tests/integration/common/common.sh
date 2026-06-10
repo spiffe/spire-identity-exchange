@@ -1,26 +1,5 @@
 #!/bin/bash
 
-teardown() {
-  echo ---------------------------
-  echo "::group::Status Output"
-  kubectl get pods -l job-name=test -o name | xargs kubectl describe || true
-  kubectl logs job/test || true
-  sudo journalctl -u spire-identity-exchange@main.service || true
-  kubectl logs -n kube-system kube-apiserver-chart-testing-control-plane || true
-  sudo systemctl status spire-identity-exchange-job -n 1000  2>&1 || true
-  sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
-  sudo systemctl status k8s-spiffe-oidc-discovery-provider.service 2>&1 || true
-  sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
-  sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
-  sudo systemctl status spire-server@main -n 50 2>&1 || true
-  sudo spire-server entry show 2>&1 || true
-  sudo systemctl status spire-controller-manager@main 2>&1 || true
-  sudo systemctl status spire-agent@main 2>&1 || true
-  sudo systemctl status spire-agent@six 2>&1 || true
-}
-
-trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
-
 wait_for_healthcheck() {
   local app="$1"
   local socket="$2"
@@ -102,5 +81,29 @@ wait_for_kubectl() {
       sudo systemctl reset-failed spire-identity-exchange-job
   done
   return 1
+}
+
+wait_for_spire_identity_exchange() {
+  local MAX_WAIT=30
+  local ELAPSED=0
+  while true; do
+    if curl -s -o /dev/null https://localhost:8443 -k; then
+      return 0
+    fi
+    if [ $ELAPSED -ge $MAX_WAIT ]; then
+      echo "Timed out after ${MAX_WAIT} seconds."
+      exit 1
+    fi
+    sleep 1
+    ((ELAPSED++)) || true
+  done
+  return 1
+}
+
+deploy_credential_composer {
+  go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
+  sudo mkdir -p /usr/libexec/spire/plugins
+  sudo cp -a spire-credentialcomposer-identity-exchange /usr/libexec/spire/plugins/credentialcomposer-identity-exchange
+  /usr/libexec/spire/plugins/credentialcomposer-identity-exchange || true
 }
 

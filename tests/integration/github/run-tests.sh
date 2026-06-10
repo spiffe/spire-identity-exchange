@@ -16,11 +16,28 @@ fi
 
 . "${SCRIPTPATH}/../common/common.sh"
 
-# Add credential composer
-go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
-sudo mkdir -p /usr/libexec/spire/plugins
-sudo cp -a spire-credentialcomposer-identity-exchange /usr/libexec/spire/plugins/credentialcomposer-identity-exchange
-/usr/libexec/spire/plugins/credentialcomposer-identity-exchange || true
+teardown() {
+  echo ---------------------------
+  echo "::group::Status Output"
+  kubectl get pods -l job-name=test -o name | xargs kubectl describe || true
+  kubectl logs job/test || true
+  sudo journalctl -u spire-identity-exchange@main.service || true
+  kubectl logs -n kube-system kube-apiserver-chart-testing-control-plane || true
+  sudo systemctl status spire-identity-exchange-job -n 1000  2>&1 || true
+  sudo systemctl status k8s-spiffe-workload-auth-config 2>&1 || true
+  sudo systemctl status k8s-spiffe-oidc-discovery-provider.service 2>&1 || true
+  sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
+  sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
+  sudo systemctl status spire-server@main -n 50 2>&1 || true
+  sudo spire-server entry show 2>&1 || true
+  sudo systemctl status spire-controller-manager@main 2>&1 || true
+  sudo systemctl status spire-agent@main 2>&1 || true
+  sudo systemctl status spire-agent@six 2>&1 || true
+}
+
+trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
+
+deploy_credential_composer
 
 # Setup github mock service. Consider moving this out to a systemd service
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
@@ -43,6 +60,10 @@ export MOCKHUB_TOKEN="$(cat token)"
 echo "::add-mask::${MOCKHUB_TOKEN}"
 set -x
 
+sudo mkdir -p /etc/spire/server/main
+sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
+
+# Common spire setup bits
 # Get the package repo and install the packages
 sudo curl -s -o /etc/apt/sources.list.d/spire-examples.list https://raw.githubusercontent.com/spiffe/spire-examples/refs/heads/main/examples/debs/amd64/spire-examples.list
 sudo apt-get update
@@ -51,7 +72,6 @@ sudo apt-get install -y spire-common spire-agent spire-server spire-controller-m
 # register some workloads with the spire server using manifests
 sudo mkdir -p /etc/spire/server/main/manifests/
 sudo cp "${SCRIPTPATH}/../common/manifests"/* /etc/spire/server/main/manifests/
-sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
 # Startup server and make sure its ready
 sudo cp "${SCRIPTPATH}/server.conf" /etc/spire/server/main/config
@@ -69,6 +89,7 @@ sudo systemctl start spire-agent@main spire-agent@six
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/main/public/api.sock
 wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.sock
 
+# K8s specific bits
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
@@ -98,8 +119,8 @@ docker exec -i chart-testing-control-plane bash -c 'curl -k https://k8ssodp.exam
 sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
 sudo ls /etc/kubernetes/pki/
 
+# Setup spire-identity-exchange
 sudo mkdir -p /usr/libexec/spire/
-#sudo cp -a build/bin/spire-identity-exchange /usr/libexec/spire/
 chmod +x spire-identity-exchange
 sudo cp -a spire-identity-exchange /usr/libexec/spire/
 
@@ -116,21 +137,11 @@ sudo cp "${SCRIPTPATH}/../../../systemd/spire-identity-exchange@.service" /etc/s
 sudo systemctl daemon-reload
 sudo systemctl start spire-identity-exchange@main.service
 
-MAX_WAIT=30
-ELAPSED=0
-while true; do
-  if curl -s -o /dev/null https://localhost:8443 -k; then
-    break
-  fi
-  if [ $ELAPSED -ge $MAX_WAIT ]; then
-    echo "Timed out after ${MAX_WAIT} seconds."
-    exit 1
-  fi
-  sleep 1
-  ((ELAPSED++)) || true
-done
+wait_for_spire_identity_exchange
 
 # Tests
+
+# Github Tests
 
 SPIFFE_ID="spiffe://example.org/spire-identity-exchange/github/cncf/spire-identity-exchange"
 
@@ -162,6 +173,7 @@ fi
 
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 
+# K8s Tests
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
