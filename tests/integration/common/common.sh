@@ -158,6 +158,7 @@ setup_identity_exchange() {
   sudo systemctl daemon-reload
   sudo systemctl restart spire-identity-exchange@main.service
 
-  wait_for_spire_identity_exchange
+  sleep 20
+#  wait_for_spire_identity_exchange
 }
 
