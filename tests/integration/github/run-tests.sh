@@ -266,4 +266,5 @@ sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 kubectl logs job/test
+kubectl logs job/test | tar -xvf
 #FIXME... 404 on no manifest...
