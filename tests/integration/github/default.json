@@ -37,7 +37,7 @@
       "config": {
         "kubeconfig": "/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig",
         "audiences": ["spire-identity-exchange"],
-	"allowedServiceAccounts": ["default:default"]
+	"allowedServiceAccounts": ["default/default"]
       }
     }]
   },
