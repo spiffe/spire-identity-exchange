@@ -13,8 +13,8 @@ env:
   KIND_NODE_VERSION: v1.36.1
 
 jobs:
-  basic-tests:
-    name: Run Basic Tests
+  build:
+    name: Build
     runs-on: ubuntu-24.04
 
     steps:
@@ -24,8 +24,29 @@ jobs:
       - id: set-matrix-integration
         name: Do basic tests
         run: |
-          echo
-          #make
+          make build
+      - name: Upload the file as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spire-identity-exchange
+          path: build/bin/spire-identity-exchange
+
+  basic-tests:
+    name: Basic Tests
+    runs-on: ubuntu-24.04
+    needs:
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+      - name: Download the artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spire-identity-exchange
+      - id: set-matrix-integration
+        name: Run Basic Tests
+        run: |
+          make
 
   build-matrix:
     name: Build matrix
@@ -54,7 +75,7 @@ jobs:
       contents: read
 
     needs:
-      - basic-tests
+      - build
       - build-matrix
 
     strategy:
@@ -66,6 +87,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
+      - name: Download the artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spire-identity-exchange
       - name: Prep kind environment
         run: |
           sudo mkdir -p /etc/kubernetes/pki
