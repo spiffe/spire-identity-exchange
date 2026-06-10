@@ -27,15 +27,33 @@ func TestValidateConfig(t *testing.T) {
 		errMsg    string
 	}{
 		{
+			// Default (nothing set) runs JWKS, which needs audiences.
+			name: "default_requires_audiences",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+			},
+			expectErr: true,
+			errMsg:    "audiences is required when jwksCheck is enabled",
+		},
+		{
+			name: "default_with_audiences_ok",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				Audiences:         []string{"spire-identity-exchange"},
+			},
+		},
+		{
 			name: "valid_config_namespaces",
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         ptr(false),
 			},
 		},
 		{
 			name: "valid_config_service_accounts",
 			cfg: Config{
 				AllowedServiceAccounts: []string{"prod/web"},
+				JWKSCheck:              ptr(false),
 			},
 		},
 		{
@@ -43,12 +61,14 @@ func TestValidateConfig(t *testing.T) {
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
 				Kubeconfig:        kubeconfig,
+				JWKSCheck:         ptr(false),
 			},
 		},
 		{
 			name: "missing_allowlists",
 			cfg: Config{
 				Kubeconfig: kubeconfig,
+				JWKSCheck:  ptr(false),
 			},
 			expectErr: true,
 			errMsg:    "at least one of allowedNamespaces or allowedServiceAccounts",
@@ -58,6 +78,7 @@ func TestValidateConfig(t *testing.T) {
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
 				Kubeconfig:        filepath.Join(dir, "missing-kubeconfig"),
+				JWKSCheck:         ptr(false),
 			},
 			expectErr: true,
 			errMsg:    "kubeconfig not found",
@@ -66,7 +87,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "jwks_check_requires_audiences",
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
-				JWKSCheck:         true,
+				JWKSCheck:         ptr(true),
 			},
 			expectErr: true,
 			errMsg:    "audiences is required when jwksCheck is enabled",
@@ -75,26 +96,27 @@ func TestValidateConfig(t *testing.T) {
 			name: "jwks_check_with_audiences_ok",
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
-				JWKSCheck:         true,
+				JWKSCheck:         ptr(true),
 				Audiences:         []string{"spire-identity-exchange"},
 			},
 		},
 		{
-			name: "disable_token_review_requires_jwks",
+			name: "both_stages_disabled_rejected",
 			cfg: Config{
-				AllowedNamespaces:  []string{"prod"},
-				DisableTokenReview: true,
+				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         ptr(false),
+				TokenReview:       ptr(false),
 			},
 			expectErr: true,
-			errMsg:    "jwksCheck is required when disableTokenReview is set",
+			errMsg:    "at least one of jwksCheck or tokenReview must be enabled",
 		},
 		{
-			name: "disable_token_review_with_jwks_ok",
+			name: "token_review_disabled_with_jwks_ok",
 			cfg: Config{
-				AllowedNamespaces:  []string{"prod"},
-				DisableTokenReview: true,
-				JWKSCheck:          true,
-				Audiences:          []string{"spire-identity-exchange"},
+				AllowedNamespaces: []string{"prod"},
+				TokenReview:       ptr(false),
+				JWKSCheck:         ptr(true),
+				Audiences:         []string{"spire-identity-exchange"},
 			},
 		},
 	}
@@ -124,12 +146,15 @@ func TestNewValidator(t *testing.T) {
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
 				AuthClient:        &mockAuthV1Client{tokenValid: true},
+				// JWKS off so construction does not attempt live OIDC discovery.
+				JWKSCheck: ptr(false),
 			},
 		},
 		{
 			name: "missing_allowlists",
 			cfg: Config{
 				AuthClient: &mockAuthV1Client{tokenValid: true},
+				JWKSCheck:  ptr(false),
 			},
 			expectErr: true,
 			errMsg:    "at least one of allowedNamespaces or allowedServiceAccounts",
@@ -245,6 +270,8 @@ func TestValidateWrapsInner(t *testing.T) {
 			tokenValid:     true,
 			returnUsername: "system:serviceaccount:ns:sa",
 		},
+		// This suite exercises the TokenReview path only.
+		JWKSCheck: ptr(false),
 	}
 
 	v, err := NewValidator(cfg)
@@ -275,6 +302,7 @@ func TestValidateWrapsInner(t *testing.T) {
 				tokenValid:     true,
 				returnUsername: "system:serviceaccount:ns:sa",
 			},
+			JWKSCheck: ptr(false),
 		}
 		denyV, err := NewValidator(denyCfg)
 		require.NoError(t, err)
@@ -361,9 +389,9 @@ func TestTokenReviewDisabled(t *testing.T) {
 		}},
 	}
 	cfg := Config{
-		ClusterName:        "prod-cluster",
-		AllowedNamespaces:  []string{"ns"},
-		DisableTokenReview: true,
+		ClusterName:       "prod-cluster",
+		AllowedNamespaces: []string{"ns"},
+		TokenReview:       ptr(false),
 		// No AuthClient: if the inner stage were built, construction or Validate
 		// would fail, so a passing test proves TokenReview is skipped entirely.
 		jwksValidator: stage,
@@ -383,12 +411,16 @@ func TestTokenReviewDisabled(t *testing.T) {
 // Validator with neither stage active, which would accept every token.
 func TestNewValidatorRejectsNoStages(t *testing.T) {
 	_, err := NewValidator(Config{
-		AllowedNamespaces:  []string{"ns"},
-		DisableTokenReview: true,
+		AllowedNamespaces: []string{"ns"},
+		JWKSCheck:         ptr(false),
+		TokenReview:       ptr(false),
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "jwksCheck is required when disableTokenReview is set")
+	assert.Contains(t, err.Error(), "at least one of jwksCheck or tokenReview must be enabled")
 }
+
+// ptr returns a pointer to b, for setting the optional *bool config flags.
+func ptr(b bool) *bool { return &b }
 
 func TestGenerateSelectors(t *testing.T) {
 	tests := []struct {
