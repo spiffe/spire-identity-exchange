@@ -27,7 +27,7 @@ spec:
         - |
           TOKEN=$(cat /var/run/secrets/tokens/token)
           curl -f -H "Authorization: Bearer ${TOKEN}" \
-            -X POST https://spire-identity-exchange.example.org:8444/api/v1/svid/k8s_psat/x509?format=spiffe-ft-tar \
+            -X POST https://spire-identity-exchange.example.org:8444/api/v1/svid/k8s_psat/x509?format=spiffe-fd-tar \
             -k -sS -q | base64
         volumeMounts:
         - name: token-volume
