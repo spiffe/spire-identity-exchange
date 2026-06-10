@@ -267,6 +267,6 @@ IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
-kubectl logs job/test
 kubectl logs job/test | base64 -d | tar -xvf -
+openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/k8s-psat/test'
 #FIXME... 404 on no manifest...
