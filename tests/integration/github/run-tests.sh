@@ -140,6 +140,15 @@ sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-workload-auth-config k8s-spiffe-oidc-discovery-provider
 
+kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
+kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user="spiffe://example.org/service/spire-identity-exchange"
+
+docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
+yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}, {"name": "SPIFFE_ENDPOINT_SOCKET", "value": "unix:///var/run/spire/agent/sockets/main/public/api.sock"}]})' spire-identity-exchange.kubeconfig
+cat spire-identity-exchange.kubeconfig
+sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
+timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job $(which kubectl) get --raw /.well-known/openid-configuration --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
+
 make build
 
 curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k
@@ -210,19 +219,4 @@ if [ -n "$GITHUB_TOKEN" ]; then
 fi
 
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
-
-kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
-kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --user="spiffe://example.org/service/spire-identity-exchange"
-kubectl create clusterrolebinding spire-identity-exchange-admin --clusterrole=cluster-admin --user="spiffe://example.org/service/spire-identity-exchange"
-
-docker exec -i chart-testing-control-plane bash -c 'kubeadm kubeconfig user --client-name=spire-identity-exchange' > "spire-identity-exchange.kubeconfig"
-yq -i '.users[] |= select(.name == "spire-identity-exchange").user |= (del(."client-certificate-data", ."client-key-data") | .exec = {"apiVersion": "client.authentication.k8s.io/v1", "command": "k8s-spiffe-workload-jwt-exec-auth", "interactiveMode": "Never", "env": [{"name": "SPIFFE_JWT_AUDIENCE", "value": "k8s-main"}, {"name": "SPIFFE_ENDPOINT_SOCKET", "value": "unix:///var/run/spire/agent/sockets/main/public/api.sock"}]})' spire-identity-exchange.kubeconfig
-cat spire-identity-exchange.kubeconfig
-sudo mv spire-identity-exchange.kubeconfig /etc/spire/identity-exchange
-timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job $(which kubectl) get nodes --kubeconfig /etc/spire/identity-exchange/spire-identity-exchange.kubeconfig
-#t=$(timeout 10 sudo systemd-run --wait --pipe --setenv=SPIFFE_ENDPOINT_SOCKET=unix:///var/run/spire/agent/sockets/main/public/api.sock --unit=spire-identity-exchange-job /bin/k8s-spiffe-workload-jwt-exec-auth | yq e .status.token)
-#echo $t | base64
-#timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /bin/ls -l /var/run/spire/agent/sockets/main/public/api.sock
-#kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /.well-known/openid-configuration
-#kubectl --kubeconfig=/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig get --raw /openid/v1/jwks
 
