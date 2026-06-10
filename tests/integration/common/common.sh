@@ -156,7 +156,7 @@ setup_identity_exchange() {
   sudo cp "${SCRIPTPATH}/default.json" /etc/spire/identity-exchange/
   sudo cp "${COMMONPATH}/../../../systemd/spire-identity-exchange@.service" /etc/systemd/system
   sudo systemctl daemon-reload
-  sudo systemctl start spire-identity-exchange@main.service
+  sudo systemctl restart spire-identity-exchange@main.service
 
   wait_for_spire_identity_exchange
 }
