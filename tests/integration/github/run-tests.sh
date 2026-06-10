@@ -81,7 +81,7 @@ wait_for_jwt() {
   return 1
 }
 
-wait_for_oidc) {
+wait_for_oidc() {
   local socket="$1"
   local timeout=30
   local count=0
