@@ -102,7 +102,7 @@ wait_for_oidc() {
 
 wait_for_kubectl() {
   local socket="$1"
-  local timeout=15
+  local timeout=30
   local count=0
   local IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
   while [ "$count" -lt "$timeout" ]; do
