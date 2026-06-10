@@ -2,7 +2,7 @@
   "name": "spire-identity-exchange",
   "logLevel": "info",
   "server": {
-    "port": 0,
+    "port": 8443,
     "metricsPort": 4950,
     "restPort": 8444,
     "tls": {
@@ -59,9 +59,9 @@
   },
   "k8sSAToken": {
     "enabled": true,
-    "clusterName": "my-cluster",
+    "clusterName": "main",
     "audiences": ["spire-identity-exchange"],
     "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
-    "kubeconfig": ""
+    "kubeconfig": "/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig"
   }
 }
