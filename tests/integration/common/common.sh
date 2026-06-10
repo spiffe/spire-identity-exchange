@@ -100,7 +100,7 @@ wait_for_spire_identity_exchange() {
   return 1
 }
 
-deploy_credential_composer {
+deploy_credential_composer() {
   go build -o spire-credentialcomposer-identity-exchange cmd/spire-credentialcomposer-identity-exchange/main.go
   sudo mkdir -p /usr/libexec/spire/plugins
   sudo cp -a spire-credentialcomposer-identity-exchange /usr/libexec/spire/plugins/credentialcomposer-identity-exchange
