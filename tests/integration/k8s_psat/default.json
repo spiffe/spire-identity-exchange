@@ -34,7 +34,7 @@
     }]
   },
   "githubOIDC": {
-    "enabled": true,
+    "enabled": false,
     "issuer": "http://localhost:9999",
     "audiences": ["spire-identity-exchange"],
     "jwksUri": "http://localhost:9999/.well-known/jwks",
@@ -58,7 +58,7 @@
     "svidTTL": "0s"
   },
   "k8sSAToken": {
-    "enabled": false,
+    "enabled": true,
     "clusterName": "my-cluster",
     "audiences": ["spire-identity-exchange"],
     "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
