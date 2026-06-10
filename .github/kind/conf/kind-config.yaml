@@ -1,15 +1,14 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-kubeadmConfigPatches:
-  - |
-    apiVersion: kubeadm.k8s.io/v1beta3
-    kind: ClusterConfiguration
-    apiServer:
-      extraArgs:
-        authentication-config: /etc/kubernetes/pki/auth-config.yaml
-        v: "6"
 nodes:
   - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            authentication-config: /etc/kubernetes/pki/auth-config.yaml
+            v: "6"
     extraMounts:
       - hostPath: /etc/kubernetes
         containerPath: /etc/kubernetes
