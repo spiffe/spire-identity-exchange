@@ -79,6 +79,24 @@ func TestValidateConfig(t *testing.T) {
 				Audiences:         []string{"spire-identity-exchange"},
 			},
 		},
+		{
+			name: "disable_token_review_requires_jwks",
+			cfg: Config{
+				AllowedNamespaces:  []string{"prod"},
+				DisableTokenReview: true,
+			},
+			expectErr: true,
+			errMsg:    "jwksCheck is required when disableTokenReview is set",
+		},
+		{
+			name: "disable_token_review_with_jwks_ok",
+			cfg: Config{
+				AllowedNamespaces:  []string{"prod"},
+				DisableTokenReview: true,
+				JWKSCheck:          true,
+				Audiences:          []string{"spire-identity-exchange"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -268,9 +286,10 @@ func TestValidateWrapsInner(t *testing.T) {
 }
 
 // fakeStageValidator is a test seam standing in for the JWKS check stage.
-// It records whether it ran and returns a configurable error.
+// It records whether it ran and returns a configurable error or claims.
 type fakeStageValidator struct {
 	err    error
+	claims validator.Claims
 	called bool
 }
 
@@ -278,6 +297,9 @@ func (f *fakeStageValidator) Validate(_ context.Context, _ string, _ validator.P
 	f.called = true
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.claims != nil {
+		return f.claims, nil
 	}
 	return &validator.JWTClaims{}, nil
 }
@@ -323,6 +345,49 @@ func TestJWKSCheckStage(t *testing.T) {
 		assert.Contains(t, err.Error(), "JWKS check failed")
 		assert.Contains(t, err.Error(), "bad signature")
 	})
+}
+
+// TestTokenReviewDisabled verifies that with DisableTokenReview the inner
+// TokenReview stage is not built or run, and the JWKS stage's claims drive the
+// allowlist and cluster-name injection.
+func TestTokenReviewDisabled(t *testing.T) {
+	stage := &fakeStageValidator{
+		claims: &validator.JWTClaims{Raw: map[string]interface{}{
+			"sub": "system:serviceaccount:ns:sa",
+			"kubernetes.io": map[string]interface{}{
+				"namespace":      "ns",
+				"serviceaccount": map[string]interface{}{"name": "sa"},
+			},
+		}},
+	}
+	cfg := Config{
+		ClusterName:        "prod-cluster",
+		AllowedNamespaces:  []string{"ns"},
+		DisableTokenReview: true,
+		// No AuthClient: if the inner stage were built, construction or Validate
+		// would fail, so a passing test proves TokenReview is skipped entirely.
+		jwksValidator: stage,
+	}
+	v, err := NewValidator(cfg)
+	require.NoError(t, err)
+	assert.Nil(t, v.inner, "TokenReview stage should not be built when disabled")
+
+	claims, err := v.Validate(context.Background(), "token", validator.X509Purpose())
+	require.NoError(t, err)
+	assert.True(t, stage.called, "JWKS stage should run")
+	assert.Equal(t, "system:serviceaccount:ns:sa", claims.GetRaw()["sub"])
+	assert.Equal(t, "prod-cluster", claims.GetRaw()["k8s_cluster_name"])
+}
+
+// TestNewValidatorRejectsNoStages confirms a programmatic caller cannot build a
+// Validator with neither stage active, which would accept every token.
+func TestNewValidatorRejectsNoStages(t *testing.T) {
+	_, err := NewValidator(Config{
+		AllowedNamespaces:  []string{"ns"},
+		DisableTokenReview: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "jwksCheck is required when disableTokenReview is set")
 }
 
 func TestGenerateSelectors(t *testing.T) {
