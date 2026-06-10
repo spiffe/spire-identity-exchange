@@ -85,6 +85,7 @@ wait_for_oidc) {
   local socket="$1"
   local timeout=30
   local count=0
+  local IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
   while [ "$count" -lt "$timeout" ]; do
       rc=0
       curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k || rc=$?
