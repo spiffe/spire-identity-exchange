@@ -17,6 +17,8 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
+  kubectl get pods -l job-name=test -o name | xargs kubectl describe || true
+  kubectl logs job/test || true
   sudo journalctl -fu spire-identity-exchange@main.service || true
   kubectl logs -n kube-system kube-apiserver-chart-testing-control-plane || true
   sudo systemctl status spire-identity-exchange-job -n 1000  2>&1 || true
