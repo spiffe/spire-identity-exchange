@@ -144,15 +144,8 @@ func runSpireIdentityExchangeServer(
 		}
 	}
 
-	// Delegated client to the SPIRE Agent. Both gRPC PluginAuth and REST
-	// /api/v1/svid/{stack}/x509 issue SVIDs through it, so build it once here
-	// (when either surface will use it) and share across handlers.
-	//
-	// REST needs it whenever RestPort != 0. gRPC needs it only when the
-	// PluginAuth path is reachable — i.e. when the gRPC port is open AND at
-	// least one plugin is registered in cfg.Auth.LoadedPlugins. The legacy
-	// GithubOIDC/K8sSA oneof variants stay on the SPIRE Server mint path and
-	// don't need it.
+	// Shared delegated client for both surfaces. Needed by REST always; by
+	// gRPC only on the PluginAuth path (port open + plugins registered).
 	var (
 		delegatedClient *delegated.Client
 		err             error
@@ -216,8 +209,7 @@ func runSpireIdentityExchangeServer(
 	// --- REST server ---
 	var httpServer *http.Server
 	if cfg.Server.RestPort != 0 {
-		// delegatedClient is already built above (shared with the gRPC PluginAuth path).
-		// Trust bundle cache fed by Main agent's Workload API.
+		// delegatedClient is shared from above. Trust bundle cache fed by Main agent's Workload API.
 		cache := &trustBundleCache{logger: logger}
 		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath
 		logger.Info("initializing workload API watcher", zap.String("socket_path", socketAddr))

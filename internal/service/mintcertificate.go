@@ -71,24 +71,11 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 	return resp, nil
 }
 
-// MintCertificateByPlugin mints an SVID using the pkg/validator-registered
-// plugin named in PluginAuth.pluginName. Mirrors the REST /api/v1/svid/{stack}/x509
-// dispatch one-for-one:
-//
-//  1. Look up the validator in cfg.Auth.LoadedPlugins.
-//  2. Validate the bearer token; surface claims.
-//  3. Generate selectors from the claims via the plugin's SelectorGenerator.
-//  4. Issue the SVID through the SPIRE Agent's Delegated Identity API
-//     (FetchX509SVID or FetchJWTSVIDs depending on the SVID request type).
-//
-// Unlike the legacy MintCertificateByGithubOIDC / MintCertificateByK8sSAToken
-// paths, this handler does NOT call SPIRE Server's mint API and does NOT use
-// any SIE-side SPIFFE ID template — identity is whatever SPIFFE ID the agent
-// resolves from the registration entry whose selectors match the ones we
-// produce. CSR-based issuance is therefore not supported on this path
-// (agent always generates the keypair); a request with mintX509SVIDRequest.csr
-// set is rejected with InvalidArgument so callers see the limitation loudly
-// rather than silently getting a key they didn't ask for.
+// MintCertificateByPlugin issues an SVID via the SPIRE Agent's Delegated
+// Identity API, matching the REST /api/v1/svid/{stack}/x509 path: look up the
+// plugin, validate the token, build selectors, fetch the SVID. Identity is
+// the entry's SPIFFE ID — no SIE-side template. CSR is not supported (agent
+// generates the keypair) and is rejected with InvalidArgument.
 func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
 	pluginAuth := req.GetPluginAuth()
 	if pluginAuth == nil {

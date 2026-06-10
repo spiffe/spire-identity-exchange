@@ -37,11 +37,9 @@ type SpireIdentityExchangeServer struct {
 	trustDomain     spiffeid.TrustDomain
 }
 
-// NewGRPCHandler creates a new GRPC server handler.
-// Pass nil for a validator to disable that auth method. delegatedClient may be
-// nil when the gRPC PluginAuth path is not in use (no plugins registered or
-// gRPC disabled); the PluginAuth dispatch arm rejects the request loudly in
-// that case rather than nil-panicking.
+// NewGRPCHandler creates a new GRPC server handler. Pass nil for a validator
+// to disable that auth method. delegatedClient may be nil when PluginAuth is
+// not in use; the dispatch arm rejects with Unavailable rather than panicking.
 func NewGRPCHandler(
 	spireClient server_util.ServerClient,
 	delegatedClient *delegated.Client,
@@ -91,9 +89,7 @@ func NewGRPCHandler(
 		}
 	}
 
-	// The gRPC PluginAuth path goes through the delegated Identity API on
-	// every request; no per-plugin handler is built here. cfg.Auth.LoadedPlugins
-	// is consulted directly at dispatch time.
+	// PluginAuth dispatches off cfg.Auth.LoadedPlugins directly; no per-plugin handler needed.
 	return server, nil
 }
 
