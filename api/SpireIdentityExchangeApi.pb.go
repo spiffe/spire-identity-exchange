@@ -114,18 +114,14 @@ func (x *K8SSA) GetK8SSAToken() string {
 	return ""
 }
 
-// PluginAuth represents a generic plugin-based authentication method routed
-// through the pkg/validator registry — the same mechanism that powers the REST
-// POST /api/v1/svid/{stack}/x509 endpoint. Lets clients use any plugin the
-// operator has configured (auth.plugins[]) without proto changes.
-//
-// pluginName must match one of cfg.Auth.Plugins[].name; the operator's
-// per-plugin spiffeIdTemplate and svidTTL then drive identity derivation and
-// issuance.
+// PluginAuth names one plugin in the registry and carries its bearer token.
+// Wrapped in PluginAuthList so a request can carry multiple credentials —
+// today the server only honors a single-element list; multi-element support
+// is reserved for future stack composition.
 type PluginAuth struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// pluginName names the registry stack (e.g. "github", "gitlab", "k8s_psat",
-	// or an operator-defined name).
+	// pluginName must match one of cfg.Auth.Plugins[].name (e.g. "github",
+	// "gitlab", "k8s_psat", or an operator-defined name).
 	PluginName string `protobuf:"bytes,1,opt,name=pluginName,proto3" json:"pluginName,omitempty"`
 	// token is the raw bearer token passed to the named plugin's Validate.
 	Token         string `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
@@ -177,6 +173,55 @@ func (x *PluginAuth) GetToken() string {
 	return ""
 }
 
+// PluginAuthList wraps one or more PluginAuth entries. The wire format is a
+// list so a future "stack" composition feature (validating multiple
+// credentials against multiple plugins on one call) can land without a
+// breaking proto change. The current server requires exactly one entry and
+// returns Unimplemented for multi-entry requests.
+type PluginAuthList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plugins       []*PluginAuth          `protobuf:"bytes,1,rep,name=plugins,proto3" json:"plugins,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PluginAuthList) Reset() {
+	*x = PluginAuthList{}
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PluginAuthList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PluginAuthList) ProtoMessage() {}
+
+func (x *PluginAuthList) ProtoReflect() protoreflect.Message {
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PluginAuthList.ProtoReflect.Descriptor instead.
+func (*PluginAuthList) Descriptor() ([]byte, []int) {
+	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PluginAuthList) GetPlugins() []*PluginAuth {
+	if x != nil {
+		return x.Plugins
+	}
+	return nil
+}
+
 // MintJWTSVIDRequest contains parameters for JWT-SVID issuance.
 // The SPIFFE ID is derived from the workload token claims by spire-identity-exchange.
 type MintJWTSVIDRequest struct {
@@ -191,7 +236,7 @@ type MintJWTSVIDRequest struct {
 
 func (x *MintJWTSVIDRequest) Reset() {
 	*x = MintJWTSVIDRequest{}
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[3]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -203,7 +248,7 @@ func (x *MintJWTSVIDRequest) String() string {
 func (*MintJWTSVIDRequest) ProtoMessage() {}
 
 func (x *MintJWTSVIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[3]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -216,7 +261,7 @@ func (x *MintJWTSVIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintJWTSVIDRequest.ProtoReflect.Descriptor instead.
 func (*MintJWTSVIDRequest) Descriptor() ([]byte, []int) {
-	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{3}
+	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *MintJWTSVIDRequest) GetAudiences() []string {
@@ -247,7 +292,7 @@ type ServerKeyGenRequest struct {
 
 func (x *ServerKeyGenRequest) Reset() {
 	*x = ServerKeyGenRequest{}
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[4]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -259,7 +304,7 @@ func (x *ServerKeyGenRequest) String() string {
 func (*ServerKeyGenRequest) ProtoMessage() {}
 
 func (x *ServerKeyGenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[4]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +317,7 @@ func (x *ServerKeyGenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerKeyGenRequest.ProtoReflect.Descriptor instead.
 func (*ServerKeyGenRequest) Descriptor() ([]byte, []int) {
-	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{4}
+	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ServerKeyGenRequest) GetTtl() int32 {
@@ -292,7 +337,7 @@ type MintCertificateRequest struct {
 	//
 	//	*MintCertificateRequest_GithubOIDC
 	//	*MintCertificateRequest_K8SSA
-	//	*MintCertificateRequest_PluginAuth
+	//	*MintCertificateRequest_PluginAuthList
 	AuthMethod isMintCertificateRequest_AuthMethod `protobuf_oneof:"AuthMethod"`
 	// CSR-based X.509 SVID issuance (default mode). Client generates the key pair and
 	// submits a PKCS#10 CSR; the private key never leaves the client.
@@ -309,7 +354,7 @@ type MintCertificateRequest struct {
 
 func (x *MintCertificateRequest) Reset() {
 	*x = MintCertificateRequest{}
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[5]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -321,7 +366,7 @@ func (x *MintCertificateRequest) String() string {
 func (*MintCertificateRequest) ProtoMessage() {}
 
 func (x *MintCertificateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[5]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -334,7 +379,7 @@ func (x *MintCertificateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintCertificateRequest.ProtoReflect.Descriptor instead.
 func (*MintCertificateRequest) Descriptor() ([]byte, []int) {
-	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{5}
+	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *MintCertificateRequest) GetAuthMethod() isMintCertificateRequest_AuthMethod {
@@ -362,10 +407,10 @@ func (x *MintCertificateRequest) GetK8SSA() *K8SSA {
 	return nil
 }
 
-func (x *MintCertificateRequest) GetPluginAuth() *PluginAuth {
+func (x *MintCertificateRequest) GetPluginAuthList() *PluginAuthList {
 	if x != nil {
-		if x, ok := x.AuthMethod.(*MintCertificateRequest_PluginAuth); ok {
-			return x.PluginAuth
+		if x, ok := x.AuthMethod.(*MintCertificateRequest_PluginAuthList); ok {
+			return x.PluginAuthList
 		}
 	}
 	return nil
@@ -404,19 +449,20 @@ type MintCertificateRequest_K8SSA struct {
 	K8SSA *K8SSA `protobuf:"bytes,2,opt,name=k8sSA,proto3,oneof"`
 }
 
-type MintCertificateRequest_PluginAuth struct {
-	// Generic plugin-based authentication routed through the
-	// pkg/validator registry. Same plugin pool as the REST /svid/{stack}/x509
-	// endpoint, so a single operator-configured plugin (e.g. gitlab) is usable
-	// over both surfaces with no proto change.
-	PluginAuth *PluginAuth `protobuf:"bytes,6,opt,name=pluginAuth,proto3,oneof"`
+type MintCertificateRequest_PluginAuthList struct {
+	// Generic plugin-based authentication routed through the pkg/validator
+	// registry. Same plugin pool as the REST /svid/{stack}/x509 endpoint, so a
+	// single operator-configured plugin (e.g. gitlab) is usable over both
+	// surfaces with no proto change. Carried as a list (currently single-
+	// element) to leave room for future multi-plugin stack composition.
+	PluginAuthList *PluginAuthList `protobuf:"bytes,6,opt,name=pluginAuthList,proto3,oneof"`
 }
 
 func (*MintCertificateRequest_GithubOIDC) isMintCertificateRequest_AuthMethod() {}
 
 func (*MintCertificateRequest_K8SSA) isMintCertificateRequest_AuthMethod() {}
 
-func (*MintCertificateRequest_PluginAuth) isMintCertificateRequest_AuthMethod() {}
+func (*MintCertificateRequest_PluginAuthList) isMintCertificateRequest_AuthMethod() {}
 
 // MintCertificateResponse is the response for the MintCertificate method.
 type MintCertificateResponse struct {
@@ -436,7 +482,7 @@ type MintCertificateResponse struct {
 
 func (x *MintCertificateResponse) Reset() {
 	*x = MintCertificateResponse{}
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[6]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -448,7 +494,7 @@ func (x *MintCertificateResponse) String() string {
 func (*MintCertificateResponse) ProtoMessage() {}
 
 func (x *MintCertificateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[6]
+	mi := &file_SpireIdentityExchangeApi_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -461,7 +507,7 @@ func (x *MintCertificateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintCertificateResponse.ProtoReflect.Descriptor instead.
 func (*MintCertificateResponse) Descriptor() ([]byte, []int) {
-	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{6}
+	return file_SpireIdentityExchangeApi_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *MintCertificateResponse) GetX509Svid() *types.X509SVID {
@@ -502,20 +548,20 @@ const file_SpireIdentityExchangeApi_proto_rawDesc = "" +
 	"\n" +
 	"pluginName\x18\x01 \x01(\tR\n" +
 	"pluginName\x12\x14\n" +
-	"\x05token\x18\x02 \x01(\tR\x05token\"D\n" +
+	"\x05token\x18\x02 \x01(\tR\x05token\"Z\n" +
+	"\x0ePluginAuthList\x12H\n" +
+	"\aplugins\x18\x01 \x03(\v2..proto.spiffe.spireidentityexchange.PluginAuthR\aplugins\"D\n" +
 	"\x12MintJWTSVIDRequest\x12\x1c\n" +
 	"\taudiences\x18\x01 \x03(\tR\taudiences\x12\x10\n" +
 	"\x03ttl\x18\x02 \x01(\x05R\x03ttl\"'\n" +
 	"\x13ServerKeyGenRequest\x12\x10\n" +
-	"\x03ttl\x18\x01 \x01(\x05R\x03ttl\"\xc1\x04\n" +
+	"\x03ttl\x18\x01 \x01(\x05R\x03ttl\"\xcd\x04\n" +
 	"\x16MintCertificateRequest\x12P\n" +
 	"\n" +
 	"githubOIDC\x18\x01 \x01(\v2..proto.spiffe.spireidentityexchange.GithubOIDCH\x00R\n" +
 	"githubOIDC\x12A\n" +
-	"\x05k8sSA\x18\x02 \x01(\v2).proto.spiffe.spireidentityexchange.K8sSAH\x00R\x05k8sSA\x12P\n" +
-	"\n" +
-	"pluginAuth\x18\x06 \x01(\v2..proto.spiffe.spireidentityexchange.PluginAuthH\x00R\n" +
-	"pluginAuth\x12_\n" +
+	"\x05k8sSA\x18\x02 \x01(\v2).proto.spiffe.spireidentityexchange.K8sSAH\x00R\x05k8sSA\x12\\\n" +
+	"\x0epluginAuthList\x18\x06 \x01(\v22.proto.spiffe.spireidentityexchange.PluginAuthListH\x00R\x0epluginAuthList\x12_\n" +
 	"\x13mintX509SVIDRequest\x18\x03 \x01(\v2-.spire.api.server.svid.v1.MintX509SVIDRequestR\x13mintX509SVIDRequest\x12f\n" +
 	"\x12mintJWTSVIDRequest\x18\x04 \x01(\v26.proto.spiffe.spireidentityexchange.MintJWTSVIDRequestR\x12mintJWTSVIDRequest\x12i\n" +
 	"\x13serverKeyGenRequest\x18\x05 \x01(\v27.proto.spiffe.spireidentityexchange.ServerKeyGenRequestR\x13serverKeyGenRequestB\f\n" +
@@ -540,35 +586,37 @@ func file_SpireIdentityExchangeApi_proto_rawDescGZIP() []byte {
 	return file_SpireIdentityExchangeApi_proto_rawDescData
 }
 
-var file_SpireIdentityExchangeApi_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_SpireIdentityExchangeApi_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_SpireIdentityExchangeApi_proto_goTypes = []any{
 	(*GithubOIDC)(nil),              // 0: proto.spiffe.spireidentityexchange.GithubOIDC
 	(*K8SSA)(nil),                   // 1: proto.spiffe.spireidentityexchange.K8sSA
 	(*PluginAuth)(nil),              // 2: proto.spiffe.spireidentityexchange.PluginAuth
-	(*MintJWTSVIDRequest)(nil),      // 3: proto.spiffe.spireidentityexchange.MintJWTSVIDRequest
-	(*ServerKeyGenRequest)(nil),     // 4: proto.spiffe.spireidentityexchange.ServerKeyGenRequest
-	(*MintCertificateRequest)(nil),  // 5: proto.spiffe.spireidentityexchange.MintCertificateRequest
-	(*MintCertificateResponse)(nil), // 6: proto.spiffe.spireidentityexchange.MintCertificateResponse
-	(*v1.MintX509SVIDRequest)(nil),  // 7: spire.api.server.svid.v1.MintX509SVIDRequest
-	(*types.X509SVID)(nil),          // 8: spire.api.types.X509SVID
-	(*types.JWTSVID)(nil),           // 9: spire.api.types.JWTSVID
+	(*PluginAuthList)(nil),          // 3: proto.spiffe.spireidentityexchange.PluginAuthList
+	(*MintJWTSVIDRequest)(nil),      // 4: proto.spiffe.spireidentityexchange.MintJWTSVIDRequest
+	(*ServerKeyGenRequest)(nil),     // 5: proto.spiffe.spireidentityexchange.ServerKeyGenRequest
+	(*MintCertificateRequest)(nil),  // 6: proto.spiffe.spireidentityexchange.MintCertificateRequest
+	(*MintCertificateResponse)(nil), // 7: proto.spiffe.spireidentityexchange.MintCertificateResponse
+	(*v1.MintX509SVIDRequest)(nil),  // 8: spire.api.server.svid.v1.MintX509SVIDRequest
+	(*types.X509SVID)(nil),          // 9: spire.api.types.X509SVID
+	(*types.JWTSVID)(nil),           // 10: spire.api.types.JWTSVID
 }
 var file_SpireIdentityExchangeApi_proto_depIdxs = []int32{
-	0, // 0: proto.spiffe.spireidentityexchange.MintCertificateRequest.githubOIDC:type_name -> proto.spiffe.spireidentityexchange.GithubOIDC
-	1, // 1: proto.spiffe.spireidentityexchange.MintCertificateRequest.k8sSA:type_name -> proto.spiffe.spireidentityexchange.K8sSA
-	2, // 2: proto.spiffe.spireidentityexchange.MintCertificateRequest.pluginAuth:type_name -> proto.spiffe.spireidentityexchange.PluginAuth
-	7, // 3: proto.spiffe.spireidentityexchange.MintCertificateRequest.mintX509SVIDRequest:type_name -> spire.api.server.svid.v1.MintX509SVIDRequest
-	3, // 4: proto.spiffe.spireidentityexchange.MintCertificateRequest.mintJWTSVIDRequest:type_name -> proto.spiffe.spireidentityexchange.MintJWTSVIDRequest
-	4, // 5: proto.spiffe.spireidentityexchange.MintCertificateRequest.serverKeyGenRequest:type_name -> proto.spiffe.spireidentityexchange.ServerKeyGenRequest
-	8, // 6: proto.spiffe.spireidentityexchange.MintCertificateResponse.x509svid:type_name -> spire.api.types.X509SVID
-	9, // 7: proto.spiffe.spireidentityexchange.MintCertificateResponse.jwtSvid:type_name -> spire.api.types.JWTSVID
-	5, // 8: proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi.MintCertificate:input_type -> proto.spiffe.spireidentityexchange.MintCertificateRequest
-	6, // 9: proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi.MintCertificate:output_type -> proto.spiffe.spireidentityexchange.MintCertificateResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	2,  // 0: proto.spiffe.spireidentityexchange.PluginAuthList.plugins:type_name -> proto.spiffe.spireidentityexchange.PluginAuth
+	0,  // 1: proto.spiffe.spireidentityexchange.MintCertificateRequest.githubOIDC:type_name -> proto.spiffe.spireidentityexchange.GithubOIDC
+	1,  // 2: proto.spiffe.spireidentityexchange.MintCertificateRequest.k8sSA:type_name -> proto.spiffe.spireidentityexchange.K8sSA
+	3,  // 3: proto.spiffe.spireidentityexchange.MintCertificateRequest.pluginAuthList:type_name -> proto.spiffe.spireidentityexchange.PluginAuthList
+	8,  // 4: proto.spiffe.spireidentityexchange.MintCertificateRequest.mintX509SVIDRequest:type_name -> spire.api.server.svid.v1.MintX509SVIDRequest
+	4,  // 5: proto.spiffe.spireidentityexchange.MintCertificateRequest.mintJWTSVIDRequest:type_name -> proto.spiffe.spireidentityexchange.MintJWTSVIDRequest
+	5,  // 6: proto.spiffe.spireidentityexchange.MintCertificateRequest.serverKeyGenRequest:type_name -> proto.spiffe.spireidentityexchange.ServerKeyGenRequest
+	9,  // 7: proto.spiffe.spireidentityexchange.MintCertificateResponse.x509svid:type_name -> spire.api.types.X509SVID
+	10, // 8: proto.spiffe.spireidentityexchange.MintCertificateResponse.jwtSvid:type_name -> spire.api.types.JWTSVID
+	6,  // 9: proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi.MintCertificate:input_type -> proto.spiffe.spireidentityexchange.MintCertificateRequest
+	7,  // 10: proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi.MintCertificate:output_type -> proto.spiffe.spireidentityexchange.MintCertificateResponse
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_SpireIdentityExchangeApi_proto_init() }
@@ -576,10 +624,10 @@ func file_SpireIdentityExchangeApi_proto_init() {
 	if File_SpireIdentityExchangeApi_proto != nil {
 		return
 	}
-	file_SpireIdentityExchangeApi_proto_msgTypes[5].OneofWrappers = []any{
+	file_SpireIdentityExchangeApi_proto_msgTypes[6].OneofWrappers = []any{
 		(*MintCertificateRequest_GithubOIDC)(nil),
 		(*MintCertificateRequest_K8SSA)(nil),
-		(*MintCertificateRequest_PluginAuth)(nil),
+		(*MintCertificateRequest_PluginAuthList)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -587,7 +635,7 @@ func file_SpireIdentityExchangeApi_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_SpireIdentityExchangeApi_proto_rawDesc), len(file_SpireIdentityExchangeApi_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -76,11 +76,24 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 // plugin, validate the token, build selectors, fetch the SVID. Identity is
 // the entry's SPIFFE ID — no SIE-side template. CSR is not supported (agent
 // generates the keypair) and is rejected with InvalidArgument.
+//
+// The PluginAuth wire shape is a list to reserve room for future stack
+// composition (multi-plugin validation in one call). Today the server accepts
+// exactly one entry; a multi-entry request returns Unimplemented so the wire
+// format is forward-compatible without committing to the semantics yet.
 func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Context, req *proto.MintCertificateRequest, logger *zap.Logger) (*proto.MintCertificateResponse, error) {
-	pluginAuth := req.GetPluginAuth()
-	if pluginAuth == nil {
-		return nil, status.Error(codes.InvalidArgument, "PluginAuth is not set")
+	pluginAuthList := req.GetPluginAuthList()
+	if pluginAuthList == nil {
+		return nil, status.Error(codes.InvalidArgument, "PluginAuthList is not set")
 	}
+	plugins := pluginAuthList.GetPlugins()
+	if len(plugins) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "pluginAuthList.plugins must contain at least one entry")
+	}
+	if len(plugins) > 1 {
+		return nil, status.Errorf(codes.Unimplemented, "multi-plugin stack composition is not implemented; got %d entries", len(plugins))
+	}
+	pluginAuth := plugins[0]
 	pluginName := pluginAuth.GetPluginName()
 	if pluginName == "" {
 		return nil, status.Error(codes.InvalidArgument, "pluginName is required")
