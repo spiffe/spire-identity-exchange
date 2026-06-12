@@ -5,6 +5,7 @@ import "go.uber.org/zap"
 // Audit stage constants identify the pipeline stage where a request was rejected.
 const (
 	stageTokenValidation    = "token_validation"
+	stageSelectorGeneration = "selector_generation"
 	stageSpiffeIDGeneration = "spiffe_id_generation"
 	stageCSRValidation      = "csr_validation"
 	stageSVIDMint           = "svid_mint"

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strings"
 	"text/template"
 	"time"
 
@@ -120,8 +119,11 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	statusCode := codes.InvalidArgument
 	now := time.Now()
 	defer func() {
-		h.metrics.IncOperationCount(constant.ComponentLabel, constant.PluginLabel, pluginName, statusCode.String())
-		h.metrics.ObserveOperationDuration(constant.ComponentLabel, constant.PluginLabel, pluginName, statusCode.String(), time.Since(now).Seconds())
+		// Use a stable operation constant; pluginName goes into audit logs
+		// (AttestorType), not metric labels — otherwise unbounded operator-chosen
+		// plugin names would explode metric cardinality.
+		h.metrics.IncOperationCount(constant.ComponentLabel, constant.PluginLabel, constant.OperationMintCertificateByPlugin, statusCode.String())
+		h.metrics.ObserveOperationDuration(constant.ComponentLabel, constant.PluginLabel, constant.OperationMintCertificateByPlugin, statusCode.String(), time.Since(now).Seconds())
 	}()
 
 	purpose := h.determinePurpose(req)
@@ -136,7 +138,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 
 	selectors := plugin.GenerateSelectors(claims)
 	if len(selectors) == 0 {
-		audit.FailedStage = stageCSRValidation
+		audit.FailedStage = stageSelectorGeneration
 		audit.RejectionReason = "no selectors derivable from token claims"
 		audit.logRejection(logger)
 		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
@@ -293,21 +295,24 @@ func translateDelegatedFetchError(err error, audit *auditEntry, logger *zap.Logg
 	}
 }
 
-// parseSpiffeID splits a "spiffe://<td>/<path>" string into the typed proto
-// representation expected by spire.api.types.X509SVID / JWTSVID.
+// parseSpiffeID parses a "spiffe://<td>/<path>" string into the typed proto
+// representation expected by spire.api.types.X509SVID / JWTSVID. Uses net/url
+// so scheme/host/path extraction follows RFC 3986 rather than hand-rolled
+// prefix arithmetic.
 func parseSpiffeID(s string) (*spiretypes.SPIFFEID, error) {
-	const prefix = "spiffe://"
-	if !strings.HasPrefix(s, prefix) {
-		return nil, fmt.Errorf("missing %q prefix", prefix)
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
 	}
-	rest := s[len(prefix):]
-	slash := strings.IndexByte(rest, '/')
-	if slash < 0 {
-		return &spiretypes.SPIFFEID{TrustDomain: rest}, nil
+	if u.Scheme != "spiffe" {
+		return nil, fmt.Errorf("expected spiffe:// scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("missing trust domain")
 	}
 	return &spiretypes.SPIFFEID{
-		TrustDomain: rest[:slash],
-		Path:        rest[slash:],
+		TrustDomain: u.Host,
+		Path:        u.Path,
 	}, nil
 }
 

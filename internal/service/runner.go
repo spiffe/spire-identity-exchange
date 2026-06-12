@@ -216,6 +216,13 @@ func runSpireIdentityExchangeServer(
 
 		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
 		if err != nil {
+			// gRPC server is already serving in a goroutine at this point (if
+			// Server.Port != 0). Tear it down before bailing so we don't leak
+			// the bound listener; supervisors expect startup failure to leave
+			// no listening sockets.
+			if grpcServer != nil {
+				grpcServer.Stop()
+			}
 			_ = delegatedClient.Close()
 			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
