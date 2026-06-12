@@ -74,8 +74,16 @@ func (h *SpireIdentityExchangeServer) MintCertificateByGithubOIDC(ctx context.Co
 // MintCertificateByPlugin issues an SVID via the SPIRE Agent's Delegated
 // Identity API, matching the REST /api/v1/svid/{stack}/x509 path: look up the
 // plugin, validate the token, build selectors, fetch the SVID. Identity is
-// the entry's SPIFFE ID — no SIE-side template. CSR is not supported (agent
-// generates the keypair) and is rejected with InvalidArgument.
+// the entry's SPIFFE ID — no SIE-side template.
+//
+// Supported SVID-request modes:
+//   - serverKeyGenRequest → X.509, agent-generated keypair, PEM key returned.
+//   - mintJWTSVIDRequest  → JWT, audiences from the request.
+//
+// mintX509SVIDRequest is rejected: it's documented as CSR-based ("the private
+// key never leaves the client") but the delegated API has no CSR field, so
+// honoring it would silently flip the contract and hand the caller a
+// server-generated key. Callers wanting X.509 must use serverKeyGenRequest.
 //
 // The PluginAuth wire shape is a list to reserve room for future stack
 // composition (multi-plugin validation in one call). Today the server accepts
@@ -156,18 +164,19 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	var resp *proto.MintCertificateResponse
 	switch {
 	case req.GetMintX509SVIDRequest() != nil:
-		// PluginAuth issuance goes through the Delegated Identity API, which
-		// always generates its own keypair — there is no wire field for a CSR.
-		// Reject loudly so callers don't get a server-generated key when they
-		// asked the server to sign their own.
-		if len(req.GetMintX509SVIDRequest().GetCsr()) > 0 {
-			audit.FailedStage = stageCSRValidation
-			audit.RejectionReason = "CSR-based issuance is not supported via PluginAuth; use serverKeyGenRequest or mintJWTSVIDRequest"
-			audit.logRejection(logger)
-			return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
-		}
-		audit.SVIDType = "x509"
-		resp, err = h.mintPluginX509SVID(ctx, selectors, audit, logger, pluginName)
+		// mintX509SVIDRequest is documented as CSR-based: "Client generates
+		// the key pair and submits a PKCS#10 CSR; the private key never leaves
+		// the client." The Delegated Identity API doesn't accept CSRs — the
+		// agent always generates the keypair — so this request mode is
+		// fundamentally incompatible with the PluginAuth path. Reject every
+		// occurrence (CSR populated OR empty) so callers can't accidentally
+		// flip the "private key stays with client" guarantee by sending an
+		// empty CSR; route them to serverKeyGenRequest, which is the explicit
+		// "I want a server-generated key" wire mode.
+		audit.FailedStage = stageCSRValidation
+		audit.RejectionReason = "mintX509SVIDRequest is CSR-based and is not supported via PluginAuth; use serverKeyGenRequest for X.509 issuance or mintJWTSVIDRequest for JWT"
+		audit.logRejection(logger)
+		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
 	case req.GetServerKeyGenRequest() != nil:
 		audit.SVIDType = "x509"
 		resp, err = h.mintPluginX509SVID(ctx, selectors, audit, logger, pluginName)
@@ -176,7 +185,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 		resp, err = h.mintPluginJWTSVID(ctx, selectors, req.GetMintJWTSVIDRequest().GetAudiences(), audit, logger, pluginName)
 	default:
 		audit.FailedStage = stageCSRValidation
-		audit.RejectionReason = "no SVID request specified: set one of mintX509SVIDRequest, mintJWTSVIDRequest, or serverKeyGenRequest"
+		audit.RejectionReason = "no SVID request specified: set one of serverKeyGenRequest or mintJWTSVIDRequest"
 		audit.logRejection(logger)
 		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
 	}
