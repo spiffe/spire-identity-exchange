@@ -5,11 +5,12 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	proto "github.com/spiffe/spire-identity-exchange/api"
 	"github.com/spiffe/spire-identity-exchange/internal/config"
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
+	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
-	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 )
@@ -26,8 +27,9 @@ type authHandler struct {
 type SpireIdentityExchangeServer struct {
 	proto.UnimplementedSpireIdentityExchangeApiServer
 	spireClient     server_util.ServerClient
-	githubOIDC      *authHandler // nil if not configured
-	k8sSAToken      *authHandler // nil if not configured
+	delegated       *delegated.Client // used by the gRPC PluginAuth path; nil when not needed
+	githubOIDC      *authHandler      // legacy hard-coded auth, nil if not configured
+	k8sSAToken      *authHandler      // legacy hard-coded auth, nil if not configured
 	config          *config.SpireIdentityExchangeConfig
 	purposeResolver *v.PurposeResolver
 	metrics         metrics.Metrics
@@ -35,10 +37,12 @@ type SpireIdentityExchangeServer struct {
 	trustDomain     spiffeid.TrustDomain
 }
 
-// NewGRPCHandler creates a new GRPC server handler.
-// Pass nil for a validator to disable that auth method.
+// NewGRPCHandler creates a new GRPC server handler. Pass nil for a validator
+// to disable that auth method. delegatedClient may be nil when PluginAuth is
+// not in use; the dispatch arm rejects with Unavailable rather than panicking.
 func NewGRPCHandler(
 	spireClient server_util.ServerClient,
+	delegatedClient *delegated.Client,
 	cfg *config.SpireIdentityExchangeConfig,
 	githubOIDCValidator v.TokenValidator,
 	k8sSATokenValidator v.TokenValidator,
@@ -52,6 +56,7 @@ func NewGRPCHandler(
 
 	server := &SpireIdentityExchangeServer{
 		spireClient:     spireClient,
+		delegated:       delegatedClient,
 		trustDomain:     trustDomain,
 		config:          cfg,
 		purposeResolver: v.NewPurposeResolver(v.PurposeMode(cfg.PurposeMode)),
@@ -84,6 +89,7 @@ func NewGRPCHandler(
 		}
 	}
 
+	// PluginAuth dispatches off cfg.Auth.LoadedPlugins directly; no per-plugin handler needed.
 	return server, nil
 }
 

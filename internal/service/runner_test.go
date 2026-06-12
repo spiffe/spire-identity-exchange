@@ -101,7 +101,7 @@ func TestRunSpireIdentityExchangeServer_InvalidSPIFFEIDTemplate(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	_, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	_, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid SPIFFE ID template")
@@ -141,7 +141,7 @@ func TestNewGRPCHandler_Success(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -168,7 +168,7 @@ func TestNewGRPCHandler_InvalidTemplate(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -190,7 +190,7 @@ func TestNewGRPCHandler_InvalidTrustDomain(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -223,7 +223,7 @@ func TestServerLifecycle(t *testing.T) {
 	}
 
 	// Create handler
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 	require.NoError(t, err)
 
 	// Create listener

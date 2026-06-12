@@ -26,7 +26,7 @@ func TestServer_NewGRPCHandler_Success(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -53,7 +53,7 @@ func TestServer_NewGRPCHandler_SimpleTemplate(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -76,7 +76,7 @@ func TestServer_NewGRPCHandler_ComplexTemplate(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -98,7 +98,7 @@ func TestServer_NewGRPCHandler_InvalidTemplate_MissingClosingBrace(t *testing.T)
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -120,7 +120,7 @@ func TestServer_NewGRPCHandler_InvalidTemplate_UnterminatedAction(t *testing.T) 
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -142,7 +142,7 @@ func TestServer_NewGRPCHandler_InvalidTemplate_BadSyntax(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -164,7 +164,7 @@ func TestServer_NewGRPCHandler_InvalidTrustDomain_WithSpaces(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -186,7 +186,7 @@ func TestServer_NewGRPCHandler_InvalidTrustDomain_Empty(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -209,7 +209,7 @@ func TestServer_NewGRPCHandler_InvalidTrustDomain_WithScheme(t *testing.T) {
 	mockSpireClient := &MockServerClient{}
 
 	// spiffeid.TrustDomainFromString accepts the scheme and parses out the domain.
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	// It should succeed and extract the domain part
 	require.NoError(t, err)
@@ -245,7 +245,7 @@ func TestServer_NewGRPCHandler_AllFieldsSet(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -279,7 +279,7 @@ func TestServer_NewGRPCHandler_NilValidator(t *testing.T) {
 	mockSpireClient := &MockServerClient{}
 
 	// Should succeed even with nil validator (though it may not be useful)
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, nil, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, nil, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -301,7 +301,7 @@ func TestServer_NewGRPCHandler_NilSpireClient(t *testing.T) {
 	mockValidator := &MockValidator{}
 
 	// Should succeed even with nil SPIRE client (though it may not be useful)
-	handler, err := NewGRPCHandler(nil, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(nil, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -322,7 +322,7 @@ func TestServer_NewGRPCHandler_NilLogger(t *testing.T) {
 	mockSpireClient := &MockServerClient{}
 
 	// Should succeed even with nil logger (though it may not be useful)
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, nil)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -344,7 +344,7 @@ func TestServer_NewGRPCHandler_TemplateWithConditionals(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -367,7 +367,7 @@ func TestServer_NewGRPCHandler_TemplateWithFunctions(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -389,7 +389,7 @@ func TestServer_NewGRPCHandler_MultilineTrustDomain(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	assert.Error(t, err)
 	assert.Nil(t, handler)
@@ -411,7 +411,7 @@ func TestServer_NewGRPCHandler_SubdomainTrustDomain(t *testing.T) {
 	mockValidator := &MockValidator{}
 	mockSpireClient := &MockServerClient{}
 
-	handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 
 	require.NoError(t, err)
 	assert.NotNil(t, handler)
@@ -477,7 +477,7 @@ func TestServer_NewGRPCHandler_DifferentTrustDomainFormats(t *testing.T) {
 			mockValidator := &MockValidator{}
 			mockSpireClient := &MockServerClient{}
 
-			handler, err := NewGRPCHandler(mockSpireClient, cfg, mockValidator, nil, nil, logger)
+			handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 			if tc.shouldError {
 				assert.Error(t, err, "Expected error for trust domain: %s", tc.trustDomain)
 				assert.Nil(t, handler)

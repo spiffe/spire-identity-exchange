@@ -25,6 +25,27 @@ message K8sSA {
   reserved "k8sClusterName";
 }
 
+// PluginAuth names one plugin in the registry and carries its bearer token.
+// Wrapped in PluginAuthList so a request can carry multiple credentials —
+// today the server only honors a single-element list; multi-element support
+// is reserved for future stack composition.
+message PluginAuth {
+  // pluginName must match one of cfg.Auth.Plugins[].name (e.g. "github",
+  // "gitlab", "k8s_psat", or an operator-defined name).
+  string pluginName = 1;
+  // token is the raw bearer token passed to the named plugin's Validate.
+  string token = 2;
+}
+
+// PluginAuthList wraps one or more PluginAuth entries. The wire format is a
+// list so a future "stack" composition feature (validating multiple
+// credentials against multiple plugins on one call) can land without a
+// breaking proto change. The current server requires exactly one entry and
+// returns Unimplemented for multi-entry requests.
+message PluginAuthList {
+  repeated PluginAuth plugins = 1;
+}
+
 // MintJWTSVIDRequest contains parameters for JWT-SVID issuance.
 // The SPIFFE ID is derived from the workload token claims by spire-identity-exchange.
 message MintJWTSVIDRequest {
@@ -63,6 +84,12 @@ message MintCertificateRequest {
   oneof AuthMethod {
     GithubOIDC githubOIDC = 1;
     K8sSA k8sSA = 2;
+    // Generic plugin-based authentication routed through the pkg/validator
+    // registry. Same plugin pool as the REST /svid/{stack}/x509 endpoint, so a
+    // single operator-configured plugin (e.g. gitlab) is usable over both
+    // surfaces with no proto change. Carried as a list (currently single-
+    // element) to leave room for future multi-plugin stack composition.
+    PluginAuthList pluginAuthList = 6;
   }
   // CSR-based X.509 SVID issuance (default mode). Client generates the key pair and
   // submits a PKCS#10 CSR; the private key never leaves the client.

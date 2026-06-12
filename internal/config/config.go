@@ -68,7 +68,9 @@ type AuthConfig struct {
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 }
 
-// PluginConfig contains the configuration for a single plugin
+// PluginConfig is the operator config for one plugin. SPIFFE ID and TTL are not
+// set here — both surfaces use SPIRE's Delegated Identity API, which resolves
+// both from the registration entry matching the plugin's generated selectors.
 type PluginConfig struct {
 	Name      string                         `json:"name"`
 	Plugin    string                         `json:"plugin"`

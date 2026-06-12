@@ -144,8 +144,27 @@ func runSpireIdentityExchangeServer(
 		}
 	}
 
-	handler, err := NewGRPCHandler(spireClient, cfg, githubOIDCValidator, k8sSATokenValidator, metrics, logger)
+	// Shared delegated client for both surfaces. Needed by REST always; by
+	// gRPC only on the PluginAuth path (port open + plugins registered).
+	var (
+		delegatedClient *delegated.Client
+		err             error
+	)
+	needDelegated := cfg.Server.RestPort != 0 ||
+		(cfg.Server.Port != 0 && len(cfg.Auth.LoadedPlugins) > 0)
+	if needDelegated {
+		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
+		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
+		if err != nil {
+			return fmt.Errorf("failed to create delegated identity client: %w", err)
+		}
+	}
+
+	handler, err := NewGRPCHandler(spireClient, delegatedClient, cfg, githubOIDCValidator, k8sSATokenValidator, metrics, logger)
 	if err != nil {
+		if delegatedClient != nil {
+			_ = delegatedClient.Close()
+		}
 		return fmt.Errorf("failed to create gRPC server handler: %w", err)
 	}
 
@@ -188,29 +207,22 @@ func runSpireIdentityExchangeServer(
 	}
 
 	// --- REST server ---
-	var (
-		httpServer      *http.Server
-		delegatedClient *delegated.Client
-	)
+	var httpServer *http.Server
 	if cfg.Server.RestPort != 0 {
-		// Build all REST deps before spawning the watcher goroutine — otherwise an
-		// error from a later init step (e.g. delegated.New) returns with the watcher
-		// still running and wlaClient never explicitly closed; the goroutine only
-		// unwinds on context cancellation, which leaks an FD/goroutine in any caller
-		// that doesn't cancel ctx on the error path (notably tests).
-		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
-		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to create delegated identity client: %w", err)
-		}
-
-		// Trust bundle cache fed by Main agent's Workload API.
+		// delegatedClient is shared from above. Trust bundle cache fed by Main agent's Workload API.
 		cache := &trustBundleCache{logger: logger}
 		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath
 		logger.Info("initializing workload API watcher", zap.String("socket_path", socketAddr))
 
 		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
 		if err != nil {
+			// gRPC server is already serving in a goroutine at this point (if
+			// Server.Port != 0). Tear it down before bailing so we don't leak
+			// the bound listener; supervisors expect startup failure to leave
+			// no listening sockets.
+			if grpcServer != nil {
+				grpcServer.Stop()
+			}
 			_ = delegatedClient.Close()
 			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
