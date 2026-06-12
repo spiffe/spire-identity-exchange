@@ -16,7 +16,7 @@ import (
 // string (e.g. "1h", "10m") or an integer number of nanoseconds.
 type Duration time.Duration
 
-var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
+var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-_]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string

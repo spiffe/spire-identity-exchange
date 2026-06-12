@@ -1,7 +1,7 @@
 // Package k8s provides a Kubernetes service-account token validator that
-// authenticates tokens via the Kubernetes TokenReview API and emits SPIRE
-// selectors from the resulting claims. It implements
-// validator.TokenValidator and validator.SelectorGenerator.
+// authenticates tokens via the Kubernetes TokenReview API and/or an in-process
+// JWKS signature check, and emits SPIRE selectors from the resulting claims. It
+// implements validator.TokenValidator and validator.SelectorGenerator.
 package k8s
 
 import (
@@ -66,11 +66,43 @@ type Config struct {
 	// would otherwise be apiHost + caFile + certFile + keyFile.
 	Kubeconfig string `json:"kubeconfig"`
 
+	// JWKSCheck enables the in-process JWKS signature check. When enabled, a
+	// token whose signature, issuer, audience, or expiration fails verification
+	// against the cluster JWKS is rejected. The check is cheap: keys are fetched
+	// periodically and cached, then verification runs in-process. The signing
+	// keys and issuer are discovered from the API server using the same
+	// credentials as TokenReview. Requires audiences to be set.
+	//
+	// It defaults to on (a nil pointer means enabled). Defaulting on protects the
+	// Kubernetes API server: a flood of bogus tokens is rejected in-process
+	// before any TokenReview round-trip, so the service does not amplify a denial
+	// of service onto the API server. Operators who understand the trade-off can
+	// disable it by setting it to false.
+	//
+	// JWKSCheck and TokenReview are independent stages; at least one must be on.
+	JWKSCheck *bool `json:"jwksCheck"`
+
+	// TokenReview enables the authoritative TokenReview stage, which round-trips
+	// to the API server for every token and validates it against the cluster's
+	// live state.
+	//
+	// It defaults to on (a nil pointer means enabled). An operator may set it to
+	// false to rely on the in-process JWKS check alone (e.g. for throughput or to
+	// tolerate brief API server downtime), in which case JWKSCheck must be on,
+	// because at least one validation stage must remain active. Relying on JWKS
+	// alone gives up the live-state check.
+	TokenReview *bool `json:"tokenReview"`
+
 	// AuthClient overrides the default-built TokenReview client. Primarily a
 	// test seam — passed through to the inner TokenReviewValidator. Mirrors how
 	// pkg/validator/github.Config carries KeyProvider through to the inner
 	// pkg/validator/jwt.Validator.
 	AuthClient authenticationv1.AuthenticationV1Interface `json:"-"`
+
+	// jwksValidator overrides the JWKS check stage. Test seam, mirrors
+	// AuthClient. When nil and the JWKS check is enabled, NewValidator builds one
+	// from the API server's discovered OIDC configuration.
+	jwksValidator validator.TokenValidator
 
 	// Metrics allows injecting a metrics collector for operation tracking.
 	// If nil, metrics collection is silently skipped.
@@ -81,11 +113,38 @@ func (c *Config) Unmarshal(raw json.RawMessage) error {
 	return json.Unmarshal(raw, c)
 }
 
+// enabled resolves an optional on/off flag: a nil pointer takes the default,
+// otherwise the explicit value wins. Used so JWKSCheck and TokenReview can
+// distinguish "unset" (apply default) from an explicit false.
+func enabled(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
 func (c *Config) ValidateConfig() error {
 	var errs []error
 
 	if len(c.AllowedNamespaces) == 0 && len(c.AllowedServiceAccounts) == 0 {
 		errs = append(errs, errors.New("at least one of allowedNamespaces or allowedServiceAccounts must be specified"))
+	}
+
+	jwksOn := enabled(c.JWKSCheck, true)
+	tokenReviewOn := enabled(c.TokenReview, true)
+
+	// At least one validation stage must remain active; otherwise the validator
+	// would accept every token. Both default on, so this requires explicitly
+	// disabling both.
+	if !jwksOn && !tokenReviewOn {
+		errs = append(errs, errors.New("at least one of jwksCheck or tokenReview must be enabled"))
+	}
+
+	// The JWKS check verifies the token audience against the configured list, so
+	// it cannot run without one. Because it defaults on, audiences is effectively
+	// required unless jwksCheck is explicitly disabled.
+	if jwksOn && len(c.Audiences) == 0 {
+		errs = append(errs, errors.New("audiences is required when jwksCheck is enabled"))
 	}
 
 	// API server connectivity comes from the kubeconfig / in-cluster fallback,
@@ -109,6 +168,11 @@ func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, e
 // injection into the claim map and namespace / service-account allowlists.
 // Mirrors how pkg/validator/github.Validator wraps pkg/validator/jwt.Validator.
 type Validator struct {
+	// jwksCheck and inner are independent validation stages; at least one is
+	// non-nil. jwksCheck is the in-process JWKS signature check; inner is the
+	// authoritative TokenReview stage, nil when TokenReview is disabled. When
+	// both run, JWKS runs first and TokenReview's claims are authoritative.
+	jwksCheck              validator.TokenValidator
 	inner                  *TokenReviewValidator
 	clusterName            string
 	allowedNamespaces      []string
@@ -127,16 +191,45 @@ func NewValidator(cfg Config) (*Validator, error) {
 		return nil, fmt.Errorf("at least one of allowedNamespaces or allowedServiceAccounts must be specified")
 	}
 
-	inner, err := NewTokenReviewValidator(TokenReviewConfig{
-		Audiences:  cfg.Audiences,
-		Kubeconfig: cfg.Kubeconfig,
-		AuthClient: cfg.AuthClient,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create token review validator: %w", err)
+	jwksOn := enabled(cfg.JWKSCheck, true)
+	tokenReviewOn := enabled(cfg.TokenReview, true)
+
+	// Build the JWKS check stage when enabled. The injected jwksValidator wins
+	// (test seam); otherwise it is built from the API server's discovered OIDC
+	// configuration.
+	jwksCheck := cfg.jwksValidator
+	if jwksCheck == nil && jwksOn {
+		if len(cfg.Audiences) == 0 {
+			return nil, fmt.Errorf("audiences is required when jwksCheck is enabled")
+		}
+		var err error
+		jwksCheck, err = newJWKSCheckValidator(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS check validator: %w", err)
+		}
+	}
+
+	// Build the authoritative TokenReview stage when enabled. When off, jwksCheck
+	// must exist so the Validator is not a no-op that accepts every token.
+	var inner *TokenReviewValidator
+	if tokenReviewOn {
+		var err error
+		inner, err = NewTokenReviewValidator(TokenReviewConfig{
+			Audiences:  cfg.Audiences,
+			Kubeconfig: cfg.Kubeconfig,
+			AuthClient: cfg.AuthClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create token review validator: %w", err)
+		}
+	}
+
+	if inner == nil && jwksCheck == nil {
+		return nil, fmt.Errorf("at least one of jwksCheck or tokenReview must be enabled")
 	}
 
 	return &Validator{
+		jwksCheck:              jwksCheck,
 		inner:                  inner,
 		clusterName:            cfg.ClusterName,
 		allowedNamespaces:      cfg.AllowedNamespaces,
@@ -145,13 +238,32 @@ func NewValidator(cfg Config) (*Validator, error) {
 	}, nil
 }
 
-// Validate delegates token authentication to the inner TokenReviewValidator,
-// then injects k8s_cluster_name into the claim map and enforces the configured
-// allowlists. Implements validator.TokenValidator.
+// Validate runs the configured validation stages, then injects k8s_cluster_name
+// into the claim map and enforces the configured allowlists. Implements
+// validator.TokenValidator.
 func (v *Validator) Validate(ctx context.Context, token string, purpose validator.Purpose) (validator.Claims, error) {
-	claims, err := v.inner.Validate(ctx, token, purpose)
-	if err != nil {
-		return nil, err
+	var claims validator.Claims
+
+	// Stage 1: optional JWKS signature check. Rejects a token with a bad
+	// signature, issuer, audience, or expiration. The JWKS check works from
+	// cached keys, so it keeps functioning during brief API server downtime. Its
+	// claims are used downstream only when TokenReview is disabled.
+	if v.jwksCheck != nil {
+		jwksClaims, err := v.jwksCheck.Validate(ctx, token, purpose)
+		if err != nil {
+			return nil, fmt.Errorf("JWKS check failed: %w", err)
+		}
+		claims = jwksClaims
+	}
+
+	// Stage 2: authoritative TokenReview, unless disabled. When it runs its
+	// claims are authoritative and override the JWKS claims.
+	if v.inner != nil {
+		tokenReviewClaims, err := v.inner.Validate(ctx, token, purpose)
+		if err != nil {
+			return nil, err
+		}
+		claims = tokenReviewClaims
 	}
 
 	// Inject the operator-configured cluster name so templates can reference

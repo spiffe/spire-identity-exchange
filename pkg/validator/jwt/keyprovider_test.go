@@ -79,6 +79,45 @@ func TestGetKey(t *testing.T) {
 	})
 }
 
+func TestNewKeyProviderWithJWKSURI(t *testing.T) {
+	rsaKey := createTestRSAKey(t)
+	kid := "override-kid"
+
+	var jwksHits, discoveryHits atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/openid/v1/jwks", func(w http.ResponseWriter, r *http.Request) {
+		jwksHits.Add(1)
+		jwk := jose.JSONWebKey{Key: &rsaKey.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
+		jwks := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jwks)
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		discoveryHits.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := NewKeyProviderWithJWKSURI(server.URL+"/openid/v1/jwks", server.Client(), nil)
+	ctx := context.Background()
+
+	t.Run("fetches_from_override_without_discovery", func(t *testing.T) {
+		key, err := provider.GetKey(ctx, kid)
+		require.NoError(t, err)
+		assert.IsType(t, &rsa.PublicKey{}, key)
+		assert.Equal(t, int64(1), jwksHits.Load())
+		assert.Equal(t, int64(0), discoveryHits.Load(), "override must skip OIDC discovery")
+	})
+
+	t.Run("cache_hit_skips_refetch", func(t *testing.T) {
+		jwksHits.Store(0)
+		_, err := provider.GetKey(ctx, kid)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), jwksHits.Load())
+	})
+}
+
 func TestFetchJWKS(t *testing.T) {
 	t.Run("valid_rsa_key", func(t *testing.T) {
 		rsaKey := createTestRSAKey(t)

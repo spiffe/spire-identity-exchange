@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,15 +27,33 @@ func TestValidateConfig(t *testing.T) {
 		errMsg    string
 	}{
 		{
+			// Default (nothing set) runs JWKS, which needs audiences.
+			name: "default_requires_audiences",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+			},
+			expectErr: true,
+			errMsg:    "audiences is required when jwksCheck is enabled",
+		},
+		{
+			name: "default_with_audiences_ok",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				Audiences:         []string{"spire-identity-exchange"},
+			},
+		},
+		{
 			name: "valid_config_namespaces",
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         ptr(false),
 			},
 		},
 		{
 			name: "valid_config_service_accounts",
 			cfg: Config{
 				AllowedServiceAccounts: []string{"prod/web"},
+				JWKSCheck:              ptr(false),
 			},
 		},
 		{
@@ -42,12 +61,14 @@ func TestValidateConfig(t *testing.T) {
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
 				Kubeconfig:        kubeconfig,
+				JWKSCheck:         ptr(false),
 			},
 		},
 		{
 			name: "missing_allowlists",
 			cfg: Config{
 				Kubeconfig: kubeconfig,
+				JWKSCheck:  ptr(false),
 			},
 			expectErr: true,
 			errMsg:    "at least one of allowedNamespaces or allowedServiceAccounts",
@@ -57,9 +78,46 @@ func TestValidateConfig(t *testing.T) {
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
 				Kubeconfig:        filepath.Join(dir, "missing-kubeconfig"),
+				JWKSCheck:         ptr(false),
 			},
 			expectErr: true,
 			errMsg:    "kubeconfig not found",
+		},
+		{
+			name: "jwks_check_requires_audiences",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         ptr(true),
+			},
+			expectErr: true,
+			errMsg:    "audiences is required when jwksCheck is enabled",
+		},
+		{
+			name: "jwks_check_with_audiences_ok",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         ptr(true),
+				Audiences:         []string{"spire-identity-exchange"},
+			},
+		},
+		{
+			name: "both_stages_disabled_rejected",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				JWKSCheck:         ptr(false),
+				TokenReview:       ptr(false),
+			},
+			expectErr: true,
+			errMsg:    "at least one of jwksCheck or tokenReview must be enabled",
+		},
+		{
+			name: "token_review_disabled_with_jwks_ok",
+			cfg: Config{
+				AllowedNamespaces: []string{"prod"},
+				TokenReview:       ptr(false),
+				JWKSCheck:         ptr(true),
+				Audiences:         []string{"spire-identity-exchange"},
+			},
 		},
 	}
 
@@ -88,12 +146,15 @@ func TestNewValidator(t *testing.T) {
 			cfg: Config{
 				AllowedNamespaces: []string{"prod"},
 				AuthClient:        &mockAuthV1Client{tokenValid: true},
+				// JWKS off so construction does not attempt live OIDC discovery.
+				JWKSCheck: ptr(false),
 			},
 		},
 		{
 			name: "missing_allowlists",
 			cfg: Config{
 				AuthClient: &mockAuthV1Client{tokenValid: true},
+				JWKSCheck:  ptr(false),
 			},
 			expectErr: true,
 			errMsg:    "at least one of allowedNamespaces or allowedServiceAccounts",
@@ -209,6 +270,8 @@ func TestValidateWrapsInner(t *testing.T) {
 			tokenValid:     true,
 			returnUsername: "system:serviceaccount:ns:sa",
 		},
+		// This suite exercises the TokenReview path only.
+		JWKSCheck: ptr(false),
 	}
 
 	v, err := NewValidator(cfg)
@@ -239,6 +302,7 @@ func TestValidateWrapsInner(t *testing.T) {
 				tokenValid:     true,
 				returnUsername: "system:serviceaccount:ns:sa",
 			},
+			JWKSCheck: ptr(false),
 		}
 		denyV, err := NewValidator(denyCfg)
 		require.NoError(t, err)
@@ -248,6 +312,115 @@ func TestValidateWrapsInner(t *testing.T) {
 		assert.Contains(t, err.Error(), `namespace "ns" is not in the allowed list`)
 	})
 }
+
+// fakeStageValidator is a test seam standing in for the JWKS check stage.
+// It records whether it ran and returns a configurable error or claims.
+type fakeStageValidator struct {
+	err    error
+	claims validator.Claims
+	called bool
+}
+
+func (f *fakeStageValidator) Validate(_ context.Context, _ string, _ validator.Purpose) (validator.Claims, error) {
+	f.called = true
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.claims != nil {
+		return f.claims, nil
+	}
+	return &validator.JWTClaims{}, nil
+}
+
+// TestJWKSCheckStage verifies the two-stage composition: the JWKS check
+// runs before TokenReview, and a JWKS check failure short-circuits before the
+// authoritative TokenReview call.
+func TestJWKSCheckStage(t *testing.T) {
+	mkValidator := func(jwksErr error) (*Validator, *fakeStageValidator) {
+		stage := &fakeStageValidator{err: jwksErr}
+		cfg := Config{
+			AllowedNamespaces: []string{"ns"},
+			// TokenReview is configured to succeed, so any failure must come from
+			// the JWKS check stage.
+			AuthClient: &mockAuthV1Client{
+				tokenValid:     true,
+				returnUsername: "system:serviceaccount:ns:sa",
+			},
+			jwksValidator: stage,
+		}
+		v, err := NewValidator(cfg)
+		require.NoError(t, err)
+		return v, stage
+	}
+
+	token := mkProjectedToken("system:serviceaccount:ns:sa", "ns", "sa")
+
+	t.Run("JWKS check passes then TokenReview runs", func(t *testing.T) {
+		v, stage := mkValidator(nil)
+		claims, err := v.Validate(context.Background(), token, validator.X509Purpose())
+		require.NoError(t, err)
+		assert.True(t, stage.called, "JWKS check stage should run")
+		assert.Equal(t, "system:serviceaccount:ns:sa", claims.GetRaw()["sub"])
+	})
+
+	t.Run("JWKS check failure short-circuits before TokenReview", func(t *testing.T) {
+		v, stage := mkValidator(errors.New("bad signature"))
+		_, err := v.Validate(context.Background(), token, validator.X509Purpose())
+		require.Error(t, err)
+		assert.True(t, stage.called, "JWKS check stage should run")
+		// TokenReview would have authenticated successfully, so an error here
+		// proves the JWKS check failure stopped the flow.
+		assert.Contains(t, err.Error(), "JWKS check failed")
+		assert.Contains(t, err.Error(), "bad signature")
+	})
+}
+
+// TestTokenReviewDisabled verifies that with DisableTokenReview the inner
+// TokenReview stage is not built or run, and the JWKS stage's claims drive the
+// allowlist and cluster-name injection.
+func TestTokenReviewDisabled(t *testing.T) {
+	stage := &fakeStageValidator{
+		claims: &validator.JWTClaims{Raw: map[string]interface{}{
+			"sub": "system:serviceaccount:ns:sa",
+			"kubernetes.io": map[string]interface{}{
+				"namespace":      "ns",
+				"serviceaccount": map[string]interface{}{"name": "sa"},
+			},
+		}},
+	}
+	cfg := Config{
+		ClusterName:       "prod-cluster",
+		AllowedNamespaces: []string{"ns"},
+		TokenReview:       ptr(false),
+		// No AuthClient: if the inner stage were built, construction or Validate
+		// would fail, so a passing test proves TokenReview is skipped entirely.
+		jwksValidator: stage,
+	}
+	v, err := NewValidator(cfg)
+	require.NoError(t, err)
+	assert.Nil(t, v.inner, "TokenReview stage should not be built when disabled")
+
+	claims, err := v.Validate(context.Background(), "token", validator.X509Purpose())
+	require.NoError(t, err)
+	assert.True(t, stage.called, "JWKS stage should run")
+	assert.Equal(t, "system:serviceaccount:ns:sa", claims.GetRaw()["sub"])
+	assert.Equal(t, "prod-cluster", claims.GetRaw()["k8s_cluster_name"])
+}
+
+// TestNewValidatorRejectsNoStages confirms a programmatic caller cannot build a
+// Validator with neither stage active, which would accept every token.
+func TestNewValidatorRejectsNoStages(t *testing.T) {
+	_, err := NewValidator(Config{
+		AllowedNamespaces: []string{"ns"},
+		JWKSCheck:         ptr(false),
+		TokenReview:       ptr(false),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one of jwksCheck or tokenReview must be enabled")
+}
+
+// ptr returns a pointer to b, for setting the optional *bool config flags.
+func ptr(b bool) *bool { return &b }
 
 func TestGenerateSelectors(t *testing.T) {
 	tests := []struct {
