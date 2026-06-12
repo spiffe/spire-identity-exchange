@@ -8,9 +8,13 @@ concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  KIND_VERSION: v0.32.0
+  KIND_NODE_VERSION: v1.36.1
+
 jobs:
-  basic-tests:
-    name: Run Basic Tests
+  build:
+    name: Build
     runs-on: ubuntu-24.04
 
     steps:
@@ -19,6 +23,28 @@ jobs:
 
       - id: set-matrix-integration
         name: Do basic tests
+        run: |
+          make build
+      - name: Upload the file as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spire-identity-exchange
+          path: build/bin/spire-identity-exchange
+
+  basic-tests:
+    name: Basic Tests
+    runs-on: ubuntu-24.04
+    needs:
+      - build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+      - name: Download the artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spire-identity-exchange
+      - id: set-matrix-integration
+        name: Run Basic Tests
         run: |
           make
 
@@ -49,7 +75,7 @@ jobs:
       contents: read
 
     needs:
-      - basic-tests
+      - build
       - build-matrix
 
     strategy:
@@ -61,6 +87,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
+      - name: Download the artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spire-identity-exchange
+      - name: Prep kind environment
+        run: |
+          sudo mkdir -p /etc/kubernetes/pki
+          sudo /bin/bash -c '(echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml'
+          sudo cp -a tests/integration/common/hosts /etc/kubernetes/hosts
+          IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+          echo "$IP k8ssodp.example.org" >> /etc/kubernetes/hosts
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.14.0
+        if: contains(fromJSON('["tests/integration/k8s_psat"]'), matrix.integrationtest)
+        with:
+          version: ${{ env.KIND_VERSION }}
+          node_image: kindest/node:${{ env.KIND_NODE_VERSION }}
+          config: .github/kind/conf/kind-config.yaml
+          verbosity: 1
       - name: Request Optional Custom JWT
         id: token_request
         run: |

@@ -1,7 +1,6 @@
 {
   "name": "spire-identity-exchange",
   "logLevel": "info",
-  "purposeMode": "shared",
   "server": {
     "port": 8443,
     "metricsPort": 4950,
@@ -20,23 +19,16 @@
   },
   "auth": {
     "plugins": [{
-      "plugin": "github",
+      "plugin": "k8s_psat",
       "config": {
-        "allowedRepositories": ["spiffe/spire-identity-exchange"],
-        "audiences": ["spire-identity-exchange"]
-      }
-    },{
-      "name": "mockhub",
-      "plugin": "github",
-      "config": {
-        "issuerURL": "http://localhost:9999",
-        "allowedRepositories": ["my-org/my-repo"],
-        "audiences": ["spire-identity-exchange"]
+        "kubeconfig": "/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig",
+        "audiences": ["spire-identity-exchange"],
+        "allowedServiceAccounts": ["default/default"]
       }
     }]
   },
   "githubOIDC": {
-    "enabled": true,
+    "enabled": false,
     "issuer": "http://localhost:9999",
     "audiences": ["spire-identity-exchange"],
     "jwksUri": "http://localhost:9999/.well-known/jwks",
@@ -60,10 +52,10 @@
     "svidTTL": "0s"
   },
   "k8sSAToken": {
-    "enabled": false,
-    "clusterName": "my-cluster",
+    "enabled": true,
+    "clusterName": "main",
     "audiences": ["spire-identity-exchange"],
     "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
-    "kubeconfig": ""
+    "kubeconfig": "/etc/spire/identity-exchange/spire-identity-exchange.kubeconfig"
   }
 }
