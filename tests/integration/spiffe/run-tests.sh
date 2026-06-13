@@ -48,8 +48,6 @@ cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
 wait_for_oidc "http://localhost:8181"
-curl "http://localhost:8181/.well-known/openid-configuration"
-curl "http://localhost:8181/keys"
 
 # Common spire setup bits
 
@@ -63,5 +61,6 @@ diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spir
       
 TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job spire-agent api fetch jwt -audience spire-identity-exchange -output json | jq -r '.[0].svids[0].svid')
 
-curl -f -H "Authorization: Bearer ${TOKEN}" -X POST https://localhost:8444/api/v1/svid/spiffe/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+curl -f -H "Authorization: Bearer ${TOKEN}" -X POST 'https://localhost:8444/api/v1/svid/spiffe/x509?format=spiffe-fd-tar' --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS | tar -xvf -
+openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/test-result'
 
