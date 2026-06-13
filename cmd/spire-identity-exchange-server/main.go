@@ -146,8 +146,8 @@ func run() error {
 			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
-		if githubOIDCValidator == nil && k8sSATokenValidator == nil && c.UnixSocketPath == "" {
-			 errs = append(errs, errors.New("spire.unixSocketPath is required"))
+		if githubOIDCValidator == nil && k8sSATokenValidator == nil && cfg.SPIRE.UnixSocketPath == "" {
+			logger.Error("spire.unixSocketPath is required")
 			return fmt.Errorf("spire.unixSocketPath is required")
 		 }
 
