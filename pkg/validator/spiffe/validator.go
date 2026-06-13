@@ -22,7 +22,7 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 // Config holds configuration for the SPIFFE SVID validator.
 type Config struct {
     IssuerURL    string   `json:"issuerURL"`
-    Issuer       string   `json:"issuerOverride"`
+    Issuer       string   `json:"issuer"`
     Audiences    []string `json:"audiences"`
     TrustDomain  string   `json:"trustDomain"`
     PathPatterns []string `json:"pathPatterns"`
