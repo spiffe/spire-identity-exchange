@@ -22,7 +22,6 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
-	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -97,7 +96,7 @@ func (c *trustBundleCache) OnX509ContextWatchError(err error) {
 func Run(
 	ctx context.Context,
 	cfg *config.SpireIdentityExchangeConfig,
-	spireClient server_util.ServerClient,
+	spireClient SpireClient,
 	githubOIDCValidator validator.TokenValidator,
 	k8sSATokenValidator validator.TokenValidator,
 	metrics metrics.Metrics,
@@ -116,7 +115,7 @@ func Run(
 func runSpireIdentityExchangeServer(
 	ctx context.Context,
 	cfg *config.SpireIdentityExchangeConfig,
-	spireClient server_util.ServerClient,
+	spireClient SpireClient,
 	githubOIDCValidator validator.TokenValidator,
 	k8sSATokenValidator validator.TokenValidator,
 	metrics metrics.Metrics,

@@ -7,16 +7,29 @@ all: build test
 
 build: deps
 	@echo "--------------------------------"
-	@echo "Building spire-identity-exchange..."
+	@echo "Building spire-identity-exchange (non-legacy)..."
 	@mkdir -p $(BUILD_DIR)/bin
 	@CGO_ENABLED=$(CGO_ENABLED) go build -v -o $(BUILD_DIR)/bin/$(APP_NAME) ./cmd/spire-identity-exchange-server && \
 	ls -l $(BUILD_DIR)/bin/$(APP_NAME) && \
 	echo "$(APP_NAME) built successfully at $(BUILD_DIR)/bin/$(APP_NAME)"
 	@echo "--------------------------------"
 
+build-legacy: deps
+	@echo "--------------------------------"
+	@echo "Building spire-identity-exchange (legacy)..."
+	@mkdir -p $(BUILD_DIR)/bin
+	@CGO_ENABLED=$(CGO_ENABLED) go build -tags legacy -v -o $(BUILD_DIR)/bin/$(APP_NAME)-legacy ./cmd/spire-identity-exchange-server && \
+	ls -l $(BUILD_DIR)/bin/$(APP_NAME)-legacy && \
+	echo "$(APP_NAME)-legacy built successfully at $(BUILD_DIR)/bin/$(APP_NAME)-legacy"
+	@echo "--------------------------------"
+
 test: build
-	@echo "Running tests for the $(APP_NAME)..."
+	@echo "Running tests for the $(APP_NAME) (non-legacy)..."
 	@go test -v ./... -coverprofile cover.out
+
+test-legacy: build-legacy
+	@echo "Running tests for the $(APP_NAME) (legacy)..."
+	@go test -tags legacy -v ./... -coverprofile cover-legacy.out
 
 deps:
 	@echo "Downloading dependencies..."
@@ -30,7 +43,7 @@ tidy:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -rf $(BUILD_DIR)/bin/$(APP_NAME) cover.out
+	@rm -rf $(BUILD_DIR)/bin/$(APP_NAME) $(BUILD_DIR)/bin/$(APP_NAME)-legacy cover.out cover-legacy.out
 	@echo "Cleanup completed."
 
 proto:
