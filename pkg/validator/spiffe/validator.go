@@ -21,7 +21,6 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 
 // Config holds configuration for the SPIFFE SVID validator.
 type Config struct {
-    //FIXME Future feature can be using the local spire agent to get the trust bundle to validate the IssuerURL against.
     IssuerURL    string   `json:"issuerURL"`
     Issuer       string   `json:"issuerOverride"`
     Audiences    []string `json:"audiences"`
