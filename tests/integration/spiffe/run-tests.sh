@@ -47,7 +47,7 @@ sudo cp "${SCRIPTPATH}/oidc.conf" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
-wait_for_oidc_local
+wait_for_oidc "http://localhost:8181"
 
 # Common spire setup bits
 

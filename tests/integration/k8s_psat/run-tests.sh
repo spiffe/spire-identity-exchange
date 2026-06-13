@@ -53,7 +53,7 @@ sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
-wait_for_oidc
+wait_for_oidc "https://k8ssodp.example.org:8181"
 
 sudo systemctl restart k8s-spiffe-workload-auth-config
 
