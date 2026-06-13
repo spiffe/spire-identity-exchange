@@ -49,6 +49,7 @@ sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
 wait_for_oidc "http://localhost:8181"
 curl "http://localhost:8181/.well-known/openid-configuration"
+curl "http://localhost:8181/keys"
 
 # Common spire setup bits
 
