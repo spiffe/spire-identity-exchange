@@ -67,7 +67,7 @@ func run() error {
 
 	// Create SPIRE client
 	socketPath := cfg.SPIRE.UnixSocketPath
-	if socketPath == "" {
+	if cfg.Server.Port != 0 && (cfg.GitHubOIDC.Enabled || cfg.K8sSAToken.Enabled) && cfg.SPIRE.UnixSocketPath == "" {
 		logger.Error("unix_socket_path is required")
 		return fmt.Errorf("unix_socket_path is required")
 	}
@@ -146,10 +146,6 @@ func run() error {
 			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
-		if githubOIDCValidator == nil && k8sSATokenValidator == nil && cfg.SPIRE.UnixSocketPath == "" {
-			logger.Error("spire.unixSocketPath is required")
-			return fmt.Errorf("spire.unixSocketPath is required")
-		 }
 
 	} else {
 		logger.Info("gRPC port is 0; skipping token validator initializations")
