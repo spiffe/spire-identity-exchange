@@ -59,7 +59,7 @@ setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 diff -u <(curl https://localhost:8444/api/v1/trustbundle/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -s) <(sudo spire-server bundle show)
       
-TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job spire-agent spire-agent api fetch jwt -audience spiffe-identity-exchange -output json | jq -r '.[0].svids[0].svid')
+TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job spire-agent api fetch jwt -audience spire-identity-exchange -output json | jq -r '.[0].svids[0].svid')
 
 curl -f -H "Authorization: Bearer ${TOKEN}" -X POST https://localhost:8444/api/v1/svid/spiffe/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 
