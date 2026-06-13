@@ -158,13 +158,13 @@ func runSpireIdentityExchangeServer(
 		if err != nil {
 			return fmt.Errorf("failed to create delegated identity client: %w", err)
 		}
+		defer func() {
+			_ = delegatedClient.Close()
+		}()
 	}
 
 	handler, err := NewGRPCHandler(spireClient, delegatedClient, cfg, githubOIDCValidator, k8sSATokenValidator, metrics, logger)
 	if err != nil {
-		if delegatedClient != nil {
-			_ = delegatedClient.Close()
-		}
 		return fmt.Errorf("failed to create gRPC server handler: %w", err)
 	}
 
@@ -223,7 +223,6 @@ func runSpireIdentityExchangeServer(
 			if grpcServer != nil {
 				grpcServer.Stop()
 			}
-			_ = delegatedClient.Close()
 			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
 		go func() {
@@ -271,9 +270,6 @@ func runSpireIdentityExchangeServer(
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
 			_ = httpServer.Shutdown(shutdownCtx)
-		}
-		if delegatedClient != nil {
-			_ = delegatedClient.Close()
 		}
 	}
 
@@ -329,9 +325,6 @@ func runSpireIdentityExchangeServer(
 			}
 		}
 
-		if delegatedClient != nil {
-			_ = delegatedClient.Close()
-		}
 		return nil
 
 	case err := <-errCh:
