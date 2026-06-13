@@ -22,7 +22,7 @@
     "plugins": [{
       "plugin": "spiffe",
       "config": {
-	"issuerURL": "https://k8ssodp.${SPIFFE_TRUST_DOMAIN}:8181/.well-known/openid-configuration",
+	"issuerURL": "http://localhost:8181/.well-known/openid-configuration",
 	"issuer": "https://oidc-discovery-provider.${SPIFFE_TRUST_DOMAIN}:8181/.well-known/openid-configuration",
         "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
         "audiences": ["spire-identity-exchange"],
