@@ -3,6 +3,7 @@ package spiffe
 
 import (
     "fmt"
+    "net/url"
 
     "github.com/spiffe/go-spiffe/v2/spiffeid"
     "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
@@ -15,10 +16,9 @@ const SelectorType = "spiffe"
 // Implements validator.SelectorGenerator.
 //
 // The generated selectors include the incoming SPIFFE identity information:
-// - td:<trust-domain> for keying by the source trust domain
+// - trust_domain:<trust-domain> for keying by the source trust domain
 // - path:<path> for keying by the workload identity path
-// - sub:<sub> for exact matching of the raw sub claim
-//
+// - spiffe_id:<spiffe-id> for exact matching of the (decoded) SPIFFE ID
 // These selectors allow the delegated identity API to find a SPIRE registration
 // entry that can mint a new SVID (potentially for a different trust domain) based
 // on the validated identity of the incoming token.
@@ -29,13 +29,21 @@ func (v *Validator) GenerateSelectors(claims validator.Claims) []*types.Selector
         // Should not happen if Validate() was called, but be defensive
         return nil
     }
-    sub, _ := subRaw.(string)
+    sub, ok := subRaw.(string)
+    if !ok {
+        return nil
+    }
+
+    subDecoded, err := url.QueryUnescape(sub)
+    if err != nil {
+        return nil
+    }
 
     // Build selectors using the incoming SPIFFE identity information.
     // These selectors will be used by the delegated identity API to find
     // a SPIRE registration entry that can mint a new SVID (potentially for
     // a different trust domain).
-    spiffeID, err := spiffeid.FromString(sub)
+    spiffeID, err := spiffeid.FromString(subDecoded)
     if err != nil {
         return nil
     }

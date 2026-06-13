@@ -46,9 +46,9 @@ func (c *Config) ValidateConfig() error {
     if c.IssuerURL == "" {
         return errors.New("issuer URL must not be empty")
     }
-    if err := jwtauth.ValidateIssuerURL(c.IssuerURL, false); err != nil {
-        return fmt.Errorf("invalid issuer URL: %w", err)
-    }
+	if err := jwtauth.ValidateIssuerURL(c.IssuerURL, c.AllowHTTP); err != nil {
+		return fmt.Errorf("invalid issuer URL: %w", err)
+	}
     if len(c.Audiences) == 0 {
         return errors.New("at least one audience must be specified")
     }
