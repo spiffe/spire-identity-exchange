@@ -12,7 +12,6 @@
     }
   },
   "spire": {
-    "unixSocketPath": "/var/run/spire/server/sockets/${SYSTEMD_INSTANCE}/private/api.sock",
     "agentWorkloadSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}/public/api.sock",
     "agentDelegatedSocketPath": "/var/run/spire/agent/sockets/six/private/admin.sock",
     "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
