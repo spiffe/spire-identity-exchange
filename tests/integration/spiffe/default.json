@@ -21,8 +21,8 @@
     "plugins": [{
       "plugin": "spiffe",
       "config": {
-	"issuerURL": "http://localhost:8181",
-	"issuer": "https://oidc-discovery-provider.${SPIFFE_TRUST_DOMAIN}",
+	"issuerURL": "https://oidc-discovery-provider.${SPIFFE_TRUST_DOMAIN}",
+	"discoveryURL": "http://localhost:8181",
         "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
         "audiences": ["spire-identity-exchange"],
 	"pathPatterns": ["^/test$"]

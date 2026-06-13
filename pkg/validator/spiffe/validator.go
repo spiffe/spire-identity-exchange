@@ -21,21 +21,21 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 
 // Config holds configuration for the SPIFFE SVID validator.
 type Config struct {
-    IssuerURL    string   `json:"issuerURL"`
-    Issuer       string   `json:"issuer"`
-    Audiences    []string `json:"audiences"`
-    TrustDomain  string   `json:"trustDomain"`
-    PathPatterns []string `json:"pathPatterns"`
-    // KeyProvider allows injecting a custom key provider (e.g., one with
-    // background refresh and fail-closed semantics). If nil, a default
-    // on-demand JWKS fetching provider is used.
-    KeyProvider validator.KeyProvider `json:"-"`
-    // Metrics allows injecting a metrics collector for operation tracking.
-    // If nil, metrics collection is silently skipped.
-    Metrics validator.Metrics `json:"-"`
-    // AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
-    // Must not be enabled in production.
-    AllowHTTP bool `json:"-"`
+	IssuerURL    string   `json:"issuerURL"`
+	DiscoveryURL string   `json:"discoveryURL"`
+	Audiences    []string `json:"audiences"`
+	TrustDomain  string   `json:"trustDomain"`
+	PathPatterns []string `json:"pathPatterns"`
+	// KeyProvider allows injecting a custom key provider (e.g., one with
+	// background refresh and fail-closed semantics). If nil, a default
+	// on-demand JWKS fetching provider is used.
+	KeyProvider validator.KeyProvider `json:"-"`
+	// Metrics allows injecting a metrics collector for operation tracking.
+	// If nil, metrics collection is silently skipped.
+	Metrics validator.Metrics `json:"-"`
+	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
+	// Must not be enabled in production.
+	AllowHTTP bool `json:"-"`
 }
 
 func (c *Config) Unmarshal(raw json.RawMessage) error {
@@ -79,13 +79,17 @@ func NewValidator(cfg Config) (*Validator, error) {
         return nil, fmt.Errorf("invalid trust domain: %w", err)
     }
 
+    discoveryURL := cfg.DiscoveryURL
+    if discoveryURL == "" {
+        discoveryURL = cfg.IssuerURL
+    }
     jv, err := jwtauth.NewValidator(jwtauth.Config{
-        IssuerURL:   cfg.IssuerURL,
-	Issuer:      cfg.Issuer,
-        Audiences:   cfg.Audiences,
-        KeyProvider: cfg.KeyProvider,
-        AllowHTTP:   cfg.AllowHTTP,
-        Metrics:     cfg.Metrics,
+        IssuerURL:    cfg.IssuerURL,
+        DiscoveryURL: discoveryURL,
+        Audiences:    cfg.Audiences,
+        KeyProvider:  cfg.KeyProvider,
+        AllowHTTP:    cfg.AllowHTTP,
+        Metrics:      cfg.Metrics,
     })
     if err != nil {
         return nil, err
