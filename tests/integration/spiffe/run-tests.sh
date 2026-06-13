@@ -42,7 +42,7 @@ sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Spiffe test specific tests
-sudo apt-get install -y spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
+sudo apt-get install -y spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider spiffe-helper
 sudo cp "${SCRIPTPATH}/oidc.conf" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
