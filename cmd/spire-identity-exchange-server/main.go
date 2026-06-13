@@ -142,8 +142,8 @@ func run() error {
 			logger.Info("Kubernetes SA token validator enabled")
 		}
 
-		if githubOIDCValidator == nil && k8sSATokenValidator == nil {
-			logger.Error("at least one authentication method must be enabled (githubOIDC or k8sSAToken)")
+		if githubOIDCValidator == nil && k8sSATokenValidator == nil && len(cfg.Auth.Plugins) == 0{
+			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
 	} else {
