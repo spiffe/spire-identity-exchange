@@ -41,12 +41,11 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Spiffe test specific tests
 sudo apt-get install -y spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
-IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
+sudo cp "${SCRIPTPATH}/oidc.conf" /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
-wait_for_oidc
+wait_for_oidc_local
 
 # Common spire setup bits
 
