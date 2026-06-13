@@ -6,4 +6,4 @@ spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/test-result
   selectors:
-  - spiffe:path:/test
+  - spiffe:source_path:/test

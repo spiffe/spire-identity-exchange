@@ -51,13 +51,13 @@ func (v *Validator) GenerateSelectors(claims validator.Claims) []*types.Selector
     }
 
     // Include trust domain selector
-    add("trust_domain", v.config.TrustDomain)
+    add("source_trust_domain", v.config.TrustDomain)
 
     // Include path selector (for matching entries by workload identity path)
-    add("path", spiffeID.Path())
+    add("source_path", spiffeID.Path())
 
     // Include raw sub selector (for exact matching if needed)
-    add("spiffe_id", sub)
+    add("source_spiffe_id", sub)
 
     return selectors
 }

@@ -221,9 +221,9 @@ func TestGenerateSelectors(t *testing.T) {
     selectors := v.GenerateSelectors(claims)
 
     require.NotNil(t, selectors)
-    assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "trust_domain:example.org"})
-    assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "path:/workload/myapp/production"})
-    assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "spiffe_id:spiffe://example.org/workload/myapp/production"})
+    assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_trust_domain:example.org"})
+    assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_path:/workload/myapp/production"})
+    assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_spiffe_id:spiffe://example.org/workload/myapp/production"})
 }
 
 func TestTokenValidatorLoader(t *testing.T) {
