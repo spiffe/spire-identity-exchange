@@ -67,20 +67,22 @@ func run() error {
 
 	// Create SPIRE client
 	socketPath := cfg.SPIRE.UnixSocketPath
-	if cfg.Server.Port != 0 && (cfg.GitHubOIDC.Enabled || cfg.K8sSAToken.Enabled) && cfg.SPIRE.UnixSocketPath == "" {
-		logger.Error("unix_socket_path is required")
-		return fmt.Errorf("unix_socket_path is required")
+	var spireClient util.ServerClient
+	if cfg.Server.Port != 0 && (cfg.GitHubOIDC.Enabled || cfg.K8sSAToken.Enabled) {
+		if socketPath == "" {
+			logger.Error("unix_socket_path is required")
+			return fmt.Errorf("unix_socket_path is required")
+		}
+		spireClient, err = util.NewServerClient(&net.UnixAddr{
+			Name: socketPath,
+			Net:  "unix",
+		})
+		if err != nil {
+			logger.Error("failed to connect to SPIRE server via Unix socket", zap.Error(err))
+			return err
+		}
+		defer spireClient.Release()
 	}
-
-	spireClient, err := util.NewServerClient(&net.UnixAddr{
-		Name: socketPath,
-		Net:  "unix",
-	})
-	if err != nil {
-		logger.Error("failed to connect to SPIRE server via Unix socket", zap.Error(err))
-		return err
-	}
-	defer spireClient.Release()
 
 	// Initialize metrics (includes process and Go runtime metrics)
 	metricsServer := prommetrics.NewMetricsServer(
