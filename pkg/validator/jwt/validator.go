@@ -21,6 +21,7 @@ const (
 // Config holds configuration for the generic JWT validator.
 type Config struct {
 	IssuerURL string
+	Issuer    string
 	Audiences []string
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
@@ -39,6 +40,7 @@ type Config struct {
 // and expiration. It returns validated claims via the validator.Claims interface.
 type Validator struct {
 	issuerURL   string
+	issuer      string
 	audiences   []string
 	keyProvider validator.KeyProvider
 	metrics     validator.Metrics
@@ -67,6 +69,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 
 	return &Validator{
 		issuerURL:   cfg.IssuerURL,
+		issuer:      cfg.Issuer,
 		audiences:   cfg.Audiences,
 		keyProvider: keyProvider,
 		metrics:     cfg.Metrics,
@@ -106,8 +109,12 @@ func (v *Validator) Validate(ctx context.Context, token string, _ validator.Purp
 		}
 		return pubKey, nil
 	}
+	issuer := v.issuerURL
+	if v.issuer != "" {
+		issuer = v.issuer
+	}
 	parserOpts := []gojwt.ParserOption{
-		gojwt.WithIssuer(v.issuerURL),
+		gojwt.WithIssuer(issuer),
 		gojwt.WithLeeway(defaultClockLeeway),
 		gojwt.WithExpirationRequired(),
 	}

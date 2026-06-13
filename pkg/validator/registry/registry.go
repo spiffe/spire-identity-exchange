@@ -5,6 +5,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/pkg/validator/github"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator/gitlab"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator/k8s"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/spiffe"
 )
 
 // AllBuiltinPlugins maps the plugin name an operator writes in config to its
@@ -15,4 +16,5 @@ var AllBuiltinPlugins = map[string]validator.TokenValidatorLoaderGenerator{
 	"github":   github.TokenValidatorLoaderGenerator,
 	"gitlab":   gitlab.TokenValidatorLoaderGenerator,
 	"k8s_psat": k8s.TokenValidatorLoaderGenerator,
+	"spiffe":   spiffe.TokenValidatorLoaderGenerator,
 }
