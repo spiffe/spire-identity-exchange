@@ -49,30 +49,13 @@ wait_for_jwt() {
 }
 
 wait_for_oidc() {
-  local socket="$1"
+  local url="$1"
   local timeout=30
   local count=0
   local IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
   while [ "$count" -lt "$timeout" ]; do
       rc=0
-      curl --resolve k8ssodp.example.org:8181:$IP "https://k8ssodp.example.org:8181/.well-known/openid-configuration" -k || rc=$?
-      if [ "$rc" -eq 0 ]; then
-        return 0
-      fi
-      sleep 1
-      ((count++)) || true
-  done
-  return 1
-}
-
-wait_for_oidc_local() {
-  local socket="$1"
-  local timeout=30
-  local count=0
-  local IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-  while [ "$count" -lt "$timeout" ]; do
-      rc=0
-      curl --resolve k8ssodp.example.org:8181:$IP "http://k8ssodp.example.org:8181/.well-known/openid-configuration" || rc=$?
+      curl --resolve k8ssodp.example.org:8181:$IP "${URL}/.well-known/openid-configuration" -k || rc=$?
       if [ "$rc" -eq 0 ]; then
         return 0
       fi
