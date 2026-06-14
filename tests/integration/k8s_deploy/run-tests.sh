@@ -20,7 +20,8 @@ teardown() {
   echo ---------------------------
   echo "::group::Status Output"
   kubectl get pods -l app=spire-identity-exchange -o name | xargs kubectl describe || true
-  kubectl logs deploy/spire-identity-exchange || true
+  kubectl logs deploy/spire-identity-exchange -c spire-identity-exchange || true
+  kubectl logs deploy/spire-identity-exchange -c spire-agent || true
   kubectl get pods -A || true
   kubectl get nodes || true
 }
