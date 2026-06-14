@@ -49,6 +49,11 @@ spire-server:
     - name: plugin-staging
       mountPath: /custom-plugin/spire-credentialcomposer-identity-exchange
       subPath: spire-credentialcomposer-identity-exchange
+  nodeAttestor:
+      x509POP:
+        enabled: true
+        svidPrefix: /spire-exchange/spire-identity-exchange/
+        agentPathTemplate: "{{ .PluginName }}/spire-identity-exchange/{{ .SVIDPathTrimmed }}"
   customPlugins:
     credentialComposer:
       spire-credentialcomposer-identity-exchange:
