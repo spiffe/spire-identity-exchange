@@ -36,7 +36,7 @@ spire-server:
             kubernetes.io/metadata.name: default
         workloadSelectorTemplates:
           - "k8s:container-name:spire-agent"
-      clusterStaticEntries: {}
+      clusterStaticEntries:
         spire-identity-exchange:
           parentID: spiffe://example.org/spire/server
           spiffeID: spiffe://example.org/spire-identity-exchange
