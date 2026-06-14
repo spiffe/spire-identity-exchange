@@ -1,15 +1,15 @@
 spire-server:
   initContainers:
     - name: install-custom-plugin-busybox
-      image: busybox:1.36
-      command: ["cp", "/bin/busybox", "/custom-plugin/busybox"]
+      image: busybox:1.37.0-uclibc
+      command: ["busybox", "sh", "-ec", "cp -a /bin/busybox /custom-plugin/busybox"]
       volumeMounts:
         - name: plugin-staging
           mountPath: /custom-plugin
     - name: install-custom-plugin
       image: ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
       imagePullPolicy: Never
-      command: ["/custom-plugin/busybox", "sh", "-c", "cp /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && rm /custom-plugin/busybox"]
+      command: ["/custom-plugin/busybox", "sh", "-ec", "cp -a /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && rm /custom-plugin/busybox"]
       volumeMounts:
         - name: plugin-staging
           mountPath: /custom-plugin
