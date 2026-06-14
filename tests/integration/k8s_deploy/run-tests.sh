@@ -55,3 +55,5 @@ kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=
 kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.json" --from-file="${SCRIPTPATH}/six-agent.conf"
 kubectl apply -f "${SCRIPTPATH}/deployment.yaml"
 kubectl wait --for=condition=available --timeout=30s deployment/spire-identity-exchange
+
+sleep 15
