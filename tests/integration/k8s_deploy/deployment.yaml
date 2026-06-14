@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spire-identity-exchange
+  labels:
+    app: spire-identity-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spire-identity-exchange
+  template:
+    metadata:
+      labels:
+        app: spire-identity-exchange
+    spec:
+      containers:
+        - name: spire-identity-exchange
+          image: "ghcr.io/spiffe/spire-identity-exchange-server:dev"
+          imagePullPolicy: Never
+          args:
+          - -config
+          - /etc/spire/identity-exchange/default.json
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spire-identity-exchange-config
+              mountPath: /etc/spire/identity-exchange/default.json
+              subPath: default.json
+              readOnly: true
+            - name: spire-identity-exchange-secret
+              mountPath: /secret
+              readOnly: true
+            - name: spire-agent-soccket
+              mountPath: /agent
+              readOnly: true
+        - name: spire-agent
+          image: "ghcr.io/spiffe/spire-agent:latest"
+          imagePullPolicy: Always
+          args:
+          - -config
+          - /etc/spire/agent/default.conf
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spire-identity-exchange-config
+              mountPath: /etc/spire/identity-exchange/six-agent.conf
+              subPath: six-agent.conf
+              readOnly: true
+            - name: spire-agent-soccket
+              mountPath: /agent
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: "csi.spiffe.io"
+            readOnly: true
+        - name: spire-agent-socket
+          emptyDir: {}
+        - name: spire-identity-exchange-config
+          configMap:
+            name: spire-identity-exchange
+        - name: spire-identity-exchange-secret
+          secret:
+            secretName: spire-identity-exchange

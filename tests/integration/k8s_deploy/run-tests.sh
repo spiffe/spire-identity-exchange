@@ -19,8 +19,10 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  kubectl get pods -A
-  kubectl get nodes
+  kubectl get pods -l app=spire-identity-exchange -o name | xargs kubectl describe || true
+  kubectl logs deploy/spire-identity-exchange || true
+  kubectl get pods -A || true
+  kubectl get nodes || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
@@ -45,5 +47,6 @@ sudo openssl req -x509 -newkey rsa:2048 \
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
 kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
-kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.json"
-
+kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.json" --from-file="${SCRIPTPATH}/six-agent.conf"
+kubectl apply -f "${SCRIPTPATH}/deployment.yaml"
+kubectl wait --for=condition=available --timeout=30s deployment/spire-identity-exchange
