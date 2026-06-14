@@ -9,7 +9,7 @@ spire-server:
     - name: install-custom-plugin
       image: ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
       imagePullPolicy: Never
-      command: ["/custom-plugin/busybox", "sh", "-ec", "cp -a /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && rm /custom-plugin/busybox"]
+      command: ["/custom-plugin/busybox", "sh", "-ec", "/custom-plugin/busybox cp -a /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && /custom-plugin/busybox rm /custom-plugin/busybox"]
       volumeMounts:
         - name: plugin-staging
           mountPath: /custom-plugin
