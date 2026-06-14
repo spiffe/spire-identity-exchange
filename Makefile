@@ -1,35 +1,50 @@
 BUILD_DIR ?= ./build
-
-APP_NAME := spire-identity-exchange
 CGO_ENABLED ?= 0
 
 all: build test
 
+# Format: APP_NAME:cmd/path:os/arch_list
+# To add a new command, simply add a new line here.
+APPS := \
+	spire-credentialcomposer-identity-exchange:cmd/spire-credentialcomposer-identity-exchange:linux/amd64,linux/arm64 \
+	spire-identity-exchange-server:cmd/spire-identity-exchange-server:linux/amd64,linux/arm64
+
+# --- Build Logic ---
+
+define build_app
+	$(eval APP_NAME := $(word 1,$(subst :, ,$1)))
+	$(eval APP_PATH := $(word 2,$(subst :, ,$1)))
+	# Capture the full string of platforms
+	$(eval PLATFORMS_STR := $(word 3,$(subst :, ,$1)))
+	$(eval VAR_NAME := $(subst -,_,$(APP_NAME))_TAGS)
+	$(eval CURRENT_TAGS := $($(VAR_NAME)))
+	$(eval BUILD_TAG_FLAG := $(if $(CURRENT_TAGS),-tags $(CURRENT_TAGS),))
+
+	# Replace commas with spaces so 'foreach' can iterate over them
+	$(foreach platform,$(subst $(comma), ,$(PLATFORMS_STR)), \
+		$(eval OS := $(word 1,$(subst /, ,$(platform)))) \
+		$(eval ARCH := $(word 2,$(subst /, ,$(platform)))) \
+		echo "Building $(APP_NAME) for $(OS)/$(ARCH) $(if $(CURRENT_TAGS),with tags: $(CURRENT_TAGS))..."; \
+		mkdir -p $(BUILD_DIR)/$(OS)/$(ARCH); \
+		GOOS=$(OS) GOARCH=$(ARCH) CGO_ENABLED=$(CGO_ENABLED) go build $(BUILD_TAG_FLAG) -o $(BUILD_DIR)/$(OS)/$(ARCH)/$(APP_NAME) ./$(APP_PATH); \
+	)
+endef
+
+# Needed for the subst function to use a comma
+comma := ,
+
 build: deps
-	@echo "--------------------------------"
-	@echo "Building spire-identity-exchange (non-legacy)..."
-	@mkdir -p $(BUILD_DIR)/bin
-	@CGO_ENABLED=$(CGO_ENABLED) go build -v -o $(BUILD_DIR)/bin/$(APP_NAME) ./cmd/spire-identity-exchange-server && \
-	ls -l $(BUILD_DIR)/bin/$(APP_NAME) && \
-	echo "$(APP_NAME) built successfully at $(BUILD_DIR)/bin/$(APP_NAME)"
-	@echo "--------------------------------"
+	@$(foreach app,$(APPS),$(call build_app,$(app)))
 
-build-legacy: deps
-	@echo "--------------------------------"
-	@echo "Building spire-identity-exchange (legacy)..."
-	@mkdir -p $(BUILD_DIR)/bin
-	@CGO_ENABLED=$(CGO_ENABLED) go build -tags legacy -v -o $(BUILD_DIR)/bin/$(APP_NAME)-legacy ./cmd/spire-identity-exchange-server && \
-	ls -l $(BUILD_DIR)/bin/$(APP_NAME)-legacy && \
-	echo "$(APP_NAME)-legacy built successfully at $(BUILD_DIR)/bin/$(APP_NAME)-legacy"
-	@echo "--------------------------------"
-
-test: build
-	@echo "Running tests for the $(APP_NAME) (non-legacy)..."
-	@go test -v ./... -coverprofile cover.out
-
-test-legacy: build-legacy
-	@echo "Running tests for the $(APP_NAME) (legacy)..."
-	@go test -tags legacy -v ./... -coverprofile cover-legacy.out
+test:
+	@$(foreach app,$(APPS), \
+		$(eval APP_NAME := $(word 1,$(subst :, ,$(app)))) \
+		$(eval VAR_NAME := $(subst -,_,$(APP_NAME))_TAGS) \
+		$(eval CURRENT_TAGS := $($(VAR_NAME))) \
+		$(eval BUILD_TAG_FLAG := $(if $(CURRENT_TAGS),-tags $(CURRENT_TAGS),)) \
+		echo "Testing $(APP_NAME) $(if $(CURRENT_TAGS),with tags: $(CURRENT_TAGS))..."; \
+		go test $(BUILD_TAG_FLAG) -v ./...; \
+	)
 
 deps:
 	@echo "Downloading dependencies..."
@@ -43,7 +58,7 @@ tidy:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -rf $(BUILD_DIR)/bin/$(APP_NAME) $(BUILD_DIR)/bin/$(APP_NAME)-legacy cover.out cover-legacy.out
+	@rm -rf $(BUILD_DIR)
 	@echo "Cleanup completed."
 
 proto:
