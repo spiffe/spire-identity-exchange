@@ -67,20 +67,22 @@ func run() error {
 
 	// Create SPIRE client
 	socketPath := cfg.SPIRE.UnixSocketPath
-	if socketPath == "" {
-		logger.Error("unix_socket_path is required")
-		return fmt.Errorf("unix_socket_path is required")
+	var spireClient util.ServerClient
+	if cfg.Server.Port != 0 && (cfg.GitHubOIDC.Enabled || cfg.K8sSAToken.Enabled) {
+		if socketPath == "" {
+			logger.Error("unix_socket_path is required")
+			return fmt.Errorf("unix_socket_path is required")
+		}
+		spireClient, err = util.NewServerClient(&net.UnixAddr{
+			Name: socketPath,
+			Net:  "unix",
+		})
+		if err != nil {
+			logger.Error("failed to connect to SPIRE server via Unix socket", zap.Error(err))
+			return err
+		}
+		defer spireClient.Release()
 	}
-
-	spireClient, err := util.NewServerClient(&net.UnixAddr{
-		Name: socketPath,
-		Net:  "unix",
-	})
-	if err != nil {
-		logger.Error("failed to connect to SPIRE server via Unix socket", zap.Error(err))
-		return err
-	}
-	defer spireClient.Release()
 
 	// Initialize metrics (includes process and Go runtime metrics)
 	metricsServer := prommetrics.NewMetricsServer(
@@ -142,10 +144,11 @@ func run() error {
 			logger.Info("Kubernetes SA token validator enabled")
 		}
 
-		if githubOIDCValidator == nil && k8sSATokenValidator == nil {
-			logger.Error("at least one authentication method must be enabled (githubOIDC or k8sSAToken)")
+		if githubOIDCValidator == nil && k8sSATokenValidator == nil && len(cfg.Auth.Plugins) == 0{
+			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
+
 	} else {
 		logger.Info("gRPC port is 0; skipping token validator initializations")
 	}

@@ -1,0 +1,32 @@
+{
+  "name": "spire-identity-exchange",
+  "logLevel": "info",
+  "purposeMode": "shared",
+  "server": {
+    "port": 8443,
+    "metricsPort": 4950,
+    "restPort": 8444,
+    "tls": {
+      "certFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.pem",
+      "keyFile": "/etc/spire/identity-exchange/${SYSTEMD_INSTANCE}/certs/server.key"
+    }
+  },
+  "spire": {
+    "agentWorkloadSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}/public/api.sock",
+    "agentDelegatedSocketPath": "/var/run/spire/agent/sockets/six/private/admin.sock",
+    "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
+    "svidTTL": "5m"
+  },
+  "auth": {
+    "plugins": [{
+      "plugin": "spiffe",
+      "config": {
+	"issuerURL": "https://oidc-discovery-provider.${SPIFFE_TRUST_DOMAIN}",
+	"discoveryURL": "http://localhost:8181",
+        "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
+        "audiences": ["spire-identity-exchange"],
+	"pathPatterns": ["^/test$"]
+      }
+    }]
+  }
+}

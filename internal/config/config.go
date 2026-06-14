@@ -249,9 +249,6 @@ func (c *ServerConfig) Validate() error {
 func (c *SPIREConfig) Validate() error {
 	var errs []error
 
-	if c.UnixSocketPath == "" {
-		errs = append(errs, errors.New("spire.unixSocketPath is required"))
-	}
 	if c.TrustDomain == "" {
 		errs = append(errs, errors.New("spire.trustDomain is required"))
 	}

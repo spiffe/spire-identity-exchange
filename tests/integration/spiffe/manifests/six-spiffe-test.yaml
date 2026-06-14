@@ -1,0 +1,9 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: six-spiffe-test
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/test-result
+  selectors:
+  - spiffe:source_path:/test

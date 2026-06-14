@@ -21,7 +21,10 @@ const (
 // Config holds configuration for the generic JWT validator.
 type Config struct {
 	IssuerURL string
-	Audiences []string
+	// DiscoveryURL is the base URL used for OIDC discovery of the JWKS endpoint.
+	// If empty, it defaults to IssuerURL.
+	DiscoveryURL string
+	Audiences    []string
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
@@ -38,10 +41,11 @@ type Config struct {
 // Validator validates JWT tokens by verifying signatures, issuer, audience,
 // and expiration. It returns validated claims via the validator.Claims interface.
 type Validator struct {
-	issuerURL   string
-	audiences   []string
-	keyProvider validator.KeyProvider
-	metrics     validator.Metrics
+	issuerURL    string
+	discoveryURL string
+	audiences    []string
+	keyProvider  validator.KeyProvider
+	metrics      validator.Metrics
 }
 
 // NewValidator creates a new generic JWT validator.
@@ -56,20 +60,29 @@ func NewValidator(cfg Config) (*Validator, error) {
 		return nil, fmt.Errorf("at least one audience must be configured")
 	}
 
+	discoveryURL := cfg.DiscoveryURL
+	if discoveryURL == "" {
+		discoveryURL = cfg.IssuerURL
+	}
+	if err := ValidateIssuerURL(discoveryURL, cfg.AllowHTTP); err != nil {
+		return nil, fmt.Errorf("invalid discovery URL: %w", err)
+	}
+
 	keyProvider := cfg.KeyProvider
 	if keyProvider == nil {
 		client := cfg.HTTPClient
 		if client == nil {
 			client = &http.Client{Timeout: defaultHTTPTimeout}
 		}
-		keyProvider = NewDefaultKeyProvider(cfg.IssuerURL, client, cfg.Metrics)
+		keyProvider = NewDefaultKeyProvider(discoveryURL, client, cfg.Metrics)
 	}
 
 	return &Validator{
-		issuerURL:   cfg.IssuerURL,
-		audiences:   cfg.Audiences,
-		keyProvider: keyProvider,
-		metrics:     cfg.Metrics,
+		issuerURL:    cfg.IssuerURL,
+		discoveryURL: discoveryURL,
+		audiences:    cfg.Audiences,
+		keyProvider:  keyProvider,
+		metrics:      cfg.Metrics,
 	}, nil
 }
 
