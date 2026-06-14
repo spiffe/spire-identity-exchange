@@ -46,7 +46,7 @@ spec:
               mountPath: /spiffe-workload-api
               readOnly: true
             - name: spire-identity-exchange-config
-              mountPath: /etc/spire/identity-exchange/six-agent.conf
+              mountPath: /etc/spire/agent/six-agent.conf
               subPath: six-agent.conf
               readOnly: true
             - name: spire-agent-socket
