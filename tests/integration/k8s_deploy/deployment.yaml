@@ -36,7 +36,7 @@ spec:
               mountPath: /agent
               readOnly: true
         - name: spire-agent
-          image: "ghcr.io/spiffe/spire-agent:latest"
+          image: "ghcr.io/spiffe/spire-agent:1.15.1"
           imagePullPolicy: Always
           args:
           - -config
