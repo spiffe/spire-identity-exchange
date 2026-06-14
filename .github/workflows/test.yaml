@@ -101,7 +101,7 @@ jobs:
           sudo sh -c "echo '$IP k8ssodp.example.org' >> /etc/hosts"
       - name: Create kind cluster
         uses: helm/kind-action@v1.14.0
-        if: contains(fromJSON('["tests/integration/k8s_psat"]'), matrix.integrationtest)
+        if: contains(fromJSON('["tests/integration/k8s_psat", "tests/integration/k8s_deploy"]'), matrix.integrationtest)
         with:
           version: ${{ env.KIND_VERSION }}
           node_image: kindest/node:${{ env.KIND_NODE_VERSION }}
