@@ -60,13 +60,14 @@ func run() error {
 		logger = *rawLogger
 	}
 
-spireClient, err := createSpireClient(cfg, &logger)
-if err != nil {
-	return err
-}
-if spireClient != nil {
-	defer spireClient.Release()
-}
+  spireClient, err := createSpireClient(cfg, &logger)
+  if err != nil {
+  	return err
+  }
+  if spireClient != nil {
+  	defer spireClient.Release()
+  }
+
 	// Initialize metrics (includes process and Go runtime metrics)
 	metricsServer := prommetrics.NewMetricsServer(
 		prommetrics.WithPort(cfg.Server.MetricsPort),
@@ -96,6 +97,7 @@ if spireClient != nil {
 			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
+
 	} else {
 		logger.Info("gRPC port is 0; skipping token validator initializations")
 	}
