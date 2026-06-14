@@ -40,7 +40,7 @@ spec:
           imagePullPolicy: Always
           args:
           - -config
-          - /etc/spire/agent/default.conf
+          - /etc/spire/agent/six-agent.conf
           volumeMounts:
             - name: spiffe-workload-api
               mountPath: /spiffe-workload-api
