@@ -23,7 +23,7 @@ teardown() {
   kubectl logs deploy/spire-identity-exchange -c spire-identity-exchange || true
   kubectl logs deploy/spire-identity-exchange -c spire-agent || true
   kubectl describe pod -n spire-server spire-server-0 || true
-  kubectl logs pod -n spire-server spire-server-0 -c spire-server || true
+  kubectl logs -n spire-server spire-server-0 -c spire-server || true
   kubectl get pods -A || true
   kubectl get nodes || true
 }

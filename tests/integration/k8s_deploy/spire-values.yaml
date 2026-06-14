@@ -9,10 +9,39 @@ spire-server:
     - name: install-custom-plugin
       image: ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
       imagePullPolicy: Never
-      command: ["/custom-plugin/", "sh", "-c", "cp /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && rm /custom-plugin/busybox"]
+      command: ["/custom-plugin/busybox", "sh", "-c", "cp /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && rm /custom-plugin/busybox"]
       volumeMounts:
         - name: plugin-staging
           mountPath: /custom-plugin
+  controllerManager:
+    identities:
+      clusterSPIFFEIDs:
+        service-spire-identity-exchange:
+          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/spire-identity-exchange
+        podSelector:
+          matchLabels:
+            app: spire-identity-exchange
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: default
+        workloadSelectorTemplates:
+          - "k8s:container-name:spire-identity-exchange"
+        agent-spire-identity-exchange:
+          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/spire-identity-exchange/{{ .PodMeta.Name }}
+        podSelector:
+          matchLabels:
+            app: spire-identity-exchange
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: default
+        workloadSelectorTemplates:
+          - "k8s:container-name:spire-agent"
+      clusterStaticEntries: {}
+        spire-identity-exchange:
+          parentID: spiffe://example.org/spire/server
+          spiffeID: spiffe://example.org/spire-identity-exchange
+          selectors:
+            - x509pop:subject:cn:spire-exchange/spire-identity-exchange
   extraVolumes:
     - name: plugin-staging
       emptyDir: {}
