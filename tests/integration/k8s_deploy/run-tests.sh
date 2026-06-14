@@ -22,6 +22,8 @@ teardown() {
   kubectl get pods -l app=spire-identity-exchange -o name | xargs kubectl describe || true
   kubectl logs deploy/spire-identity-exchange -c spire-identity-exchange || true
   kubectl logs deploy/spire-identity-exchange -c spire-agent || true
+  kubectl describe pod -n spire-server spire-server-0 || true
+  kubectl logs pod -n spire-server spire-server-0 -c spire-server || true
   kubectl get pods -A || true
   kubectl get nodes || true
 }
@@ -37,7 +39,7 @@ docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-identity-exchange-server:dev
 kind load docker-image ghcr.io/spiffe/spire-identity-exchange-server:dev --name chart-testing
 
 helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spiffe.github.io/helm-charts-hardened/ --create-namespace
-helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
+timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
 
 mkdir -p certs
 openssl req -x509 -newkey rsa:2048 \
