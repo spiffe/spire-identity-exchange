@@ -32,7 +32,7 @@ spec:
             - name: spire-identity-exchange-secret
               mountPath: /secret
               readOnly: true
-            - name: spire-agent-soccket
+            - name: spire-agent-socket
               mountPath: /agent
               readOnly: true
         - name: spire-agent
@@ -49,7 +49,7 @@ spec:
               mountPath: /etc/spire/identity-exchange/six-agent.conf
               subPath: six-agent.conf
               readOnly: true
-            - name: spire-agent-soccket
+            - name: spire-agent-socket
               mountPath: /agent
       volumes:
         - name: spiffe-workload-api
