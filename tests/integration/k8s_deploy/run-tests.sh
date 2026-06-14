@@ -38,8 +38,8 @@ IMAGE_REF=$(ko build ./cmd/spire-identity-exchange-server/ --platform=linux/amd6
 docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-identity-exchange-server:dev
 kind load docker-image ghcr.io/spiffe/spire-identity-exchange-server:dev --name chart-testing
 
-sudo mkdir -p certs
-sudo openssl req -x509 -newkey rsa:2048 \
+mkdir -p certs
+openssl req -x509 -newkey rsa:2048 \
     -keyout certs/server.key \
     -out certs/server.pem -sha256 -days 365 -nodes \
     -subj "/CN=localhost" \
