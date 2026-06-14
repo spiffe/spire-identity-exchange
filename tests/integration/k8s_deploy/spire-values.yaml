@@ -49,7 +49,7 @@ spire-server:
     - name: plugin-staging
       mountPath: /custom-plugin/spire-credentialcomposer-identity-exchange
       subPath: spire-credentialcomposer-identity-exchange
-  customPlugin:
+  customPlugins:
     credentialComposer:
       spire-credentialcomposer-identity-exchange:
         plugin_cmd: /custom-plugin/spire-credentialcomposer-identity-exchange
