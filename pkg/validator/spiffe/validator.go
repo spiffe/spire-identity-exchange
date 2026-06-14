@@ -7,7 +7,6 @@ import (
     "encoding/json"
     "errors"
     "fmt"
-    "net/url"
     "regexp"
 
     "github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -131,14 +130,8 @@ func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
         return errors.New("token 'sub' claim must be a string")
     }
 
-    // URL-decode the sub claim (SPIFFE IDs may have encoded segments)
-    subDecoded, err := url.QueryUnescape(sub)
-    if err != nil {
-        return fmt.Errorf("failed to URL-decode 'sub' claim: %w", err)
-    }
-
     // Parse the decoded sub as a SPIFFE ID
-    spiffeID, err := spiffeid.FromString(subDecoded)
+    spiffeID, err := spiffeid.FromString(sub)
     if err != nil {
         return fmt.Errorf("failed to parse SPIFFE ID from 'sub': %w", err)
     }

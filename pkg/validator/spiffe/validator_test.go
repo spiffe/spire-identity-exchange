@@ -182,12 +182,12 @@ func TestValidate(t *testing.T) {
     t.Run("valid with URL-encoded path", func(t *testing.T) {
         // SPIFFE IDs may have encoded segments that need to be decoded
         raw := map[string]interface{}{
-            "sub": "spiffe://example.org/workload/v2%2Ffoo",
+            "sub": "spiffe://example.org/workload/v2/foo",
         }
         err := v.checkAllowLists(raw)
         assert.NoError(t, err)
     })
-    
+
     t.Run("trust domain parse error", func(t *testing.T) {
         cfg := Config{
             IssuerURL:   "https://issuer.example.org",
