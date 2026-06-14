@@ -35,3 +35,15 @@ kind load docker-image ghcr.io/spiffe/spire-credentialcomposer-identity-exchange
 IMAGE_REF=$(ko build ./cmd/spire-identity-exchange-server/ --platform=linux/amd64 --local)
 docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-identity-exchange-server:dev
 kind load docker-image ghcr.io/spiffe/spire-identity-exchange-server:dev --name chart-testing
+
+sudo mkdir -p certs
+sudo openssl req -x509 -newkey rsa:2048 \
+    -keyout certs/server.key \
+    -out certs/server.pem -sha256 -days 365 -nodes \
+    -subj "/CN=localhost" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
+
+kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
+kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.json"
+
