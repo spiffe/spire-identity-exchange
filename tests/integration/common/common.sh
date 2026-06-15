@@ -132,9 +132,9 @@ setup_base_spire() {
   sudo cp "${COMMONPATH}/six-agent.conf" /etc/spire/agent/six.conf
 
   # Startup the agents
-  sudo systemctl start spire-agent@main spire-agent@six
+  sudo systemctl start spire-agent@main spire-agent@main-six
   wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/main/public/api.sock
-  wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/six/public/api.sock
+  wait_for_healthcheck spire-agent /var/run/spire/agent/sockets/main-six/public/api.sock
 }
 
 setup_identity_exchange() {
