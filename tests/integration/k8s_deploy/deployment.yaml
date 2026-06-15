@@ -49,7 +49,7 @@ spec:
             - /trustbundle/socket
           env:
             - name: SPIFFE_ENDPOINT_SOCKET
-              value: "/spiffe-workload-api/spire-agent.sock"
+              value: "unix:///spiffe-workload-api/spire-agent.sock"
             - name: SPIFFE_TRUST_DOMAIN
               value: "example.org"
           volumeMounts:
