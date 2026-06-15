@@ -51,6 +51,7 @@ spec:
               readOnly: true
             - name: spire-agent-socket
               mountPath: /agent
+              #FIXME add health check
       volumes:
         - name: spiffe-workload-api
           csi:

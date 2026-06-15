@@ -42,6 +42,12 @@ spire-server:
           spiffeID: spiffe://example.org/spire-identity-exchange
           selectors:
             - x509pop:subject:cn:spire-exchange/spire-identity-exchange
+        test:
+          parentID: spiffe://example.org/spire-identity-exchange
+          spiffeID: spiffe://example.org/test
+          selectors:
+            - k8s_psat:namespace:default
+            - k8s_psat:service_account_name:default
   extraVolumes:
     - name: plugin-staging
       emptyDir: {}
