@@ -41,7 +41,18 @@ spec:
               mountPath: /agent
               readOnly: true
       initContainers:
-        #FIXME agent socket needs to exist before the exchange will start...
+        - name: spire-server-attestor
+          image: "ghcr.io/spiffe/spire-server-attestor-spiffe-workload-api:dev"
+          imagePullPolicy: Never
+          restartPolicy: Always
+          args:
+            - /trustbundle/socket
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: trustbundle
+              mountPath: /trustbundle
         - name: spire-agent
           image: "ghcr.io/spiffe/spire-agent:1.15.1"
           imagePullPolicy: Always
@@ -70,12 +81,17 @@ spec:
               readOnly: true
             - name: spire-agent-socket
               mountPath: /agent
+            - name: trustbundle
+              mountPath: /trustbundle
+              readOnly: true
       volumes:
         - name: spiffe-workload-api
           csi:
             driver: "csi.spiffe.io"
             readOnly: true
         - name: spire-agent-socket
+          emptyDir: {}
+        - name: trustbundle
           emptyDir: {}
         - name: spire-identity-exchange-config
           configMap:

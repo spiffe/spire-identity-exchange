@@ -42,6 +42,10 @@ IMAGE_REF=$(ko build ./cmd/spire-credentialcomposer-identity-exchange/ --platfor
 docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
 kind load docker-image ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev --name chart-testing
 
+IMAGE_REF=$(ko build ./cmd/spire-server-attestor-spiffe-workload-api/ --platform=linux/amd64 --local)
+docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-server-attestor-spiffe-workload-api:dev
+kind load docker-image ghcr.io/spiffe/spire-server-attestor-spiffe-workload-api:dev --name chart-testing
+
 IMAGE_REF=$(ko build ./cmd/spire-identity-exchange-server/ --platform=linux/amd64 --local)
 docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-identity-exchange-server:dev
 kind load docker-image ghcr.io/spiffe/spire-identity-exchange-server:dev --name chart-testing
