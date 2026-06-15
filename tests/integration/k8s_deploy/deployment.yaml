@@ -58,6 +58,20 @@ spec:
               readOnly: true
             - name: trustbundle
               mountPath: /trustbundle
+        - name: wait
+          image: "quay.io/almalinux/almalinux:9"
+          imagePullPolicy: Always
+          restartPolicy: Always
+          command:
+            - /bin/bash
+            - -c
+            - |
+              while true; do [ -f /trustbundle/socket ] && exit; sleep 1; done
+          args:
+            - /trustbundle/socket
+          volumeMounts:
+            - name: trustbundle
+              mountPath: /trustbundle
         - name: spire-agent
           image: "ghcr.io/spiffe/spire-agent:1.15.1"
           imagePullPolicy: Always
