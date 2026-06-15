@@ -53,7 +53,7 @@ spire-server:
           parentID: spiffe://example.org/spire-identity-exchange
           spiffeID: spiffe://example.org/service/spire-identity-exchange
           selectors:
-            - unix:user:root
+            - unix:uid:0
   extraVolumes:
     - name: plugin-staging
       emptyDir: {}
