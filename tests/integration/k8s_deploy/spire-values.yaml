@@ -38,6 +38,7 @@ spire-server:
             - "k8s:container-name:spire-agent"
       clusterStaticEntries:
         spire-identity-exchange:
+          #FXIME can we template trust domain?
           parentID: spiffe://example.org/spire/server
           spiffeID: spiffe://example.org/spire-identity-exchange
           selectors:
@@ -49,7 +50,7 @@ spire-server:
             - k8s_psat:namespace:default
             - k8s_psat:service_account_name:default
         #FIXME Only needed for delegated api. Can remove once switched to the broker api.
-        test:
+        agent-spire-identity-exchange:
           parentID: spiffe://example.org/spire-identity-exchange
           spiffeID: spiffe://example.org/service/spire-identity-exchange
           selectors:
