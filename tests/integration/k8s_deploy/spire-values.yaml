@@ -45,7 +45,7 @@ spire-server:
             - x509pop:subject:cn:spire-exchange/spire-identity-exchange
         test:
           parentID: spiffe://example.org/spire-identity-exchange
-          spiffeID: spiffe://example.org/test
+          spiffeID: spiffe://example.org/k8s-psat/test
           selectors:
             - k8s_psat:namespace:default
             - k8s_psat:service_account_name:default
