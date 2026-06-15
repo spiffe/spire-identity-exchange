@@ -24,6 +24,7 @@ teardown() {
   kubectl get pods -l app=spire-identity-exchange -o name | xargs kubectl describe || true
   kubectl logs deploy/spire-identity-exchange -c spire-identity-exchange || true
   kubectl logs deploy/spire-identity-exchange -c spire-agent || true
+  kubectl logs deploy/spire-identity-exchange -c spire-identity-exchange || true
   kubectl describe pod -n spire-server spire-server-0 || true
   kubectl logs -n spire-server spire-server-0 -c install-custom-plugin || true
   kubectl logs -n spire-server spire-server-0 -c spire-server || true
