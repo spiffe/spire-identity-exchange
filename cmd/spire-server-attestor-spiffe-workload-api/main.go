@@ -51,8 +51,8 @@ func trustBundleHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage:", os.Args[0], "<socket_path_to_listen_on>")
-		return
+		fmt.Fprintf(os.Stderr, "Usage: %s <socket_path_to_listen_on>\n", os.Args[0])
+		os.Exit(2)
 	}
 	socket = os.Args[1]
 

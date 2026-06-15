@@ -111,7 +111,7 @@ deploy_server_attestor() {
   go build -o spire-server-attestor-spiffe-workload-api cmd/spire-server-attestor-spiffe-workload-api/main.go
   sudo mkdir -p /usr/libexec/spire/plugins
   sudo cp -a spire-server-attestor-spiffe-workload-api /usr/libexec/spire/spire-server-attestor-spiffe-workload-api
-  sudo cp -a systemd/spire-server-attestor-spiffe-workload-api@.service /usr/lib/systemd/system
+  sudo cp -a systemd/spire-server-attestor-spiffe-workload-api@.service /etc/systemd/system
   sudo systemctl daemon-reload
   sudo systemctl start spire-server-attestor-spiffe-workload-api@main
 }
