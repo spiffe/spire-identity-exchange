@@ -36,12 +36,26 @@ spec:
             - name: spire-agent-socket
               mountPath: /agent
               readOnly: true
+      initContainers:
+        #FIXME agent socket needs to exist before the exchange will start...
         - name: spire-agent
           image: "ghcr.io/spiffe/spire-agent:1.15.1"
           imagePullPolicy: Always
+          restartPolicy: Always
           args:
-          - -config
-          - /etc/spire/agent/six-agent.conf
+            - -config
+            - /etc/spire/agent/six-agent.conf
+          ports:
+            - containerPort: 8182
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: healthz
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: healthz
           volumeMounts:
             - name: spiffe-workload-api
               mountPath: /spiffe-workload-api
@@ -52,7 +66,6 @@ spec:
               readOnly: true
             - name: spire-agent-socket
               mountPath: /agent
-              #FIXME add health check
       volumes:
         - name: spiffe-workload-api
           csi:
