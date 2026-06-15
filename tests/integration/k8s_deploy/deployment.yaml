@@ -22,6 +22,9 @@ spec:
           args:
           - -config
           - /etc/spire/identity-exchange/default.json
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
           volumeMounts:
             - name: spiffe-workload-api
               mountPath: /spiffe-workload-api
