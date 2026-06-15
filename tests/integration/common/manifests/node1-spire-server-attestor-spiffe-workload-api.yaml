@@ -1,0 +1,9 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: node1-spire-server-attestor-spiffe-workload-api
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-server-attestor-spiffe-workload-api
+  selectors:
+  - systemd:id:spire-server-attestor-spiffe-workload-api@main.service
