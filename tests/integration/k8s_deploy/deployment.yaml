@@ -60,6 +60,11 @@ spec:
           args:
             - -config
             - /etc/spire/agent/six-agent.conf
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "/spiffe-workload-api/spire-agent.sock"
+            - name: SPIFFE_TRUST_DOMAIN
+              value: "example.org"
           ports:
             - containerPort: 8182
               name: healthz
