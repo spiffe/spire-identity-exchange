@@ -12,7 +12,7 @@
   },
   "spire": {
     "agentWorkloadSocketPath": "/spiffe-workload-api/spire-agent.sock",
-    "agentDelegatedSocketPath": "/agent/agent.sock",
+    "agentDelegatedSocketPath": "/agent/admin.sock",
     "trustDomain": "example.org",
     "svidTTL": "5m"
   },
