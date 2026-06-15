@@ -53,7 +53,7 @@ spire-server:
       x509POP:
         enabled: true
         svidPrefix: /spire-exchange/spire-identity-exchange/
-        agentPathTemplate: "{{ .PluginName }}/spire-identity-exchange/{{ .SVIDPathTrimmed }}"
+        agentPathTemplate: "/{{ .PluginName }}/spire-identity-exchange/{{ .SVIDPathTrimmed }}"
   customPlugins:
     credentialComposer:
       spire-credentialcomposer-identity-exchange:
