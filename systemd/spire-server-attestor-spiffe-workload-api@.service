@@ -6,14 +6,13 @@ Wants=network-online.target local-fs.target time-sync.target remote-fs-pre.targe
 StartLimitIntervalSec=0
 
 [Service]
-WorkingDirectory=/var/lib/spire
-RuntimeDirectory=spire
+WorkingDirectory=/
+RuntimeDirectory=spire/server-attestor-spiffe-workload-api/%i
 RuntimeDirectoryPreserve=true
 ConfigurationDirectory=spire
 EnvironmentFile=-/etc/spiffe/default-trust-domain.env
 Environment=SYSTEMD_INSTANCE=%i
 Environment=SPIFFE_ENDPOINT_SOCKET=unix:///var/run/spire/agent/sockets/%i/public/api.sock
-ExecStartPre=/bin/bash -c "mkdir -p /var/run/spire/server-attestor-spiffe-workload-api/%i"
 ExecStart=/usr/libexec/spire/spire-server-attestor-spiffe-workload-api /var/run/spire/server-attestor-spiffe-workload-api/%i/socket
 # https://gist.github.com/ageis/f5595e59b1cddb1513d1b425a323db04
 LockPersonality=true
