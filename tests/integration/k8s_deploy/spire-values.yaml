@@ -48,6 +48,12 @@ spire-server:
           selectors:
             - k8s_psat:namespace:default
             - k8s_psat:service_account_name:default
+        #FIXME Only needed for delegated api. Can remove once switched to the broker api.
+        test:
+          parentID: spiffe://example.org/spire-identity-exchange
+          spiffeID: spiffe://example.org/service/spire-identity-exchange
+          selectors:
+            - unix:user:root
   extraVolumes:
     - name: plugin-staging
       emptyDir: {}
