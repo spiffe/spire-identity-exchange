@@ -1,3 +1,5 @@
+//go:build legacy
+
 package service
 
 import (
@@ -259,8 +261,12 @@ func (m *MockHealthClient) Check(ctx context.Context, req *grpc_health_v1.Health
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
-func (m *MockHealthClient) Watch(ctx context.Context, req *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
+func (m *MockHealthClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[grpc_health_v1.HealthCheckResponse], error) {
 	return nil, nil
+}
+
+func (m *MockHealthClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{}, nil
 }
 
 type MockTrustDomainClient struct{}

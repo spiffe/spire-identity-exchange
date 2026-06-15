@@ -11,7 +11,6 @@ import (
 	"github.com/spiffe/spire-identity-exchange/internal/metrics"
 	"github.com/spiffe/spire-identity-exchange/internal/spireagent/delegated"
 	v "github.com/spiffe/spire-identity-exchange/pkg/validator"
-	server_util "github.com/spiffe/spire/cmd/spire-server/util"
 	"go.uber.org/zap"
 )
 
@@ -26,7 +25,7 @@ type authHandler struct {
 // SpireIdentityExchangeServer is the server for the spire-identity-exchange service.
 type SpireIdentityExchangeServer struct {
 	proto.UnimplementedSpireIdentityExchangeApiServer
-	spireClient     server_util.ServerClient
+	spireClient     SpireClient       // non-nil only with "legacy" build tag
 	delegated       *delegated.Client // used by the gRPC PluginAuth path; nil when not needed
 	githubOIDC      *authHandler      // legacy hard-coded auth, nil if not configured
 	k8sSAToken      *authHandler      // legacy hard-coded auth, nil if not configured
@@ -41,7 +40,7 @@ type SpireIdentityExchangeServer struct {
 // to disable that auth method. delegatedClient may be nil when PluginAuth is
 // not in use; the dispatch arm rejects with Unavailable rather than panicking.
 func NewGRPCHandler(
-	spireClient server_util.ServerClient,
+	spireClient SpireClient,
 	delegatedClient *delegated.Client,
 	cfg *config.SpireIdentityExchangeConfig,
 	githubOIDCValidator v.TokenValidator,
@@ -64,32 +63,10 @@ func NewGRPCHandler(
 		logger:          logger,
 	}
 
-	if githubOIDCValidator != nil {
-		tmpl, err := template.New(spiffeTemplateName).Parse(cfg.GitHubOIDC.SPIFFEIDTemplate)
-		if err != nil {
-			return nil, fmt.Errorf("invalid SPIFFE ID template for GitHub OIDC: %w", err)
-		}
-		server.githubOIDC = &authHandler{
-			validator:            githubOIDCValidator,
-			spiffeIDTemplate:     tmpl,
-			svidTTL:              effectiveTTL(cfg.GitHubOIDC.SVIDTTL, cfg.SPIRE.SVIDTTL),
-			workflowTTLOverrides: buildWorkflowTTLOverrides(cfg.GitHubOIDC.WorkflowTTLOverrides),
-		}
+	if err := server.initLegacyAuthHandlers(cfg, githubOIDCValidator, k8sSATokenValidator); err != nil {
+		return nil, err
 	}
 
-	if k8sSATokenValidator != nil {
-		tmpl, err := template.New(spiffeTemplateName).Parse(cfg.K8sSAToken.SPIFFEIDTemplate)
-		if err != nil {
-			return nil, fmt.Errorf("invalid SPIFFE ID template for K8s SA token: %w", err)
-		}
-		server.k8sSAToken = &authHandler{
-			validator:        k8sSATokenValidator,
-			spiffeIDTemplate: tmpl,
-			svidTTL:          effectiveTTL(cfg.K8sSAToken.SVIDTTL, cfg.SPIRE.SVIDTTL),
-		}
-	}
-
-	// PluginAuth dispatches off cfg.Auth.LoadedPlugins directly; no per-plugin handler needed.
 	return server, nil
 }
 

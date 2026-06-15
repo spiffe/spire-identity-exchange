@@ -28,8 +28,8 @@ jobs:
       - name: Upload the file as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spire-identity-exchange
-          path: build/bin/spire-identity-exchange
+          name: spire-identity-exchange-server
+          path: build/linux/amd64/spire-identity-exchange-server
 
   basic-tests:
     name: Basic Tests
@@ -42,7 +42,7 @@ jobs:
       - name: Download the artifact
         uses: actions/download-artifact@v4
         with:
-          name: spire-identity-exchange
+          name: spire-identity-exchange-server
       - id: set-matrix-integration
         name: Run Basic Tests
         run: |
@@ -90,7 +90,7 @@ jobs:
       - name: Download the artifact
         uses: actions/download-artifact@v4
         with:
-          name: spire-identity-exchange
+          name: spire-identity-exchange-server
       - name: Prep kind environment
         run: |
           sudo mkdir -p /etc/kubernetes/pki

@@ -142,8 +142,8 @@ setup_identity_exchange() {
   local COMMONPATH="$2"
 
   sudo mkdir -p /usr/libexec/spire/
-  chmod +x spire-identity-exchange
-  sudo cp -a spire-identity-exchange /usr/libexec/spire/
+  chmod +x spire-identity-exchange-server
+  sudo cp -a spire-identity-exchange-server /usr/libexec/spire/
 
   sudo mkdir -p /etc/spire/identity-exchange/main/certs
   sudo openssl req -x509 -newkey rsa:2048 \
