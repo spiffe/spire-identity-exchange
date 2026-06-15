@@ -56,6 +56,9 @@ openssl req -x509 -newkey rsa:2048 \
 kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
 kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.json" --from-file="${SCRIPTPATH}/six-agent.conf"
 kubectl apply -f "${SCRIPTPATH}/service.yaml"
+kubectl apply -f "${SCRIPTPATH}/serviceaccount.yaml"
+kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
+kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --serviceaccount="default:spire-identity-exchange"
 kubectl apply -f "${SCRIPTPATH}/deployment.yaml"
 kubectl wait --for=condition=available --timeout=30s deployment/spire-identity-exchange
 
@@ -65,3 +68,4 @@ kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 kubectl logs job/test | base64 -d | tar -xvf -
 openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/k8s-psat/test'
+
