@@ -34,6 +34,7 @@ teardown() {
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
 deploy_credential_composer
+deploy_server_attestor
 
 sudo mkdir -p /etc/spire/server/main/manifests
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/

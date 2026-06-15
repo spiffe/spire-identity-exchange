@@ -32,6 +32,7 @@ teardown() {
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
 deploy_credential_composer
+deploy_server_attestor
 
 # Setup github mock service. Consider moving this out to a systemd service
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
