@@ -129,7 +129,7 @@ setup_base_spire() {
   JOIN_TOKEN=$(sudo spire-server token generate -spiffeID spiffe://example.org/agent/node1 | awk '{print "\""$2"\""}')
   export JOIN_TOKEN
   sudo /bin/bash -c "echo JOIN_TOKEN=${JOIN_TOKEN} > /etc/spire/agent/main.env"
-  sudo cp "${COMMONPATH}/six-agent.conf" /etc/spire/agent/six.conf
+  sudo cp "${COMMONPATH}/six-agent.conf" /etc/spire/agent/main-six.conf
 
   # Startup the agents
   sudo systemctl start spire-agent@main spire-agent@main-six
