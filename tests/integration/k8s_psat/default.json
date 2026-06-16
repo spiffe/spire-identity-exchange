@@ -12,7 +12,7 @@
   },
   "spire": {
     "agentWorkloadSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}/public/api.sock",
-    "agentDelegatedSocketPath": "/var/run/spire/agent/sockets/six/private/admin.sock",
+    "agentDelegatedSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}-six/private/admin.sock",
     "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
     "svidTTL": "5m"
   },

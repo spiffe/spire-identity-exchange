@@ -6,4 +6,4 @@ spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-exchange/spire-identity-exchange/node1
   selectors:
-  - systemd:id:spire-agent@six.service
+  - systemd:id:spire-agent@main-six.service
