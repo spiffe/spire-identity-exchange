@@ -63,7 +63,9 @@ type TLSConfig struct {
 
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
-	Plugins       []PluginConfig                                          `json:"plugins"`
+	Plugins            []PluginConfig                                     `json:"plugins"`
+	Stacks             []StackConfig                                      `json:"stacks"`
+	PassthroughPlugins *bool                                              `json:"passthrough_plugins"`
 	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 }
@@ -76,6 +78,12 @@ type PluginConfig struct {
 	Plugin    string                         `json:"plugin"`
 	RawConfig json.RawMessage                `json:"config"`
 	Config    validator.TokenValidatorLoader `json:"-"`
+}
+
+// StackConfig is the operator config for one stack
+type StackConfig struct {
+	Name      string                         `json:"name"`
+	Plugins   []string                       `json:"plugins"`
 }
 
 // SPIREConfig contains SPIRE server configurations
@@ -190,6 +198,7 @@ type K8sSATokenConfig struct {
 
 func (c *AuthConfig) Validate() error {
 	usedPlugins := make(map[string]struct{})
+	usedStacks := make(map[string]struct{})
 	var errs []error
 	for i, plugin := range c.Plugins {
 		if c.Plugins[i].Name == "" {
@@ -220,6 +229,17 @@ func (c *AuthConfig) Validate() error {
 			}
 		}
 		usedPlugins[plugin.Name] = struct{}{}
+	}
+	for _, stack := range c.Stacks {
+		if _, exists := usedStacks[stack.Name]; exists {
+			errs = append(errs, fmt.Errorf("stack name %s is defined more than once", stack.Name))
+			continue
+		}
+		if !pluginNamePattern.MatchString(stack.Name) {
+			errs = append(errs, fmt.Errorf("Stack name %s is invalid", stack.Name))
+			continue
+		}
+		usedStacks[stack.Name] = struct{}{}
 	}
 	return errors.Join(errs...)
 }
