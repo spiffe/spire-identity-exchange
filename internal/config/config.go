@@ -197,6 +197,10 @@ type K8sSATokenConfig struct {
 }
 
 func (c *AuthConfig) Validate() error {
+	passthroughPlugins := true
+	if (c.PassthroughPlugins != nil && *c.PassthroughPlugins == false) {
+		passthroughPlugins = false
+	}
 	usedPlugins := make(map[string]struct{})
 	usedStacks := make(map[string]struct{})
 	var errs []error
@@ -231,6 +235,10 @@ func (c *AuthConfig) Validate() error {
 		usedPlugins[plugin.Name] = struct{}{}
 	}
 	for _, stack := range c.Stacks {
+		if _, exists := usedPlugins[stack.Name]; passthroughPlugins && exists {
+			errs = append(errs, fmt.Errorf("stack name %s is defined the same as an existing plugin", stack.Name))
+			continue
+		}
 		if _, exists := usedStacks[stack.Name]; exists {
 			errs = append(errs, fmt.Errorf("stack name %s is defined more than once", stack.Name))
 			continue
