@@ -12,7 +12,6 @@
     }
   },
   "spire": {
-    "unixSocketPath": "/var/run/spire/server/sockets/${SYSTEMD_INSTANCE}/private/api.sock",
     "agentWorkloadSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}/public/api.sock",
     "agentDelegatedSocketPath": "/var/run/spire/agent/sockets/${SYSTEMD_INSTANCE}-six/private/admin.sock",
     "trustDomain": "${SPIFFE_TRUST_DOMAIN}",
@@ -34,36 +33,5 @@
         "audiences": ["spire-identity-exchange"]
       }
     }]
-  },
-  "githubOIDC": {
-    "enabled": true,
-    "issuer": "http://localhost:9999",
-    "audiences": ["spire-identity-exchange"],
-    "jwksUri": "http://localhost:9999/.well-known/jwks",
-    "spiffeIdTemplate": "spiffe://{{.trust_domain}}/spire-identity-exchange/github/{{.enterprise}}/{{.repository}}",
-    "allowedRepositories": ["*"],
-    "requiredClaims": [
-      "repository",
-      "sha",
-      "workflow_ref",
-      "job_workflow_ref",
-      "actor",
-      "runner_environment",
-      "run_id",
-      "run_attempt",
-      "event_name",
-      "enterprise"
-    ],
-    "workflowTTLOverrides": {},
-    "skipTokenExpiration": false,
-    "jwksCacheDuration": "5m",
-    "svidTTL": "0s"
-  },
-  "k8sSAToken": {
-    "enabled": false,
-    "clusterName": "my-cluster",
-    "audiences": ["spire-identity-exchange"],
-    "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
-    "kubeconfig": ""
   }
 }
