@@ -6,12 +6,16 @@ import (
 	"strings"
 )
 
-func parsePluginTokens(token string) (map[string]string, error) {
+func parsePluginTokens(token string, singlePluginName string) (map[string]string, error) {
 	result := make(map[string]string)
 	token = strings.TrimSpace(token)
 
 	if token == "" {
 		return nil, errors.New("token string is empty")
+	}
+	if singlePluginName != "" {
+		result[singlePluginName] = token
+		return  result, nil
 	}
 
 	segments := strings.Split(token, ":")
