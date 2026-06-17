@@ -65,7 +65,7 @@ type TLSConfig struct {
 type AuthConfig struct {
 	Plugins            []PluginConfig                                     `json:"plugins"`
 	Stacks             []StackConfig                                      `json:"stacks"`
-	PassthroughPlugins *bool                                              `json:"passthrough_plugins"`
+	PassthroughPlugins *bool                                              `json:"passthroughPlugins"`
 	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
 }

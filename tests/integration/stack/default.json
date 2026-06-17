@@ -17,6 +17,7 @@
     "svidTTL": "5m"
   },
   "auth": {
+    "passthroughPlugins": false,
     "plugins": [{
       "plugin": "k8s_psat",
       "config": {
@@ -32,6 +33,10 @@
         "allowedRepositories": ["my-org/my-repo"],
         "audiences": ["spire-identity-exchange"]
       }
+    }],
+    "stacks": [{
+      "name": "foo",
+      "plugins": ["k8s_psat", "mockhub"]
     }]
   }
 }
