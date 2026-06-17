@@ -1,0 +1,28 @@
+{
+  "name": "spire-identity-exchange",
+  "logLevel": "info",
+  "server": {
+    "port": 8443,
+    "metricsPort": 4950,
+    "restPort": 8444,
+    "tls": {
+      "certFile": "/secret/tls.crt",
+      "keyFile": "/secret/tls.key"
+    }
+  },
+  "spire": {
+    "agentWorkloadSocketPath": "/spiffe-workload-api/spire-agent.sock",
+    "agentDelegatedSocketPath": "/agent/admin.sock",
+    "trustDomain": "example.org",
+    "svidTTL": "5m"
+  },
+  "auth": {
+    "plugins": [{
+      "plugin": "k8s_psat",
+      "config": {
+        "audiences": ["spire-identity-exchange"],
+        "allowedServiceAccounts": ["default/default"]
+      }
+    }]
+  }
+}

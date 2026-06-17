@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spire-identity-exchange
+  labels:
+    app: spire-identity-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spire-identity-exchange
+  template:
+    metadata:
+      labels:
+        app: spire-identity-exchange
+    spec:
+      serviceAccountName: spire-identity-exchange
+      shareProcessNamespace: true
+      containers:
+        - name: spire-identity-exchange
+          image: "ghcr.io/spiffe/spire-identity-exchange-server:dev"
+          imagePullPolicy: Never
+          args:
+          - -config
+          - /etc/spire/identity-exchange/default.json
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spire-identity-exchange-config
+              mountPath: /etc/spire/identity-exchange/default.json
+              subPath: default.json
+              readOnly: true
+            - name: spire-identity-exchange-secret
+              mountPath: /secret
+              readOnly: true
+            - name: spire-agent-socket
+              mountPath: /agent
+              readOnly: true
+      initContainers:
+        - name: spire-server-attestor
+          image: "ghcr.io/spiffe/spire-server-attestor-spiffe-workload-api:dev"
+          imagePullPolicy: Never
+          restartPolicy: Always
+          args:
+            - /trustbundle/socket
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///spiffe-workload-api/spire-agent.sock"
+            - name: SPIFFE_TRUST_DOMAIN
+              value: "example.org"
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: trustbundle
+              mountPath: /trustbundle
+        - name: wait
+          image: "quay.io/almalinux/almalinux:9"
+          imagePullPolicy: Always
+          restartPolicy: Always
+          command:
+            - /bin/bash
+            - -c
+            - |
+              while true; do [ -f /trustbundle/socket ] && exit; sleep 1; done
+          args:
+            - /trustbundle/socket
+          volumeMounts:
+            - name: trustbundle
+              mountPath: /trustbundle
+        - name: spire-agent
+          image: "ghcr.io/spiffe/spire-agent:1.15.1"
+          imagePullPolicy: Always
+          restartPolicy: Always
+          args:
+            - -config
+            - /etc/spire/agent/six-agent.conf
+          ports:
+            - containerPort: 8182
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: healthz
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: healthz
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: spire-identity-exchange-config
+              mountPath: /etc/spire/agent/six-agent.conf
+              subPath: six-agent.conf
+              readOnly: true
+            - name: spire-agent-socket
+              mountPath: /agent
+            - name: trustbundle
+              mountPath: /trustbundle
+              readOnly: true
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: "csi.spiffe.io"
+            readOnly: true
+        - name: spire-agent-socket
+          emptyDir: {}
+        - name: trustbundle
+          emptyDir: {}
+        - name: spire-identity-exchange-config
+          configMap:
+            name: spire-identity-exchange
+        - name: spire-identity-exchange-secret
+          secret:
+            secretName: spire-identity-exchange
