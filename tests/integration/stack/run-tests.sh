@@ -57,9 +57,11 @@ while true; do
   sleep 1
   ((ELAPSED++)) || true
 done
+set +x
 export MOCKHUB_TOKEN="$(cat token)"
 echo "::add-mask::${MOCKHUB_TOKEN}"
 set -x
+rm -f token
 
 sudo mkdir -p /etc/spire/server/main/manifests
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
