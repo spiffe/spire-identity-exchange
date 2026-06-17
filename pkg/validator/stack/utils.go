@@ -26,10 +26,10 @@ func parsePluginTokens(token string, singlePluginName string) (map[string]string
 			return nil, errors.New("malformed token: found an empty segment or extra ':'")
 		}
 
-		pluginName, token, found := strings.Cut(segment, "=")
+		pluginName, tokenValue, found := strings.Cut(segment, "=")
 
 		pluginName = strings.TrimSpace(pluginName)
-		token = strings.TrimSpace(token)
+		tokenValue = strings.TrimSpace(tokenValue)
 
 		if !found {
 			return nil, fmt.Errorf("malformed token: segment '%s' is missing an '=' separator", segment)
@@ -37,7 +37,7 @@ func parsePluginTokens(token string, singlePluginName string) (map[string]string
 		if pluginName == "" {
 			return nil, fmt.Errorf("malformed token: missing plugin name in segment '%s'", segment)
 		}
-		if token == "" {
+		if tokenValue == "" {
 			return nil, fmt.Errorf("malformed token: missing token value for plugin '%s'", pluginName)
 		}
 
@@ -45,8 +45,7 @@ func parsePluginTokens(token string, singlePluginName string) (map[string]string
 			return nil, fmt.Errorf("malformed token: duplicate plugin '%s' detected", pluginName)
 		}
 
-		result[pluginName] = token
-	}
+		result[pluginName] = tokenValue
 
 	return result, nil
 }
