@@ -44,23 +44,23 @@ deploy_server_attestor
 go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
 rm -f token
 ./mock-github-oidc -token token &
-MAX_WAIT=30
-ELAPSED=0
-while true; do
-  if [ -f token ]; then
-    break
-  fi
-  if [ $ELAPSED -ge $MAX_WAIT ]; then
-    echo "Timed out after ${MAX_WAIT} seconds."
-    exit 1
-  fi
-  sleep 1
-  ((ELAPSED++)) || true
-done
-set +x
-export MOCKHUB_TOKEN="$(cat token)"
-echo "::add-mask::${MOCKHUB_TOKEN}"
-set -x
+#MAX_WAIT=30
+#ELAPSED=0
+#while true; do
+#  if [ -f token ]; then
+#    break
+#  fi
+#  if [ $ELAPSED -ge $MAX_WAIT ]; then
+#    echo "Timed out after ${MAX_WAIT} seconds."
+#    exit 1
+#  fi
+#  sleep 1
+#  ((ELAPSED++)) || true
+#done
+#set +x
+#export MOCKHUB_TOKEN="$(cat token)"
+#echo "::add-mask::${MOCKHUB_TOKEN}"
+#set -x
 rm -f token
 
 sudo mkdir -p /etc/spire/server/main/manifests
