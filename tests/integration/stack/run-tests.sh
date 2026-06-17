@@ -109,4 +109,4 @@ sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 kubectl logs job/test | base64 -d | tar -xvf -
-openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/ktest'
+openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/test'
