@@ -1,0 +1,11 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: node1-k8s-spiffe-oidc-discovery-provider
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/k8s-spiffe-oidc-discovery-provider
+  dnsNames:
+    -  k8ssodp.${SPIFFE_TRUST_DOMAIN} 
+  selectors:
+  - systemd:id:k8s-spiffe-oidc-discovery-provider.service

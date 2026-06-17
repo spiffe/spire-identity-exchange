@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+        - "spire-identity-exchange.example.org"
+      volumes:
+      - name: token-volume
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              audience: spire-identity-exchange
+              expirationSeconds: 3600
+      containers:
+      - name: main
+        image: curlimages/curl:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          KUBE_TOKEN=$(cat /var/run/secrets/tokens/token)
+          curl -f -H "Authorization: Bearer k8s=${KUBE_TOKEN}:mockhub=${MOCKHUB_TOKEN}" \
+            -X POST https://spire-identity-exchange.example.org:8444/api/v1/svid/k8s_psat/x509?format=spiffe-fd-tar \
+            -k -sS -q | base64
+        env:
+        - name: MOCKHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: test
+              key: token
+        volumeMounts:
+        - name: token-volume
+          mountPath: /var/run/secrets/tokens
