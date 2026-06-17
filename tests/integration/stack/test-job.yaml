@@ -26,7 +26,7 @@ spec:
         args:
         - |
           KUBE_TOKEN=$(cat /var/run/secrets/tokens/token)
-          curl -f -H "Authorization: Bearer k8s=${KUBE_TOKEN}:mockhub=${MOCKHUB_TOKEN}" \
+          curl -f -H "Authorization: Bearer k8s_psat=${KUBE_TOKEN}:mockhub=${MOCKHUB_TOKEN}" \
             -X POST https://spire-identity-exchange.example.org:8444/api/v1/svid/k8s_psat/x509?format=spiffe-fd-tar \
             -k -sS -q | base64
         env:
