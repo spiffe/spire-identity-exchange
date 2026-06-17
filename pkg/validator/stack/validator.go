@@ -15,6 +15,7 @@ type Config struct {
 }
 
 func (c *Config) ValidateConfig(AllPlugins map[string]validator.TokenValidatorAndSelectorGenerator) error {
+    c.PluginMap = make(map[string]validator.TokenValidatorAndSelectorGenerator)
     for _, plugin := range c.Plugins {
         if p, exists := AllPlugins[plugin]; exists {
 		c.PluginMap[plugin] = p
