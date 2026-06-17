@@ -46,6 +46,7 @@ func parsePluginTokens(token string, singlePluginName string) (map[string]string
 		}
 
 		result[pluginName] = tokenValue
+	}
 
 	return result, nil
 }
