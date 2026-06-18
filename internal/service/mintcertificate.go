@@ -56,7 +56,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	stackName := req.GetStackName()
 	if len(plugins) > 1 {
 		if stackName == "" {
-			return nil, status.Errorf(codes.Unimplemented, "stack name must be specified when more then one plugin is used")
+			return nil, status.Errorf(codes.InvalidArgument, "stack name must be specified when more then one plugin is used")
 		}
 		sep := ""
 		for _, plugin := range plugins {
@@ -64,7 +64,11 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 			if !configlib.PluginNamePattern.MatchString(pluginName) {
 				return nil, status.Errorf(codes.InvalidArgument, "plugin name s invalid")
 			}
-			token = fmt.Sprintf("%s%s%s=%s", token, sep, pluginName, plugin.GetToken())
+			pt := plugin.GetToken()
+			if strings.Contains(pt, ":") {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid token")
+			}
+			token = fmt.Sprintf("%s%s%s=%s", token, sep, pluginName, pt)
 			sep = ":"
 		}
 	} else {
