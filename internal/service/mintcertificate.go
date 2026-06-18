@@ -52,7 +52,18 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 		return nil, status.Error(codes.InvalidArgument, "pluginAuthList.plugins must contain at least one entry")
 	}
 	if len(plugins) > 1 {
+		stackName := req.GetStackName()
+		if stackName == "" {
+			return nil, status.Errorf(codes.Unimplemented, "stack name must be specified when more then one plugin is used")
+		}
 		return nil, status.Errorf(codes.Unimplemented, "multi-plugin stack composition is not implemented; got %d entries", len(plugins))
+	}
+	passthroughPlugins := true
+        if (h.config.Auth.PassthroughPlugins != nil && *h.config.Auth.PassthroughPlugins == false) {
+		passthroughPlugins = false
+	}
+	if !passthroughPlugins {
+		return nil, status.Errorf(codes.Unimplemented, "Stacks are not supported with grpc yet")
 	}
 	pluginAuth := plugins[0]
 	pluginName := pluginAuth.GetPluginName()
