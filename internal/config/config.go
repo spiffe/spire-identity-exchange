@@ -16,7 +16,7 @@ import (
 // string (e.g. "1h", "10m") or an integer number of nanoseconds.
 type Duration time.Duration
 
-var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-_]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
+var PluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-_]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string
@@ -213,7 +213,7 @@ func (c *AuthConfig) Validate() error {
 			errs = append(errs, fmt.Errorf("plugin name %s is defined more than once", plugin.Name))
 			continue
 		}
-		if !pluginNamePattern.MatchString(plugin.Name) {
+		if !PluginNamePattern.MatchString(plugin.Name) {
 			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", plugin.Name))
 			continue
 		}
@@ -243,7 +243,7 @@ func (c *AuthConfig) Validate() error {
 			errs = append(errs, fmt.Errorf("stack name %s is defined more than once", stack.Name))
 			continue
 		}
-		if !pluginNamePattern.MatchString(stack.Name) {
+		if !PluginNamePattern.MatchString(stack.Name) {
 			errs = append(errs, fmt.Errorf("Stack name %s is invalid", stack.Name))
 			continue
 		}
