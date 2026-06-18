@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	spiretypes "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
