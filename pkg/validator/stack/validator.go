@@ -46,7 +46,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 func (v *Validator) Validate(ctx context.Context, token string, purpose validator.Purpose) (validator.Claims, error) {
     allClaims := make(map[string]validator.Claims)
     singlePluginName := ""
-    l := len(allClaims)
+    l := len(v.config.Plugins)
     if l == 1 {
         singlePluginName = v.config.Plugins[0]
     }
