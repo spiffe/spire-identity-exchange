@@ -49,7 +49,7 @@ type SpireIdentityExchangeConfig struct {
 
 // ServerConfig contains HTTP server configuration
 type ServerConfig struct {
-	Port        int       `json:"port"`
+	GrpcPort    int       `json:"grpcPort"`
 	MetricsPort int       `json:"metricsPort"`
 	RestPort    int       `json:"restPort"`
 	TLS         TLSConfig `json:"tls"`
