@@ -33,18 +33,27 @@ func (c *Claims) GetUniqueID() string {
 	slices.Sort(keys)
 
 	for _, key := range keys {
+		jti += key
+		jti += "\x1f"
 		jti += c.PluginClaims[key].GetUniqueID()
+		jti += "\x1e"
 	}
 	return jti
 }
 
 func (c *Claims) GetExpiration() int64 {
-	var exp int64 = math.MaxInt64
+	exp := int64(math.MaxInt64)
 	for _, claim := range c.PluginClaims {
 		pluginExp := claim.GetExpiration()
+		if pluginExp == 0 {
+			continue
+		}
 		if exp > pluginExp {
 			exp = pluginExp
 		}
+	}
+	if exp == int64(math.MaxInt64) {
+		return 0
 	}
 	return exp
 }

@@ -65,9 +65,9 @@ func (v *Validator) Validate(ctx context.Context, token string, purpose validato
           return nil, fmt.Errorf("plugin %s not found", pluginName)
 	}
     }
-    if len(allClaims) != len(v.config.PluginMap) {
-      return nil, errors.New("missing tokens")
-    }
+	if len(allClaims) != len(v.config.Plugins) {
+		return nil, fmt.Errorf("missing tokens: expected %d plugin tokens, got %d", len(v.config.Plugins), len(allClaims))
+	}
 
     return &Claims {
 	    PluginClaims: allClaims,

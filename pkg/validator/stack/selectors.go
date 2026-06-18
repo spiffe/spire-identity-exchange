@@ -6,13 +6,18 @@ import (
 )
 
 func (v *Validator) GenerateSelectors(claims validator.Claims) []*types.Selector {
-    var selectors []*types.Selector
-    stackClaims := claims.(*Claims)
-    for plugin, pluginClaims := range stackClaims.PluginClaims {
-        c := v.config.PluginMap[plugin].GenerateSelectors(pluginClaims)
-	for _, ic := range c {
-            selectors = append(selectors, ic)
+	stackClaims, ok := claims.(*Claims)
+	if !ok || stackClaims == nil {
+		return nil
 	}
-    }
-    return selectors
+
+	var selectors []*types.Selector
+	for plugin, pluginClaims := range stackClaims.PluginClaims {
+		pluginValidator, ok := v.config.PluginMap[plugin]
+		if !ok {
+			return nil
+		}
+		selectors = append(selectors, pluginValidator.GenerateSelectors(pluginClaims)...)
+	}
+	return selectors
 }

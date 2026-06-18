@@ -172,16 +172,15 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 		}
 	}
 	for _, stack := range cfg.Auth.Stacks {
-		s := &stacklib.Config {
+		s := &stacklib.Config{
 			Plugins: stack.Plugins,
 		}
-		err = s.ValidateConfig(cfg.Auth.LoadedPlugins)
-		if err != nil {
-			return nil, err
+		if err := s.ValidateConfig(cfg.Auth.LoadedPlugins); err != nil {
+			return nil, fmt.Errorf("invalid stack %q: %w", stack.Name, err)
 		}
 		v, err := s.NewValidator()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create validator for stack %q: %w", stack.Name, err)
 		}
 		cfg.Auth.LoadedStacks[stack.Name] = v
 	}
