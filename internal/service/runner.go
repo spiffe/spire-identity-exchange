@@ -182,7 +182,7 @@ func runSpireIdentityExchangeServer(
 	var grpcServer *grpc.Server
 	var listener net.Listener
 
-	if cfg.Server.grcpPort != 0 {
+	if cfg.Server.GrpcPort != 0 {
 		logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.GrpcPort))
 
 		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.GrpcPort))
