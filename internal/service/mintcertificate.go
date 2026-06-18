@@ -51,33 +51,29 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	if len(plugins) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "pluginAuthList.plugins must contain at least one entry")
 	}
+	stackName := req.GetStackName()
 	if len(plugins) > 1 {
-		stackName := req.GetStackName()
 		if stackName == "" {
 			return nil, status.Errorf(codes.Unimplemented, "stack name must be specified when more then one plugin is used")
 		}
 		return nil, status.Errorf(codes.Unimplemented, "multi-plugin stack composition is not implemented; got %d entries", len(plugins))
 	}
-	passthroughPlugins := true
-        if (h.config.Auth.PassthroughPlugins != nil && *h.config.Auth.PassthroughPlugins == false) {
-		passthroughPlugins = false
-	}
-	if !passthroughPlugins {
-		return nil, status.Errorf(codes.Unimplemented, "Stacks are not supported with grpc yet")
-	}
 	pluginAuth := plugins[0]
 	pluginName := pluginAuth.GetPluginName()
-	if pluginName == "" {
-		return nil, status.Error(codes.InvalidArgument, "pluginName is required")
+	if stackName == "" {
+		stackName = pluginName
+	}
+	if stackName == "" {
+		return nil, status.Error(codes.InvalidArgument, "stackName is required")
 	}
 
 	if h.delegated == nil {
 		return nil, status.Error(codes.Unavailable, "delegated identity client is not configured")
 	}
 
-	plugin, ok := h.config.Auth.LoadedPlugins[pluginName]
+	stack, ok := h.config.Auth.LoadedStacks[stackName]
 	if !ok {
-		return nil, status.Errorf(codes.InvalidArgument, "unknown plugin %q", pluginName)
+		return nil, status.Errorf(codes.InvalidArgument, "unknown stack %q", stackName)
 	}
 
 	audit := &auditEntry{AttestorType: pluginName}
@@ -92,16 +88,16 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	}()
 
 	purpose := h.determinePurpose(req)
-	claims, err := plugin.Validate(ctx, pluginAuth.GetToken(), purpose)
+	claims, err := stack.Validate(ctx, pluginAuth.GetToken(), purpose)
 	if err != nil {
 		audit.FailedStage = stageTokenValidation
 		audit.RejectionReason = err.Error()
 		audit.logRejection(logger)
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("failed to validate %s token: %v", pluginName, err))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("failed to validate %s token: %v", stackName, err))
 	}
 	audit.TokenIssuer, _ = claims.GetRaw()["iss"].(string)
 
-	selectors := plugin.GenerateSelectors(claims)
+	selectors := stack.GenerateSelectors(claims)
 	if len(selectors) == 0 {
 		audit.FailedStage = stageSelectorGeneration
 		audit.RejectionReason = "no selectors derivable from token claims"
@@ -146,10 +142,10 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
 	case req.GetServerKeyGenRequest() != nil:
 		audit.SVIDType = "x509"
-		resp, err = h.mintPluginX509SVID(ctx, selectors, audit, logger, pluginName)
+		resp, err = h.mintPluginX509SVID(ctx, selectors, audit, logger, stackName)
 	case req.GetMintJWTSVIDRequest() != nil:
 		audit.SVIDType = "jwt"
-		resp, err = h.mintPluginJWTSVID(ctx, selectors, req.GetMintJWTSVIDRequest().GetAudiences(), audit, logger, pluginName)
+		resp, err = h.mintPluginJWTSVID(ctx, selectors, req.GetMintJWTSVIDRequest().GetAudiences(), audit, logger, stackName)
 	default:
 		audit.FailedStage = stageCSRValidation
 		audit.RejectionReason = "no SVID request specified: set one of serverKeyGenRequest or mintJWTSVIDRequest"
