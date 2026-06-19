@@ -126,8 +126,8 @@ func runSpireIdentityExchangeServer(
 	}
 
 	// Fail fast if both servers are intentionally or accidentally disabled
-	if cfg.Server.Port == 0 && cfg.Server.RestPort == 0 {
-		return fmt.Errorf("both gRPC (port %d) and REST (port %d) servers are disabled; nothing to run", cfg.Server.Port, cfg.Server.RestPort)
+	if cfg.Server.GrpcPort == 0 && cfg.Server.RestPort == 0 {
+		return fmt.Errorf("both gRPC (port %d) and REST (port %d) servers are disabled; nothing to run", cfg.Server.GrpcPort, cfg.Server.RestPort)
 	}
 
 	// Start key syncers for any validator that supports it
@@ -150,7 +150,7 @@ func runSpireIdentityExchangeServer(
 		err             error
 	)
 	needDelegated := cfg.Server.RestPort != 0 ||
-		(cfg.Server.Port != 0 && len(cfg.Auth.LoadedPlugins) > 0)
+		(cfg.Server.GrpcPort != 0 && len(cfg.Auth.LoadedPlugins) > 0)
 	if needDelegated {
 		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
 		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
@@ -182,10 +182,10 @@ func runSpireIdentityExchangeServer(
 	var grpcServer *grpc.Server
 	var listener net.Listener
 
-	if cfg.Server.Port != 0 {
-		logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.Port))
+	if cfg.Server.GrpcPort != 0 {
+		logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.GrpcPort))
 
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.Port))
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.GrpcPort))
 		if err != nil {
 			return fmt.Errorf("failed to create network listener: %w", err)
 		}
@@ -216,7 +216,7 @@ func runSpireIdentityExchangeServer(
 		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
 		if err != nil {
 			// gRPC server is already serving in a goroutine at this point (if
-			// Server.Port != 0). Tear it down before bailing so we don't leak
+			// Server.GrpcPort != 0). Tear it down before bailing so we don't leak
 			// the bound listener; supervisors expect startup failure to leave
 			// no listening sockets.
 			if grpcServer != nil {
@@ -282,7 +282,7 @@ func runSpireIdentityExchangeServer(
 		return nil
 	case <-time.After(serverStartTimeout):
 		logger.Info("spire-identity-exchange servers started successfully",
-			zap.Int("grpc_port", cfg.Server.Port),
+			zap.Int("grpc_port", cfg.Server.GrpcPort),
 			zap.Int("http_rest_port", cfg.Server.RestPort))
 	}
 

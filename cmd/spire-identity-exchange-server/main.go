@@ -93,7 +93,7 @@ func run() error {
 	}
 
 	// Only initialize validators if the gRPC server is enabled (port != 0)
-	if cfg.Server.Port != 0 {
+	if cfg.Server.GrpcPort != 0 {
 		if githubOIDCValidator == nil && k8sSATokenValidator == nil && len(cfg.Auth.Plugins) == 0 {
 			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
