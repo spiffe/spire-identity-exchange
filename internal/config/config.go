@@ -49,10 +49,10 @@ type SpireIdentityExchangeConfig struct {
 
 // ServerConfig contains HTTP server configuration
 type ServerConfig struct {
-	Port        int       `yaml:"port"`
-	MetricsPort int       `yaml:"metricsPort"`
-	RestPort    int       `yaml:"restPort"`
-	TLS         TLSConfig `yaml:"tls"`
+	GrpcPort    int       `json:"grpcPort"`
+	MetricsPort int       `json:"metricsPort"`
+	RestPort    int       `json:"restPort"`
+	TLS         TLSConfig `json:"tls"`
 }
 
 // TLSConfig contains TLS configuration
