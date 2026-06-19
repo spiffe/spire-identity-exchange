@@ -3,9 +3,9 @@ package validator
 import (
 	"context"
 	"crypto"
-	"encoding/json"
 
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+	"gopkg.in/yaml.v3"
 )
 
 // TokenValidatorLoaderGenerator lets you start the process of loading a new
@@ -15,7 +15,7 @@ type TokenValidatorLoaderGenerator func() (TokenValidatorLoader, error)
 // TokenValidatorLoader takes in some config, validates it is good and then
 // lets you instantiate a new Validator based on the config
 type TokenValidatorLoader interface {
-	Unmarshal(raw json.RawMessage) error
+	Unmarshal(raw *yaml.Node) error
 	ValidateConfig() error
 	NewValidator() (TokenValidatorAndSelectorGenerator, error)
 }

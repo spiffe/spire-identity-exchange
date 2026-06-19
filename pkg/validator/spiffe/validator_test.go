@@ -7,18 +7,19 @@ import (
     "github.com/spiffe/spire-identity-exchange/pkg/validator"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
+    "gopkg.in/yaml.v3"
 )
 
 func TestConfig_Unmarshal(t *testing.T) {
     t.Run("valid config", func(t *testing.T) {
-        raw := []byte(`{
-            "issuerURL": "https://issuer.example.org",
-            "audiences": ["spire-server"],
-            "trustDomain": "example.org",
-            "pathPatterns": ["^/workload/.*"]
-        }`)
+        raw := `issuerURL: "https://issuer.example.org"
+audiences: ["spire-server"]
+trustDomain: "example.org"
+pathPatterns: ["^/workload/.*"]`
+        var node yaml.Node
+        require.NoError(t, yaml.Unmarshal([]byte(raw), &node))
         cfg := new(Config)
-        require.NoError(t, cfg.Unmarshal(raw))
+        require.NoError(t, cfg.Unmarshal(&node))
         assert.Equal(t, "https://issuer.example.org", cfg.IssuerURL)
         assert.Equal(t, []string{"spire-server"}, cfg.Audiences)
         assert.Equal(t, "example.org", cfg.TrustDomain)
@@ -26,9 +27,11 @@ func TestConfig_Unmarshal(t *testing.T) {
     })
 
     t.Run("empty config", func(t *testing.T) {
-        raw := []byte(`{}`)
+        raw := `{}`
+        var node yaml.Node
+        require.NoError(t, yaml.Unmarshal([]byte(raw), &node))
         cfg := new(Config)
-        err := cfg.Unmarshal(raw)
+        err := cfg.Unmarshal(&node)
         // Fields will be empty; this is allowed in Unmarshal
         assert.NoError(t, err)
         assert.ErrorContains(t, cfg.ValidateConfig(), "issuer URL must not be empty")
@@ -236,13 +239,13 @@ func TestTokenValidatorLoader(t *testing.T) {
     assert.True(t, ok)
 
     // validate config fields can be unmarshaled
-    raw := []byte(`{
-        "issuerURL": "https://issuer.example.org",
-        "audiences": ["spire-server"],
-        "trustDomain": "example.org",
-        "pathPatterns": ["^/app/.*"]
-    }`)
-    require.NoError(t, loader.Unmarshal(raw))
+    raw := `issuerURL: "https://issuer.example.org"
+audiences: ["spire-server"]
+trustDomain: "example.org"
+pathPatterns: ["^/app/.*"]`
+    var node yaml.Node
+    require.NoError(t, yaml.Unmarshal([]byte(raw), &node))
+    require.NoError(t, loader.Unmarshal(&node))
     assert.NoError(t, loader.ValidateConfig()) // should pass validation
 
     // Test NewValidator path

@@ -2,13 +2,14 @@ package gitlab
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	jwtvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -20,17 +21,17 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 }
 
 type Config struct {
-	IssuerURL             string                `json:"issuerURL"`
-	Audiences             []string              `json:"audiences"`
-	AllowedProjectPaths   []string              `json:"allowedProjectPaths"`
-	AllowedNamespacePaths []string              `json:"allowedNamespacePaths"`
-	KeyProvider           validator.KeyProvider `json:"-"`
-	AllowHTTP             bool                  `json:"-"`
-	Metrics               validator.Metrics     `json:"-"`
+	IssuerURL             string                `yaml:"issuerURL"`
+	Audiences             []string              `yaml:"audiences"`
+	AllowedProjectPaths   []string              `yaml:"allowedProjectPaths"`
+	AllowedNamespacePaths []string              `yaml:"allowedNamespacePaths"`
+	KeyProvider           validator.KeyProvider `yaml:"-"`
+	AllowHTTP             bool                  `yaml:"-"`
+	Metrics               validator.Metrics     `yaml:"-"`
 }
 
-func (c *Config) Unmarshal(raw json.RawMessage) error {
-	return json.Unmarshal(raw, c)
+func (c *Config) Unmarshal(raw *yaml.Node) error {
+	return raw.Decode(c)
 }
 
 func (c *Config) ValidateConfig() error {
