@@ -3,7 +3,7 @@
   "logLevel": "info",
   "purposeMode": "shared",
   "server": {
-    "port": 8443,
+    "grpcPort": 8443,
     "metricsPort": 9090,
     "restPort": 8444,
     "tls": {
