@@ -74,6 +74,7 @@ type AuthConfig struct {
 type PluginConfig struct {
 	Name      string                         `yaml:"name"`
 	Plugin    string                         `yaml:"plugin"`
+	Enabled   *bool                          `yaml:"enabled"`
 	RawConfig yaml.Node                      `yaml:"config"`
 	Config    validator.TokenValidatorLoader `yaml:"-"`
 }
@@ -192,6 +193,9 @@ func (c *AuthConfig) Validate() error {
 	usedPlugins := make(map[string]struct{})
 	var errs []error
 	for i, plugin := range c.Plugins {
+		if plugin.Enabled != nil && !*plugin.Enabled {
+			continue
+		}
 		if c.Plugins[i].Name == "" {
 			plugin.Name = plugin.Plugin
 			c.Plugins[i].Name = plugin.Plugin

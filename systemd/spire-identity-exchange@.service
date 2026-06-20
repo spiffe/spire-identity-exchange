@@ -12,7 +12,7 @@ RuntimeDirectory=spire/identity-exchange/%i
 RuntimeDirectoryPreserve=true
 ConfigurationDirectory=spire/identity-exchange
 EnvironmentFile=-/etc/spiffe/default-trust-domain.env
-EnvironmentFile=-/etc/spire/identity-exchange/%i.env
+EnvironmentFile=-/etc/spire/identity-exchange/default.env
 EnvironmentFile=-/etc/spire/identity-exchange/%i/env
 Environment=SYSTEMD_INSTANCE=%i
 ExecStartPre=mkdir -p /var/lib/spire/agent/%i /run/spire/agent/%i/public
