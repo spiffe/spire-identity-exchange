@@ -95,7 +95,7 @@ type CertReloader struct {
 	keyPath  string
 }
 
-func (cr *CertReloader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (cr *CertReloader) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	cr.mu.RLock()
 	defer cr.mu.RUnlock()
 	return cr.cert, nil
@@ -211,9 +211,13 @@ func runSpireIdentityExchangeServer(
 			select {
 			case <-ticker.C:
 				if err := reloader.Reload(); err != nil {
-					logger.Error("failed to reload TLS certs", zap.Error(err))
+					logger.Error("failed to reload TLS certificate",
+						zap.String("cert_file", reloader.certPath),
+						zap.String("key_file", reloader.keyPath),
+						zap.Error(err),
+					)
 				} else {
-					logger.Info("TLS certificates reloaded successfully")
+					logger.Debug("TLS certificate reloaded")
 				}
 			case <-ctx.Done():
 				return
