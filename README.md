@@ -14,7 +14,7 @@ and possibly submitting fixes.
 
 Workloads in CI/CD pipelines, Kubernetes clusters, and other platforms already possess platform-native identity tokens (OIDC tokens, service account tokens). The SPIRE agent model typically requires a SPIRE agent on every host, plus workload registration entries keyed by process-level selectors.
 
-spire-identity-exchange bridges these worlds: it accepts platform-native tokens from workloads, validates them using pluggable authentication plugins, generates SPIRE selectors from the validated claims, and calls the SPIRE Agent's [Delegated Identity API](https://spiffe.io/docs/latest/spire-about/spire-features/#delegated-identity-api) to mint SVIDs. The SPIRE Agent handles SVID issuance against its existing registration entries — no dynamic registration, no agent per workload host.
+spire-identity-exchange bridges these worlds: it accepts platform-native tokens from workloads, validates them using pluggable authentication plugins, generates SPIRE selectors from the validated claims, and calls the SPIRE Agent's Delegated Identity API to mint SVIDs. The SPIRE Agent handles SVID issuance against its existing registration entries — no dynamic registration, no agent per workload host.
 
 Key differences from the agent-per-host model:
 
@@ -32,9 +32,9 @@ More details can be found in our talk at **KubeCon + SecurityCon 2025**:
                         │  GitHub Actions  │  GitLab CI/CD       │
                         │  K8s PSAT        │  SPIFFE SVID JWT    │
                         └────────────────────┬───────────────────┘
-                                              │ token (+ optional CSR)
-                                              │
-                                              ▼
+                                             │ token (+ optional CSR)
+                                             │
+                                             ▼
                      ┌──────────────────────────────────────────┐
                      │          spire-identity-exchange         │
                      │                                          │
@@ -43,9 +43,9 @@ More details can be found in our talk at **KubeCon + SecurityCon 2025**:
                      │   3. generate SPIRE selectors from claims│
                      │   4. call Delegated Identity API         │
                      └────────────────────┬─────────────────────┘
-                                           │ selectors
-                                           │ (Unix socket)
-                                           ▼
+                                          │ selectors
+                                          │ (Unix socket)
+                                          ▼
                               ┌──────────────────────────┐
                               │       SPIRE Agent         │
                               │  Delegated Identity API   │
