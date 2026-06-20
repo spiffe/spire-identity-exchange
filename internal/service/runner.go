@@ -145,6 +145,9 @@ func runSpireIdentityExchangeServer(
 	metrics metrics.Metrics,
 	logger *zap.Logger,
 ) error {
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if cfg == nil {
 		return fmt.Errorf("configuration is nil")
 	}
@@ -215,7 +218,7 @@ func runSpireIdentityExchangeServer(
 				} else {
 					logger.Info("TLS certificates reloaded successfully")
 				}
-			case <-ctx.Done():
+			case <-childCtx.Done():
 				return
 			}
 		}
