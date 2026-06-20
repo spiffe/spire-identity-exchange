@@ -88,6 +88,30 @@ func (c *trustBundleCache) OnX509ContextWatchError(err error) {
 	}
 }
 
+type CertReloader struct {
+	mu       sync.RWMutex
+	cert     *tls.Certificate
+	certPath string
+	keyPath  string
+}
+
+func (cr *CertReloader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+	return cr.cert, nil
+}
+
+func (cr *CertReloader) Reload() error {
+	newCert, err := tls.LoadX509KeyPair(cr.certPath, cr.keyPath)
+	if err != nil {
+		return err
+	}
+	cr.mu.Lock()
+	cr.cert = &newCert
+	cr.mu.Unlock()
+	return nil
+}
+
 // Run runs spire-identity-exchange gRPC server (and optionally HTTP REST server) and waits for
 // termination signals. Pass nil for a validator to disable that auth method.
 // Returns the first error encountered during startup or runtime so the caller can exit
@@ -167,14 +191,35 @@ func runSpireIdentityExchangeServer(
 		return fmt.Errorf("failed to create gRPC server handler: %w", err)
 	}
 
-	cert, err := tls.LoadX509KeyPair(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
-	if err != nil {
-		return fmt.Errorf("failed to load TLS certificate: %w", err)
+	reloader := &CertReloader{
+		certPath: cfg.Server.TLS.CertFile,
+		keyPath:  cfg.Server.TLS.KeyFile,
 	}
+	if err := reloader.Reload(); err != nil {
+		return fmt.Errorf("failed to load initial TLS certificate: %w", err)
+	}
+
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS13,
+		GetCertificate: reloader.GetCertificate,
+		MinVersion:     tls.VersionTLS13,
 	}
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := reloader.Reload(); err != nil {
+					logger.Error("failed to reload TLS certs", zap.Error(err))
+				} else {
+					logger.Info("TLS certificates reloaded successfully")
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	errCh := make(chan error, 3)
 
