@@ -79,7 +79,7 @@ sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx
 sudo mkdir -p /etc/spiffe/step-ssh/server/main
 
 #FIXME bug in upstream script
-sed -i 's/spiffe-step-ssh-get-cert-authority/spiffe-step-ssh-get-cert-authority user /' /usr/sbin/setup-spiffe-step-ssh-server
+sudo sed -i 's/spiffe-step-ssh-get-cert-authority/spiffe-step-ssh-get-cert-authority user /' /usr/sbin/setup-spiffe-step-ssh-server
 sudo setup-spiffe-step-ssh-server main
 
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
