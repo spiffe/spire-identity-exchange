@@ -131,7 +131,7 @@ sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test tee /hom
 git clone https://github.com/spiffe/spiffe-step-ssh
 cd spiffe-step-ssh
 git checkout spiffe-fd
-git build cmd/spiffe-step-ssh-user-agent
+go build cmd/spiffe-step-ssh-user-agent
 cd ../
 
 export SPIFFE_ENDPOINT="file:///$(pwd)"
