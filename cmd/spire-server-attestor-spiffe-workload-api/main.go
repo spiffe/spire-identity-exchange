@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -49,12 +51,44 @@ func trustBundleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func healthcheck(socketPath string) int {
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Get("http://localhost/trustbundle")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Health check failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Health check failed: server returned %s\n", resp.Status)
+		return 1
+	}
+
+	return 0
+}
+
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <socket_path_to_listen_on>\n", os.Args[0])
+	healthcheckSocket := flag.String("healthcheck", "", "Run in health check mode, connecting to the given Unix socket")
+	flag.Parse()
+
+	if *healthcheckSocket != "" {
+		os.Exit(healthcheck(*healthcheckSocket))
+	}
+
+	if flag.NArg() < 1 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [--healthcheck <socket>] <socket_path_to_listen_on>\n", os.Args[0])
 		os.Exit(2)
 	}
-	socket = os.Args[1]
+	socket = flag.Arg(0)
 
 	envTD := os.Getenv("SPIFFE_TRUST_DOMAIN")
 	if envTD == "" {
