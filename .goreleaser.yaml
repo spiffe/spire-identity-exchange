@@ -77,6 +77,7 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     files:
+      - systemd/spire-server-attestor-spiffe-workload-api@.service
       - README.md
       - LICENSE
 
