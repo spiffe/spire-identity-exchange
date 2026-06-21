@@ -126,6 +126,7 @@ echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ss
 sudo adduser spiffe-test
 sudo adduser --system nginx
 ls -l /etc/passwd /etc/nsswitch.conf
+sudo -u nginx /bin/bash -c "more /etc/password /etc/nsswitch.conf | more"
 sudo -u nginx getent passwd nginx.
 sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
 sudo chown spiffe-test --recursive /home/spiffe-test
