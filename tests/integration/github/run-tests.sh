@@ -68,18 +68,12 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Setup step-ssh server
-sudo curl -fsSL https://packages.smallstep.com/keys/apt/repo-signing-key.gpg -o /etc/apt/keyrings/smallstep.asc
-cat << EOF > smallstep.sources
-Types: deb
-URIs: https://packages.smallstep.com/stable/debian
-Suites: stable
-Components: main
-Architectures: amd64
-Signed-By: /etc/apt/keyrings/smallstep.asc
-EOF
-sudo mv smallstep.sources /etc/apt/sources.list.d/smallstep.sources
 sudo apt-get update
-sudo apt-get install -y step-ca step-cli spiffe-helper spiffe-step-ssh-server nginx
+
+STEP_VER="0.30.2"
+wget https://dl.smallstep.com/gh-release/certificates/gh-release-header/v${STEP_VER}/step-ca_${STEP_VER}-1_amd64.deb
+sudo apt-get install ./step-ca_${STEP_VER}-1_amd64.deb
+sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx
 mkdir -p /etc/spiffe/step-ssh/server/main
 sudo setup-spiffe-step-ssh-server main
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
