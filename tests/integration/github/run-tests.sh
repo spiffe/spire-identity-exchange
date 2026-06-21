@@ -21,8 +21,8 @@ teardown() {
   echo "::group::Status Output"
   sudo journalctl -u spire-identity-exchange@main.service || true
   sudo journalctl -u spire-server-attestor-spiffe-workload-api@main.service || true
-  sudo systemctl status spiffe-step-ssh-server@.service || true
-  sudo systemctl status spiffe-step-ssh-fetchca@.service || true
+  sudo systemctl status spiffe-step-ssh-server@main.service || true
+  sudo systemctl status spiffe-step-ssh-fetchca@main.service || true
   sudo systemctl status spire-server-attestor-spiffe-workload-api@main.service || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
