@@ -74,7 +74,7 @@ STEP_VER="0.30.2"
 wget https://dl.smallstep.com/gh-release/certificates/gh-release-header/v${STEP_VER}/step-ca_${STEP_VER}-1_amd64.deb
 sudo apt-get install ./step-ca_${STEP_VER}-1_amd64.deb
 sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx
-mkdir -p /etc/spiffe/step-ssh/server/main
+sudo mkdir -p /etc/spiffe/step-ssh/server/main
 sudo setup-spiffe-step-ssh-server main
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
 
