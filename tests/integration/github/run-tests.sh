@@ -124,7 +124,7 @@ HIP="$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
 echo "Picked IP ${HIP}"
 echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
 sudo adduser spiffe-test
-sudo adduser nginx
+sudo adduser --system nginx
 sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
 sudo chown spiffe-test --recursive /home/spiffe-test
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test tee /home/spiffe-test/.ssh/authorized_keys
