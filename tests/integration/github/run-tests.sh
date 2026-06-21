@@ -138,7 +138,7 @@ ls -l $(pwd)/x509/0/
 export SPIFFE_ENDPOINT="file://$(pwd)"
 export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:5443"
 export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
-eval `./spiffe-step-ssh/spiffe-step-ssh-user-agent`
+eval `timeout 60 ./spiffe-step-ssh/spiffe-step-ssh-user-agent`
 
 ssh -T -n spiffe-test@test.example.org hostname
 
