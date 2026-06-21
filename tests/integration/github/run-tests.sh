@@ -134,7 +134,8 @@ git checkout spiffe-fd
 make spiffe-step-ssh-user-agent
 cd ../
 
-export SPIFFE_ENDPOINT="file:///$(pwd)"
+ls -l $(pwd)/x509/0/
+export SPIFFE_ENDPOINT="file://$(pwd)"
 export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:5443"
 export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
 eval `./spiffe-step-ssh/spiffe-step-ssh-user-agent`
