@@ -21,6 +21,8 @@ teardown() {
   echo "::group::Status Output"
   sudo journalctl -u spire-identity-exchange@main.service || true
   sudo journalctl -u spire-server-attestor-spiffe-workload-api@main.service || true
+  sudo systemctl status spiffe-step-ssh-server@.service || true
+  sudo systemctl status spiffe-step-ssh-fetchca@.service || true
   sudo systemctl status spire-server-attestor-spiffe-workload-api@main.service || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
@@ -65,6 +67,23 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
+# Setup step-ssh server
+sudo curl -fsSL https://packages.smallstep.com/keys/apt/repo-signing-key.gpg -o /etc/apt/keyrings/smallstep.asc
+cat << EOF > smallstep.sources
+Types: deb
+URIs: https://packages.smallstep.com/stable/debian
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/smallstep.asc
+EOF
+sudo mv smallstep.sources /etc/apt/sources.list.d/smallstep.sources
+sudo apt-get update
+sudo apt-get install -y step-ca step-cli spiffe-helper spiffe-step-ssh-server nginx
+mkdir -p /etc/spiffe/step-ssh/server/main
+sudo setup-spiffe-step-ssh-server main
+sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
+
 # Tests
 
 # Github Tests
@@ -97,5 +116,28 @@ if [ -n "$GITHUB_TOKEN" ]; then
 	curl -f -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 fi
 
-curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS | tar -xvf -
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST "https://localhost:8444/api/v1/svid/mockhub/x509?format=spiffe-fd-tar" --cacert /etc/spire/identity-exchange/main/certs/server.pem -qsS | tar -xvf -
 openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/ssh/mockhub'
+
+# SSH test setup
+HIP="$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
+echo "Picked IP ${HIP}"
+echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
+sudo adduser spiffe-test
+sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
+sudo chown spiffe-test --recursive /home/spiffe-test
+sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test dd of=/home/spiffe-test/.ssh/authorized_keys
+
+git clone https://github.com/spiffe/spiffe-step-ssh
+cd spiffe-step-ssh
+git checkout spiffe-fd
+git build cmd/spiffe-step-ssh-user-agent
+cd ../
+
+export SPIFFE_ENDPOINT="file:///$(pwd)"
+export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:5443"
+export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
+eval `./spiffe-step-ssh/spiffe-step-ssh-user-agent`
+
+ssh -T -n spiffe-test@test.example.org hostname
+
