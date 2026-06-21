@@ -54,8 +54,8 @@ func trustBundleHandler(w http.ResponseWriter, r *http.Request) {
 func healthcheck(socketPath string) int {
 	client := &http.Client{
 		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 			},
 		},
 		Timeout: 5 * time.Second,
