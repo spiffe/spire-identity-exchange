@@ -77,7 +77,11 @@ wget https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step
 sudo apt-get install ./step-cli_${STEP_VER}-1_amd64.deb
 sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx
 sudo mkdir -p /etc/spiffe/step-ssh/server/main
+
+#FIXME bug in upstream script
+sed -i 's/spiffe-step-ssh-get-cert-authority/spiffe-step-ssh-get-cert-authority user /' /usr/sbin/setup-spiffe-step-ssh-server
 sudo setup-spiffe-step-ssh-server main
+
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
 
 # Tests
@@ -122,7 +126,7 @@ echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ss
 sudo adduser spiffe-test
 sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
 sudo chown spiffe-test --recursive /home/spiffe-test
-sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test dd of=/home/spiffe-test/.ssh/authorized_keys
+sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test tee /home/spiffe-test/.ssh/authorized_keys
 
 git clone https://github.com/spiffe/spiffe-step-ssh
 cd spiffe-step-ssh
