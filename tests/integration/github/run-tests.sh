@@ -125,6 +125,7 @@ echo "Picked IP ${HIP}"
 echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
 sudo adduser spiffe-test
 sudo adduser --system nginx
+ls -l /etc/passwd /etc/nsswitch.conf
 sudo -u nginx getent passwd nginx.
 sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
 sudo chown spiffe-test --recursive /home/spiffe-test
