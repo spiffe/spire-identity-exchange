@@ -73,6 +73,8 @@ sudo apt-get update
 STEP_VER="0.30.2"
 wget https://dl.smallstep.com/gh-release/certificates/gh-release-header/v${STEP_VER}/step-ca_${STEP_VER}-1_amd64.deb
 sudo apt-get install ./step-ca_${STEP_VER}-1_amd64.deb
+wget https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli_${STEP_VER}-1_amd64.deb
+sudo apt-get install ./step-cli_${STEP_VER}-1_amd64.deb
 sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx
 sudo mkdir -p /etc/spiffe/step-ssh/server/main
 sudo setup-spiffe-step-ssh-server main
