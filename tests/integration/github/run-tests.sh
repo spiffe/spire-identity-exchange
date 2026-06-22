@@ -85,6 +85,8 @@ sudo setup-spiffe-step-ssh-server main
 sudo adduser --system nginx2
 sudo sed -i 's/nginx/nginx2/' /usr/libexec/spiffe/step-ssh-server/nginx-fetchca.conf
 sudo systemctl daemon-reload
+sudo mkdir -p /var/log/nginx/
+sudo chown nginx2 /var/log/nginx
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
 
 # Tests
