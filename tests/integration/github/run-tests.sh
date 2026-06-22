@@ -137,7 +137,7 @@ sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
 
 git clone https://github.com/spiffe/spiffe-step-ssh
 cd spiffe-step-ssh
-git checkout spiffe-fd
+git checkout timeout
 make spiffe-step-ssh-user-agent
 cd ../
 
@@ -146,7 +146,7 @@ export SPIFFE_ENDPOINT="file://$(pwd)"
 export SPIFFE_STEP_SSH_USER_AGENT_MODE=continuous
 export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:5443"
 export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
-eval `timeout 60 ./spiffe-step-ssh/spiffe-step-ssh-user-agent`
+eval `./spiffe-step-ssh/spiffe-step-ssh-user-agent -timeout 60`
 
 ssh-add -L
 
