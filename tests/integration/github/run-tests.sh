@@ -133,7 +133,7 @@ ls -l /etc/passwd /etc/nsswitch.conf
 sudo -u nginx2 /bin/bash -c "more /etc/passwd /etc/nsswitch.conf | more"
 sudo -u nginx2 ldd /usr/bin/getent
 sudo -u nginx2 ls -l /lib/x86_64-linux-gnu/libnss_files.so.2
-sudo -u nginx2 getent passwd nginx
+sudo -u nginx2 getent passwd nginx2
 sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
 sudo chown spiffe-test --recursive /home/spiffe-test
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test tee /home/spiffe-test/.ssh/authorized_keys
