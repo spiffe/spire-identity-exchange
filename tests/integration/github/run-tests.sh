@@ -75,7 +75,7 @@ wget https://dl.smallstep.com/gh-release/certificates/gh-release-header/v${STEP_
 sudo apt-get install ./step-ca_${STEP_VER}-1_amd64.deb
 wget https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli_${STEP_VER}-1_amd64.deb
 sudo apt-get install ./step-cli_${STEP_VER}-1_amd64.deb
-sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx
+sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx spiffe-step-ssh-user-agent
 sudo mkdir -p /etc/spiffe/step-ssh/server/main
 
 #FIXME bug in upstream script
@@ -134,12 +134,6 @@ sudo chown mockhub --recursive /home/mockhub
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mockhub/.ssh/authorized_keys
 sudo -u mockhub chmod 700 /home/mockhub/.ssh
 sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
-
-git clone https://github.com/spiffe/spiffe-step-ssh
-cd spiffe-step-ssh
-git checkout timeout
-make spiffe-step-ssh-user-agent
-cd ../
 
 ls -l $(pwd)/x509/0/
 export SPIFFE_ENDPOINT="file://$(pwd)"
