@@ -162,7 +162,7 @@ setup_identity_exchange() {
     -addext "basicConstraints=critical,CA:TRUE" \
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
-  sudo cp "${SCRIPTPATH}/default.json" /etc/spire/identity-exchange/
+  sudo cp "${SCRIPTPATH}/default.conf" /etc/spire/identity-exchange/
   sudo cp "${COMMONPATH}/../../../systemd/spire-identity-exchange@.service" /etc/systemd/system
   sudo systemctl daemon-reload
   sudo systemctl restart spire-identity-exchange@main.service
