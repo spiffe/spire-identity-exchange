@@ -83,6 +83,7 @@ sudo sed -i 's/spiffe-step-ssh-get-cert-authority/spiffe-step-ssh-get-cert-autho
 sudo setup-spiffe-step-ssh-server main
 
 sudo adduser --system nginx2
+sudo groupadd nginx2
 sudo sed -i 's/nginx/nginx2/' /usr/libexec/spiffe/step-ssh-server/nginx-fetchca.conf
 sudo systemctl daemon-reload
 sudo mkdir -p /var/log/nginx/
