@@ -143,5 +143,5 @@ eval `spiffe-step-ssh-user-agent -timeout 60s`
 
 ssh-add -L
 
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -T -n -v mockhub@test.example.org hostname
+ssh -T -n -v mockhub@test.example.org hostname
 
