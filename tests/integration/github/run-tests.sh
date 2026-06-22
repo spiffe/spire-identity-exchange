@@ -133,8 +133,8 @@ sudo chown mockhub --recursive /home/mockhub
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mockhub/.ssh/authorized_keys
 sudo -u mockhub chmod 700 /home/mockhub/.ssh
 sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
-sudo spiffe-step-ssh-get-cert-authority host main | sudo tee /etc/ssh/ssh_known_hosts
-sudo chmod 644 /etc/ssh/ssh_known_hosts
+sudo spiffe-step-ssh-get-cert-authority host main | sudo tee /etc/ssh/ssh_known_hosts2
+sudo chmod 644 /etc/ssh/ssh_known_hosts2
 
 ls -l $(pwd)/x509/0/
 export SPIFFE_ENDPOINT="file://$(pwd)"
