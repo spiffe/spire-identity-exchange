@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -16,6 +15,7 @@ import (
 	stacklib "github.com/spiffe/spire-identity-exchange/pkg/validator/stack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"go.yaml.in/yaml/v3"
 )
 
 func main() {
@@ -146,7 +146,7 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 	}
 
 	var cfg config.SpireIdentityExchangeConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal the file %s: %w", filePath, err)
 	}
 

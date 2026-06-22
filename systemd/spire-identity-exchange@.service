@@ -12,11 +12,11 @@ RuntimeDirectory=spire/identity-exchange/%i
 RuntimeDirectoryPreserve=true
 ConfigurationDirectory=spire/identity-exchange
 EnvironmentFile=-/etc/spiffe/default-trust-domain.env
-EnvironmentFile=-/etc/spire/identity-exchange/%i.env
+EnvironmentFile=-/etc/spire/identity-exchange/default.env
 EnvironmentFile=-/etc/spire/identity-exchange/%i/env
 Environment=SYSTEMD_INSTANCE=%i
 ExecStartPre=mkdir -p /var/lib/spire/agent/%i /run/spire/agent/%i/public
-ExecStartPre=/bin/bash -c "if [ -f /etc/spire/identity-exchange/%i.json ]; then cp -a /etc/spire/identity-exchange/%i.json /var/lib/spire/identity-exchange/%i/config; else cp -a /etc/spire/identity-exchange/default.json /var/lib/spire/identity-exchange/%i/config; fi"
+ExecStartPre=/bin/bash -c "if [ -f /etc/spire/identity-exchange/%i.json ]; then cp -a /etc/spire/identity-exchange/%i.json /var/lib/spire/identity-exchange/%i/config; else cp -a /etc/spire/identity-exchange/default.conf /var/lib/spire/identity-exchange/%i/config; fi"
 ExecStart=/usr/libexec/spire/spire-identity-exchange-server -config /var/lib/spire/identity-exchange/%i/config -expand-env
 # https://gist.github.com/ageis/f5595e59b1cddb1513d1b425a323db04
 LockPersonality=true
