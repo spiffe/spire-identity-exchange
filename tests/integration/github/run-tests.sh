@@ -67,7 +67,7 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
-# Setup step-ssh server
+# Setup step-ssh server & local sshd signed by it
 sudo apt-get update
 
 STEP_VER="0.30.2"
