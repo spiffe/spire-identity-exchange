@@ -129,7 +129,7 @@ openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://exam
 HIP="$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
 echo "Picked IP ${HIP}"
 echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
-sudo adduser spiffe-test
+sudo adduser mockhub
 sudo systemctl stop apparmor
 sudo systemctl disable apparmor
 ls -l /etc/passwd /etc/nsswitch.conf
@@ -137,11 +137,11 @@ sudo -u nginx2 /bin/bash -c "more /etc/passwd /etc/nsswitch.conf | more"
 sudo -u nginx2 ldd /usr/bin/getent
 sudo -u nginx2 ls -l /lib/x86_64-linux-gnu/libnss_files.so.2
 sudo -u nginx2 getent passwd nginx2
-sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
-sudo chown spiffe-test --recursive /home/spiffe-test
-sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test tee /home/spiffe-test/.ssh/authorized_keys
-sudo -u spiffe-test chmod 700 /home/spiffe-test/.ssh
-sudo -u spiffe-test chmod 600 /home/spiffe-test/.ssh/authorized_keys
+sudo -u mockhub mkdir -p /home/mockhub/.ssh
+sudo chown mockhub --recursive /home/mockhub
+sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mockhub/.ssh/authorized_keys
+sudo -u mockhub chmod 700 /home/mockhub/.ssh
+sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
 
 git clone https://github.com/spiffe/spiffe-step-ssh
 cd spiffe-step-ssh
@@ -158,5 +158,5 @@ eval `timeout 60 ./spiffe-step-ssh/spiffe-step-ssh-user-agent`
 
 ssh-add -L
 
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -T -n -v spiffe-test@test.example.org hostname
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -T -n -v mockhub@test.example.org hostname
 
