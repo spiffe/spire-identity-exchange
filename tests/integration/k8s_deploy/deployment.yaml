@@ -52,24 +52,21 @@ spec:
               value: "unix:///spiffe-workload-api/spire-agent.sock"
             - name: SPIFFE_TRUST_DOMAIN
               value: "example.org"
+          readinessProbe:
+            exec:
+              command:
+                - /ko-app/spire-server-attestor-spiffe-workload-api
+                - --healthcheck
+                - /trustbundle/socket
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
           volumeMounts:
             - name: spiffe-workload-api
               mountPath: /spiffe-workload-api
               readOnly: true
-            - name: trustbundle
-              mountPath: /trustbundle
-        - name: wait
-          image: "quay.io/almalinux/almalinux:9"
-          imagePullPolicy: Always
-          restartPolicy: Always
-          command:
-            - /bin/bash
-            - -c
-            - |
-              while true; do [ -f /trustbundle/socket ] && exit; sleep 1; done
-          args:
-            - /trustbundle/socket
-          volumeMounts:
             - name: trustbundle
               mountPath: /trustbundle
         - name: spire-agent
