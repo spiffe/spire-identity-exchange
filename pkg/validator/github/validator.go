@@ -11,6 +11,7 @@ import (
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	jwtvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -23,24 +24,24 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 
 // Config holds configuration for the GitHub OIDC validator.
 type Config struct {
-	IssuerURL               string   `json:"issuerURL"`
-	Audiences               []string `json:"audiences"`
-	AllowedRepositoryOwners []string `json:"allowedRepositoryOwners"`
-	AllowedRepositories     []string `json:"allowedRepositories"`
+	IssuerURL               string   `yaml:"issuerURL"`
+	Audiences               []string `yaml:"audiences"`
+	AllowedRepositoryOwners []string `yaml:"allowedRepositoryOwners"`
+	AllowedRepositories     []string `yaml:"allowedRepositories"`
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
-	KeyProvider validator.KeyProvider `json:"-"`
+	KeyProvider validator.KeyProvider `yaml:"-"`
 	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
 	// Must not be enabled in production.
-	AllowHTTP bool `json:"-"`
+	AllowHTTP bool `yaml:"-"`
 	// Metrics allows injecting a metrics collector for operation tracking.
 	// If nil, metrics collection is silently skipped.
-	Metrics validator.Metrics `json:"-"`
+	Metrics validator.Metrics `yaml:"-"`
 }
 
-func (c *Config) Unmarshal(raw json.RawMessage) error {
-	return json.Unmarshal(raw, c)
+func (c *Config) Unmarshal(raw *yaml.Node) error {
+	return raw.Decode(c)
 }
 
 func (c *Config) ValidateConfig() error {

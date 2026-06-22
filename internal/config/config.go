@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator/registry"
+	"go.yaml.in/yaml/v3"
 )
 
 // Duration is a time.Duration that unmarshals from JSON as either a duration
@@ -18,9 +18,9 @@ type Duration time.Duration
 
 var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-_]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
 
-func (d *Duration) UnmarshalJSON(b []byte) error {
+func (d *Duration) UnmarshalYAML(b *yaml.Node) error {
 	var s string
-	if err := json.Unmarshal(b, &s); err == nil {
+	if err := b.Decode(&s); err == nil {
 		dur, err := time.ParseDuration(s)
 		if err != nil {
 			return fmt.Errorf("invalid duration %q: %w", s, err)
@@ -29,7 +29,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var n int64
-	if err := json.Unmarshal(b, &n); err != nil {
+	if err := b.Decode(&n); err != nil {
 		return fmt.Errorf("invalid duration: %w", err)
 	}
 	*d = Duration(n)
@@ -37,135 +37,136 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 }
 
 type SpireIdentityExchangeConfig struct {
-	Name        string           `json:"name"`
-	LogLevel    string           `json:"logLevel"`
-	PurposeMode string           `json:"purposeMode"`
-	Server      ServerConfig     `json:"server"`
-	SPIRE       SPIREConfig      `json:"spire"`
-	Auth        AuthConfig       `json:"auth"`
-	GitHubOIDC  GitHubOIDCConfig `json:"githubOIDC"`
-	K8sSAToken  K8sSATokenConfig `json:"k8sSAToken"`
+	Name        string           `yaml:"name"`
+	LogLevel    string           `yaml:"logLevel"`
+	PurposeMode string           `yaml:"purposeMode"`
+	Server      ServerConfig     `yaml:"server"`
+	SPIRE       SPIREConfig      `yaml:"spire"`
+	Auth        AuthConfig       `yaml:"auth"`
+	GitHubOIDC  GitHubOIDCConfig `yaml:"githubOIDC"`
+	K8sSAToken  K8sSATokenConfig `yaml:"k8sSAToken"`
 }
 
 // ServerConfig contains HTTP server configuration
 type ServerConfig struct {
-	GrpcPort    int       `json:"grpcPort"`
-	MetricsPort int       `json:"metricsPort"`
-	RestPort    int       `json:"restPort"`
-	TLS         TLSConfig `json:"tls"`
+	GrpcPort    int       `yaml:"grpcPort"`
+	MetricsPort int       `yaml:"metricsPort"`
+	RestPort    int       `yaml:"restPort"`
+	TLS         TLSConfig `yaml:"tls"`
 }
 
 // TLSConfig contains TLS configuration
 type TLSConfig struct {
-	CertFile string `json:"certFile"`
-	KeyFile  string `json:"keyFile"`
+	CertFile string `yaml:"certFile"`
+	KeyFile  string `yaml:"keyFile"`
 }
 
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
-	Plugins       []PluginConfig                                          `json:"plugins"`
-	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
-	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `json:"-"`
+	Plugins       []PluginConfig                                          `yaml:"plugins"`
+	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `yaml:"-"`
+	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `yaml:"-"`
 }
 
 // PluginConfig is the operator config for one plugin. SPIFFE ID and TTL are not
 // set here — both surfaces use SPIRE's Delegated Identity API, which resolves
 // both from the registration entry matching the plugin's generated selectors.
 type PluginConfig struct {
-	Name      string                         `json:"name"`
-	Plugin    string                         `json:"plugin"`
-	RawConfig json.RawMessage                `json:"config"`
-	Config    validator.TokenValidatorLoader `json:"-"`
+	Name      string                         `yaml:"name"`
+	Plugin    string                         `yaml:"plugin"`
+	Enabled   *bool                          `yaml:"enabled"`
+	RawConfig yaml.Node                      `yaml:"config"`
+	Config    validator.TokenValidatorLoader `yaml:"-"`
 }
 
 // SPIREConfig contains SPIRE server configurations
 type SPIREConfig struct {
 	// Unix domain socket path for SPIRE Server API
-	UnixSocketPath string `json:"unixSocketPath"`
+	UnixSocketPath string `yaml:"unixSocketPath"`
 
 	// Unix domain socket path for SPIRE Agent Workload API.
 	// Used by the REST trust-bundle endpoint to stream bundle updates.
-	AgentWorkloadSocketPath string `json:"agentWorkloadSocketPath"`
+	AgentWorkloadSocketPath string `yaml:"agentWorkloadSocketPath"`
 
 	// Unix domain socket path for SPIRE Agent Delegated Identity API.
 	// When set, the REST /api/v1/svid/{stack}/x509 endpoint issues SVIDs by fetching
 	// them through this socket rather than calling SPIRE Server directly. The
 	// agent listening on this socket must include this exchange's SPIFFE ID in
 	// its authorized_delegates configuration.
-	AgentDelegatedSocketPath string `json:"agentDelegatedSocketPath"`
+	AgentDelegatedSocketPath string `yaml:"agentDelegatedSocketPath"`
 
 	// Trust domain
-	TrustDomain string `json:"trustDomain"`
+	TrustDomain string `yaml:"trustDomain"`
 
 	// SVID TTL
-	SVIDTTL Duration `json:"svidTTL"`
+	SVIDTTL Duration `yaml:"svidTTL"`
 }
 
 // GitHubOIDCConfig contains GitHub Actions OIDC validator configuration
 type GitHubOIDCConfig struct {
 	// Whether this validator is enabled
-	Enabled bool `json:"enabled"`
+	Enabled bool `yaml:"enabled"`
 
 	// OIDC issuer URL e.g., https://token.actions.githubusercontent.com
-	Issuer string `json:"issuer"`
+	Issuer string `yaml:"issuer"`
 
 	// Expected audience
-	Audiences []string `json:"audiences"`
+	Audiences []string `yaml:"audiences"`
 
 	// JWKS endpoint (optional, will be discovered from issuer)
-	JWKSURI string `json:"jwksUri"`
+	JWKSURI string `yaml:"jwksUri"`
 
 	// SPIFFE ID template using Go template syntax
 	// e.g. "spiffe://example.org/github/{{.org}}/{{.repository}}"
-	SPIFFEIDTemplate string `json:"spiffeIdTemplate"`
+	SPIFFEIDTemplate string `yaml:"spiffeIdTemplate"`
 
 	// Example:
 	// 1. "example-org/*" would allow all repositories in the example-org organization.
 	// 2. "example-org/repo1,example-org/repo2" would allow only the specified repositories.
 	// 3. "*" would allow all repositories.
-	AllowedRepositories []string `json:"allowedRepositories"`
+	AllowedRepositories []string `yaml:"allowedRepositories"`
 
 	// Optional: Required claims. Note that audience should not be specified in required claims
-	RequiredClaims []string `json:"requiredClaims"`
+	RequiredClaims []string `yaml:"requiredClaims"`
 
 	// WorkflowTTLOverrides maps a job_workflow_ref value to an SVID TTL.
 	// When the GitHub OIDC token's job_workflow_ref claim exactly matches a key,
 	// the corresponding TTL is used instead of the default svidTTL.
-	WorkflowTTLOverrides map[string]Duration `json:"workflowTTLOverrides"`
+	WorkflowTTLOverrides map[string]Duration `yaml:"workflowTTLOverrides"`
 
 	// Skip time-based claim validation (exp, nbf, iat). If true, expired tokens will be accepted.
-	SkipTokenExpiration bool `json:"skipTokenExpiration"`
+	SkipTokenExpiration bool `yaml:"skipTokenExpiration"`
 
 	// Cache configuration for JWKS
-	JWKSCacheDuration Duration `json:"jwksCacheDuration"`
+	JWKSCacheDuration Duration `yaml:"jwksCacheDuration"`
 
 	// SVID TTL for certificates issued via this auth method.
 	// Overrides spire.svidTTL when set. Falls back to spire.svidTTL if zero.
-	SVIDTTL Duration `json:"svidTTL"`
+	SVIDTTL Duration `yaml:"svidTTL"`
 }
 
 // K8sSATokenConfig contains Kubernetes service account token validator configuration
 type K8sSATokenConfig struct {
 	// Whether this validator is enabled
-	Enabled bool `json:"enabled"`
+	Enabled bool `yaml:"enabled"`
 
 	// Optional. Operator-defined cluster identifier exposed to the SPIFFE ID template
 	// as {{.k8s_cluster_name}}. This MUST come from configuration — never from the
 	// request — because each Validator authenticates against exactly one cluster
 	// (the one its kubeconfig / in-cluster credentials target) and accepting a
 	// caller-supplied value would allow cross-cluster identity impersonation.
-	ClusterName string `json:"clusterName"`
+	ClusterName string `yaml:"clusterName"`
 
 	// Optional. Expected audiences for incoming service-account tokens. When set,
 	// these are passed in the TokenReview Spec.Audiences and the response's status
 	// audiences must intersect with this list. Strongly recommended: configure a
 	// dedicated audience (e.g. "spire-identity-exchange") for tokens minted for
 	// this service so tokens issued for other recipients cannot be replayed.
-	Audiences []string `json:"audiences"`
+	Audiences []string `yaml:"audiences"`
 
 	// SPIFFE ID template using Go template syntax
 	// Available variables are raw JWT claims, e.g. "spiffe://example.org/k8s/{{.sub}}"
-	SPIFFEIDTemplate string `json:"spiffeIdTemplate"`
+	SPIFFEIDTemplate string `yaml:"spiffeIdTemplate"`
 
 	// Optional path to a kubeconfig file used to reach the Kubernetes API
 	// server for TokenReview calls.
@@ -181,17 +182,20 @@ type K8sSATokenConfig struct {
 	// SA token, mTLS, bearer token, AWS IAM / GKE / Azure exec plugins,
 	// SPIRE-issued SVID via exec plugin), so this single field replaces what
 	// would otherwise be apiHost + caFile + certFile + keyFile.
-	Kubeconfig string `json:"kubeconfig"`
+	Kubeconfig string `yaml:"kubeconfig"`
 
 	// SVID TTL for certificates issued via this auth method.
 	// Overrides spire.svidTTL when set. Falls back to spire.svidTTL if zero.
-	SVIDTTL Duration `json:"svidTTL"`
+	SVIDTTL Duration `yaml:"svidTTL"`
 }
 
 func (c *AuthConfig) Validate() error {
 	usedPlugins := make(map[string]struct{})
 	var errs []error
 	for i, plugin := range c.Plugins {
+		if plugin.Enabled != nil && !*plugin.Enabled {
+			continue
+		}
 		if c.Plugins[i].Name == "" {
 			plugin.Name = plugin.Plugin
 			c.Plugins[i].Name = plugin.Plugin
@@ -211,7 +215,7 @@ func (c *AuthConfig) Validate() error {
 			config, err := pluginGenerator()
 			if err != nil {
 				errs = append(errs, fmt.Errorf("failed to initialize plugin %q: %w", plugin.Name, err))
-			} else if err := config.Unmarshal(plugin.RawConfig); err != nil {
+			} else if err := config.Unmarshal(&plugin.RawConfig); err != nil {
 				errs = append(errs, fmt.Errorf("failed to unmarshal config for plugin %q: %w", plugin.Name, err))
 			} else if err := config.ValidateConfig(); err != nil {
 				errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", plugin.Name, err))

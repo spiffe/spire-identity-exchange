@@ -63,7 +63,7 @@ openssl req -x509 -newkey rsa:2048 \
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
 kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
-kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.json" --from-file="${SCRIPTPATH}/six-agent.conf"
+kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.conf" --from-file="${SCRIPTPATH}/six-agent.conf"
 kubectl apply -f "${SCRIPTPATH}/service.yaml"
 kubectl apply -f "${SCRIPTPATH}/serviceaccount.yaml"
 kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"

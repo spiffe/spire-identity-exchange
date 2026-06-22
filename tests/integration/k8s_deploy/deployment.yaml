@@ -22,7 +22,7 @@ spec:
           imagePullPolicy: Never
           args:
           - -config
-          - /etc/spire/identity-exchange/default.json
+          - /etc/spire/identity-exchange/default.conf
           securityContext:
             runAsUser: 0
             runAsGroup: 0
@@ -31,8 +31,8 @@ spec:
               mountPath: /spiffe-workload-api
               readOnly: true
             - name: spire-identity-exchange-config
-              mountPath: /etc/spire/identity-exchange/default.json
-              subPath: default.json
+              mountPath: /etc/spire/identity-exchange/default.conf
+              subPath: default.conf
               readOnly: true
             - name: spire-identity-exchange-secret
               mountPath: /secret
