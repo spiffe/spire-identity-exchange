@@ -153,5 +153,5 @@ export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:
 export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
 eval `timeout 60 ./spiffe-step-ssh/spiffe-step-ssh-user-agent`
 
-ssh -T -n spiffe-test@test.example.org hostname
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -T -n spiffe-test@test.example.org hostname
 
