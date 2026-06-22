@@ -6,13 +6,13 @@ package k8s
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	authenticationv1 "k8s.io/client-go/kubernetes/typed/authentication/v1"
+	"go.yaml.in/yaml/v3"
 )
 
 // TokenValidatorLoaderGenerator returns a fresh Config that can be unmarshaled,
@@ -31,24 +31,24 @@ type Config struct {
 	// authenticates against exactly one cluster (the one its kubeconfig / in-cluster
 	// credentials target) and accepting a caller-supplied value would allow
 	// cross-cluster identity impersonation.
-	ClusterName string `json:"clusterName"`
+	ClusterName string `yaml:"clusterName"`
 
 	// Audiences are forwarded to the TokenReview Spec.Audiences so Kubernetes
 	// binds the authentication decision to the audiences this service expects.
 	// Strongly recommended: configure a dedicated audience (e.g. "spire-identity-exchange").
-	Audiences []string `json:"audiences"`
+	Audiences []string `yaml:"audiences"`
 
 	// AllowedNamespaces restricts which Kubernetes namespaces may exchange a token.
 	// Each entry is a bare namespace name with optional trailing wildcard
 	// (e.g. "prod", "team-*"). At least one of AllowedNamespaces or
 	// AllowedServiceAccounts must be set.
-	AllowedNamespaces []string `json:"allowedNamespaces"`
+	AllowedNamespaces []string `yaml:"allowedNamespaces"`
 
 	// AllowedServiceAccounts restricts which service accounts may exchange a token.
 	// Each entry is "namespace/serviceAccountName" with optional trailing wildcard
 	// (e.g. "prod/web", "team-*/runner"). At least one of AllowedNamespaces or
 	// AllowedServiceAccounts must be set.
-	AllowedServiceAccounts []string `json:"allowedServiceAccounts"`
+	AllowedServiceAccounts []string `yaml:"allowedServiceAccounts"`
 
 	// Kubeconfig is an optional path to a kubeconfig file used to reach the
 	// Kubernetes API server for TokenReview calls.
@@ -64,7 +64,7 @@ type Config struct {
 	// SA token, mTLS, bearer token, AWS IAM / GKE / Azure exec plugins,
 	// SPIRE-issued SVID via exec plugin), so a single field replaces what
 	// would otherwise be apiHost + caFile + certFile + keyFile.
-	Kubeconfig string `json:"kubeconfig"`
+	Kubeconfig string `yaml:"kubeconfig"`
 
 	// JWKSCheck enables the in-process JWKS signature check. When enabled, a
 	// token whose signature, issuer, audience, or expiration fails verification
@@ -80,7 +80,7 @@ type Config struct {
 	// disable it by setting it to false.
 	//
 	// JWKSCheck and TokenReview are independent stages; at least one must be on.
-	JWKSCheck *bool `json:"jwksCheck"`
+	JWKSCheck *bool `yaml:"jwksCheck"`
 
 	// TokenReview enables the authoritative TokenReview stage, which round-trips
 	// to the API server for every token and validates it against the cluster's
@@ -91,13 +91,13 @@ type Config struct {
 	// tolerate brief API server downtime), in which case JWKSCheck must be on,
 	// because at least one validation stage must remain active. Relying on JWKS
 	// alone gives up the live-state check.
-	TokenReview *bool `json:"tokenReview"`
+	TokenReview *bool `yaml:"tokenReview"`
 
 	// AuthClient overrides the default-built TokenReview client. Primarily a
 	// test seam — passed through to the inner TokenReviewValidator. Mirrors how
 	// pkg/validator/github.Config carries KeyProvider through to the inner
 	// pkg/validator/jwt.Validator.
-	AuthClient authenticationv1.AuthenticationV1Interface `json:"-"`
+	AuthClient authenticationv1.AuthenticationV1Interface `yaml:"-"`
 
 	// jwksValidator overrides the JWKS check stage. Test seam, mirrors
 	// AuthClient. When nil and the JWKS check is enabled, NewValidator builds one
@@ -106,11 +106,11 @@ type Config struct {
 
 	// Metrics allows injecting a metrics collector for operation tracking.
 	// If nil, metrics collection is silently skipped.
-	Metrics validator.Metrics `json:"-"`
+	Metrics validator.Metrics `yaml:"-"`
 }
 
-func (c *Config) Unmarshal(raw json.RawMessage) error {
-	return json.Unmarshal(raw, c)
+func (c *Config) Unmarshal(raw *yaml.Node) error {
+	return raw.Decode(c)
 }
 
 // enabled resolves an optional on/off flag: a nil pointer takes the default,

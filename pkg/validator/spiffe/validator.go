@@ -4,7 +4,6 @@ package spiffe
 
 import (
     "context"
-    "encoding/json"
     "errors"
     "fmt"
     "regexp"
@@ -12,6 +11,7 @@ import (
     "github.com/spiffe/go-spiffe/v2/spiffeid"
     jwtauth "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
     "github.com/spiffe/spire-identity-exchange/pkg/validator"
+    "go.yaml.in/yaml/v3"
 )
 
 func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
@@ -20,25 +20,25 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 
 // Config holds configuration for the SPIFFE SVID validator.
 type Config struct {
-	IssuerURL    string   `json:"issuerURL"`
-	DiscoveryURL string   `json:"discoveryURL"`
-	Audiences    []string `json:"audiences"`
-	TrustDomain  string   `json:"trustDomain"`
-	PathPatterns []string `json:"pathPatterns"`
+	IssuerURL    string   `yaml:"issuerURL"`
+	DiscoveryURL string   `yaml:"discoveryURL"`
+	Audiences    []string `yaml:"audiences"`
+	TrustDomain  string   `yaml:"trustDomain"`
+	PathPatterns []string `yaml:"pathPatterns"`
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
-	KeyProvider validator.KeyProvider `json:"-"`
+	KeyProvider validator.KeyProvider `yaml:"-"`
 	// Metrics allows injecting a metrics collector for operation tracking.
 	// If nil, metrics collection is silently skipped.
-	Metrics validator.Metrics `json:"-"`
+	Metrics validator.Metrics `yaml:"-"`
 	// AllowHTTP permits http:// issuer URLs for local testing (e.g., mock OIDC servers).
 	// Must not be enabled in production.
-	AllowHTTP bool `json:"-"`
+	AllowHTTP bool `yaml:"-"`
 }
 
-func (c *Config) Unmarshal(raw json.RawMessage) error {
-    return json.Unmarshal(raw, c)
+func (c *Config) Unmarshal(raw *yaml.Node) error {
+    return raw.Decode(c)
 }
 
 func (c *Config) ValidateConfig() error {
