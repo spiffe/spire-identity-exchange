@@ -125,6 +125,8 @@ echo "Picked IP ${HIP}"
 echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
 sudo adduser spiffe-test
 sudo adduser --system nginx
+sudo systemctl stop apparmor
+sudo systemctl disable apparmor
 ls -l /etc/passwd /etc/nsswitch.conf
 sudo -u nginx /bin/bash -c "more /etc/password /etc/nsswitch.conf | more"
 sudo -u nginx getent passwd nginx.
