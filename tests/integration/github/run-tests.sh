@@ -78,8 +78,6 @@ sudo apt-get install ./step-cli_${STEP_VER}-1_amd64.deb
 sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx spiffe-step-ssh-user-agent
 sudo mkdir -p /etc/spiffe/step-ssh/server/main
 
-#FIXME bug in upstream script
-sudo sed -i 's/spiffe-step-ssh-get-cert-authority/spiffe-step-ssh-get-cert-authority user /' /usr/sbin/setup-spiffe-step-ssh-server
 sudo setup-spiffe-step-ssh-server main
 
 sudo adduser --system nginx
