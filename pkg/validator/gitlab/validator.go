@@ -9,7 +9,7 @@ import (
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	jwtvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const (

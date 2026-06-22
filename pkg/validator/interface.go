@@ -5,7 +5,7 @@ import (
 	"crypto"
 
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // TokenValidatorLoaderGenerator lets you start the process of loading a new

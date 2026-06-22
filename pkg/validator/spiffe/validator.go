@@ -11,7 +11,7 @@ import (
     "github.com/spiffe/go-spiffe/v2/spiffeid"
     jwtauth "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
     "github.com/spiffe/spire-identity-exchange/pkg/validator"
-    "gopkg.in/yaml.v3"
+    "go.yaml.in/yaml/v3"
 )
 
 func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
