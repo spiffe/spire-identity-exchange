@@ -85,7 +85,7 @@ sudo groupadd nginx
 sudo systemctl daemon-reload
 sudo mkdir -p /var/log/nginx/
 sudo chown nginx /var/log/nginx
-sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
+sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx spiffe-step-ssh@main.service
 
 # Tests
 
@@ -132,6 +132,7 @@ sudo chown mockhub --recursive /home/mockhub
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mockhub/.ssh/authorized_keys
 sudo -u mockhub chmod 700 /home/mockhub/.ssh
 sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
+sudo spiffe-step-ssh-get-cert-authority host main | sudo tee /etc/ssh/ssh_known_hosts
 
 ls -l $(pwd)/x509/0/
 export SPIFFE_ENDPOINT="file://$(pwd)"
