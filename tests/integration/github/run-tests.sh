@@ -82,12 +82,11 @@ sudo mkdir -p /etc/spiffe/step-ssh/server/main
 sudo sed -i 's/spiffe-step-ssh-get-cert-authority/spiffe-step-ssh-get-cert-authority user /' /usr/sbin/setup-spiffe-step-ssh-server
 sudo setup-spiffe-step-ssh-server main
 
-sudo adduser --system nginx2
-sudo groupadd nginx2
-sudo sed -i 's/nginx/nginx2/' /usr/libexec/spiffe/step-ssh-server/nginx-fetchca.conf
+sudo adduser --system nginx
+sudo groupadd nginx
 sudo systemctl daemon-reload
-sudo mkdir -p /var/log/nginx2/
-sudo chown nginx2 /var/log/nginx2
+sudo mkdir -p /var/log/nginx/
+sudo chown nginx /var/log/nginx
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx
 
 # Tests
@@ -130,13 +129,6 @@ HIP="$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
 echo "Picked IP ${HIP}"
 echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
 sudo adduser mockhub
-sudo systemctl stop apparmor
-sudo systemctl disable apparmor
-ls -l /etc/passwd /etc/nsswitch.conf
-sudo -u nginx2 /bin/bash -c "more /etc/passwd /etc/nsswitch.conf | more"
-sudo -u nginx2 ldd /usr/bin/getent
-sudo -u nginx2 ls -l /lib/x86_64-linux-gnu/libnss_files.so.2
-sudo -u nginx2 getent passwd nginx2
 sudo -u mockhub mkdir -p /home/mockhub/.ssh
 sudo chown mockhub --recursive /home/mockhub
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mockhub/.ssh/authorized_keys
