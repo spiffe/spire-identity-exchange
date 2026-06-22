@@ -140,6 +140,7 @@ sudo -u nginx2 getent passwd nginx2
 sudo -u spiffe-test mkdir -p /home/spiffe-test/.ssh
 sudo chown spiffe-test --recursive /home/spiffe-test
 sudo spiffe-step-ssh-get-cert-authority user main | sudo -u spiffe-test tee /home/spiffe-test/.ssh/authorized_keys
+sudo -u spiffe-test chmod 700 /home/spiffe-test/.ssh
 sudo -u spiffe-test chmod 600 /home/spiffe-test/.ssh/authorized_keys
 
 git clone https://github.com/spiffe/spiffe-step-ssh
@@ -154,6 +155,8 @@ export SPIFFE_STEP_SSH_USER_AGENT_MODE=continuous
 export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:5443"
 export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
 eval `timeout 60 ./spiffe-step-ssh/spiffe-step-ssh-user-agent`
+
+ssh-add -L
 
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -T -n -v spiffe-test@test.example.org hostname
 
