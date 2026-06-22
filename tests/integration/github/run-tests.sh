@@ -75,7 +75,7 @@ wget https://dl.smallstep.com/gh-release/certificates/gh-release-header/v${STEP_
 sudo apt-get install ./step-ca_${STEP_VER}-1_amd64.deb
 wget https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli_${STEP_VER}-1_amd64.deb
 sudo apt-get install ./step-cli_${STEP_VER}-1_amd64.deb
-sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx spiffe-step-ssh-user-agent
+sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx spiffe-step-ssh-user-agent spiffe-step-ssh
 sudo mkdir -p /etc/spiffe/step-ssh/server/main
 
 sudo setup-spiffe-step-ssh-server main
