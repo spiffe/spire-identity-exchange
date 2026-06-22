@@ -86,6 +86,8 @@ sudo groupadd nginx
 sudo systemctl daemon-reload
 sudo mkdir -p /var/log/nginx/
 sudo chown nginx /var/log/nginx
+sudo /bin/bash -c "(echo 'SPIFFE_STEP_SSH_PORT=7443'; echo 'SPIFFE_STEP_SSH_FETCHCA_PORT=5443') > /etc/spiffe/step-ssh/default.env"
+
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx spiffe-step-ssh@main.service
 
 # Tests
