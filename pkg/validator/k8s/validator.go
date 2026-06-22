@@ -12,7 +12,7 @@ import (
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	authenticationv1 "k8s.io/client-go/kubernetes/typed/authentication/v1"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // TokenValidatorLoaderGenerator returns a fresh Config that can be unmarshaled,

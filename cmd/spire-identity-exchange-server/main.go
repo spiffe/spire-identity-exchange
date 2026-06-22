@@ -14,7 +14,7 @@ import (
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 func main() {

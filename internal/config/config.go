@@ -9,7 +9,7 @@ import (
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator/registry"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Duration is a time.Duration that unmarshals from JSON as either a duration
