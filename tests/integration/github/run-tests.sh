@@ -24,6 +24,7 @@ teardown() {
   sudo systemctl status spiffe-step-ssh-server@main.service || true
   sudo systemctl status spiffe-step-ssh-fetchca@main.service || true
   sudo systemctl status spire-server-attestor-spiffe-workload-api@main.service || true
+  sudo systemctl status spiffe-step-ssh@main.service || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main -n 50 2>&1 || true
@@ -133,6 +134,7 @@ sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mo
 sudo -u mockhub chmod 700 /home/mockhub/.ssh
 sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
 sudo spiffe-step-ssh-get-cert-authority host main | sudo tee /etc/ssh/ssh_known_hosts
+sudo chmod 644 /etc/ssh/ssh_known_hosts
 
 ls -l $(pwd)/x509/0/
 export SPIFFE_ENDPOINT="file://$(pwd)"
