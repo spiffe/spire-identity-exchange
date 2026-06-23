@@ -93,5 +93,5 @@ digraph G {
 
     // New External Traffic Flow
     ingress_controller -> grpcurl_client [label=" TLS Handshake (Port 443)", dir=back]
-    identity_exchange -> ingress_controller identity_exchange [label=" MintCertificate Request", dir=back]
+    identity_exchange -> ingress_controller identity_exchange [label="SPIRE Identity Exchange", dir=back]
 }
