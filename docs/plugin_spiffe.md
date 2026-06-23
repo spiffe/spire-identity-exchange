@@ -4,7 +4,7 @@ Validates incoming SPIFFE SVID JWTs from other trust domains and generates SPIRE
 
 This plugin enables cross-trust-domain federation: workloads presenting a valid SPIFFE SVID JWT from a recognized trust domain can exchange it for a new SVID scoped to the local trust domain via SPIRE registration entries.
 
-Uses the generic [JWT validator](pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation. Adds SPIFFE-specific checks (trust domain match, path pattern matching) and selector generation on top.
+Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation. Adds SPIFFE-specific checks (trust domain match, path pattern matching) and selector generation on top.
 
 ## Configuration
 

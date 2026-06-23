@@ -2,13 +2,13 @@
 
 Validates GitLab CI/CD OIDC tokens (JWTs issued by `https://gitlab.com` or a self-hosted GitLab instance) and generates SPIRE selectors that identify the caller by project, namespace, pipeline, environment, and other GitLab-specific attributes.
 
-Uses the generic [JWT validator](pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation. Adds GitLab-specific allowlist checks and selector generation on top.
+Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation. Adds GitLab-specific allowlist checks and selector generation on top.
 
 ## Configuration
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `issuerURL` | string | no | OIDC issuer. Default: `https://gitlab.com`. Must be HTTPS unless `AllowHTTP` is set for testing. |
+| `issuerURL` | string | no | OIDC issuer. Default: `https://gitlab.com`. Must be HTTPS. |
 | `audiences` | string array | **yes** | Expected JWT audience values. At least one entry required. |
 | `allowedNamespacePaths` | string array | see note | GitLab group/user paths allowed (e.g. `my-org`). Supports trailing wildcard (`*`). At least one of `allowedNamespacePaths` or `allowedProjectPaths` must be set. |
 | `allowedProjectPaths` | string array | see note | GitLab project paths allowed (e.g. `my-org/my-project`). Supports trailing wildcard (`*`). At least one required if `allowedNamespacePaths` is empty. |

@@ -2,7 +2,7 @@
 
 Validates GitHub Actions OIDC tokens (JWTs issued by `https://token.actions.githubusercontent.com`) and generates SPIRE selectors that identify the caller by repository, workflow, branch, environment, and other GitHub-specific attributes.
 
-Uses the generic [JWT validator](pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation (issuer, audience, expiration). Adds GitHub-specific allowlist checks (repository owner, repository name) and selector generation on top.
+Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation (issuer, audience, expiration). Adds GitHub-specific allowlist checks (repository owner, repository name) and selector generation on top.
 
 ## Configuration
 
