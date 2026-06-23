@@ -122,7 +122,7 @@ The default build produces the agent-based binary:
 
 ```bash
 make build
-# binary at build/bin/spire-identity-exchange
+# binaries under build/<os>/<arch>/ (e.g. build/linux/amd64/spire-identity-exchange-server)
 ```
 
 For the legacy server-based workflow (SPIFFE ID templates, direct SPIRE Server API):
