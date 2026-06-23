@@ -65,6 +65,12 @@ More details can be found in our talk at **KubeCon + SecurityCon 2025**:
                                     Workload (X.509 or JWT SVID)
 ```
 
+Systemd:
+![systemd](spire-agent-mode-systemd.png)
+
+Kubernetes:
+![kuberntes](spire-agent-mode-k8s.png)
+
 spire-identity-exchange connects to the SPIRE Agent over a Unix domain socket using the Delegated Identity API. The agent matches the generated selectors against its registration entries and returns the SVID. No direct communication with the SPIRE Server is needed — the agent handles all SVID issuance.
 
 For multi-instance deployments, the replay cache should be backed by a shared central store (e.g. Redis) so that a token cannot be replayed against a different instance.
