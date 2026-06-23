@@ -66,9 +66,11 @@ More details can be found in our talk at **KubeCon + SecurityCon 2025**:
 ```
 
 Systemd:
+
 ![systemd](diagrams/spire-agent-mode-systemd.png)
 
 Kubernetes:
+
 ![kuberntes](diagrams/spire-agent-mode-k8s.png)
 
 spire-identity-exchange connects to the SPIRE Agent over a Unix domain socket using the Delegated Identity API. The agent matches the generated selectors against its registration entries and returns the SVID. No direct communication with the SPIRE Server is needed — the agent handles all SVID issuance.
