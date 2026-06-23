@@ -128,7 +128,7 @@ make build
 For the legacy server-based workflow (SPIFFE ID templates, direct SPIRE Server API):
 
 ```bash
-make build-legacy  # or: go build -tags legacy -o build/bin/spire-identity-exchange ./cmd/spire-identity-exchange-server/
+make build spire_identity_exchange_server_TAGS=legacy
 ```
 
 ## Configuration
@@ -136,7 +136,9 @@ make build-legacy  # or: go build -tags legacy -o build/bin/spire-identity-excha
 spire-identity-exchange is configured via a JSON or YAML file passed with `--config`.
 
 ```bash
-build/bin/spire-identity-exchange --config config/config.example.json
+export SPIFFE_TRUST_DOMAIN=example.org
+source config/defualt.env
+build/linux/amd64/spire-identity-exchange --config config/default.conf -expand-env
 ```
 
 ### Plugin-based configuration (default)
@@ -236,7 +238,7 @@ go run ./examples/mock-github-oidc --audience spire-identity-exchange
 **3. Start spire-identity-exchange** (in a separate terminal):
 ```bash
 make build
-build/bin/spire-identity-exchange --config config/config.example-local.json
+build/bin/spire-identity-exchange --config config/legacy/config.example-local.json
 ```
 
 **4. Mint a certificate via the PluginAuth gRPC API:**
