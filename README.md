@@ -149,7 +149,7 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
   "logLevel": "info",
 
   "server": {
-    "port": 8443,           // gRPC server port
+    "grpcPort": 8443,       // gRPC server port
     "metricsPort": 9090,    // Prometheus metrics port
     "restPort": 8444,       // Optional HTTP REST port (see REST API below)
     "tls": {
