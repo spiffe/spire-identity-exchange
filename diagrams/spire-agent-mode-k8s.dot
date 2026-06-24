@@ -1,0 +1,97 @@
+digraph G {
+    compound=true;
+    fontname="Helvetica,Arial,sans-serif";
+    
+    // Default edge styling
+    edge [fontname="Helvetica,Arial,sans-serif", fontsize=10, color="#4d4d4d"];
+    node [fontname="Helvetica,Arial,sans-serif"];
+
+    // ==========================================
+    // EXTERNAL VM
+    // ==========================================
+    subgraph cluster_external_vm {
+        label = "node name: external-client-vm"
+        style = "filled,solid,bold";
+        color = "#b3b3b3";
+        fillcolor = "#f9f9f9";
+        
+        grpcurl_client[label="curl CLI", shape="box", style="rounded,solid,filled,bold", color="#d6b656", fillcolor="#fff2cc"]
+    }
+
+    // ==========================================
+    // SPIRE SERVER DOMAIN
+    // ==========================================
+    subgraph cluster_server_host {
+        style = "filled,solid,bold";
+        color = "#b3b3b3";
+        fillcolor = "#f5f5f5";
+
+        spire_server[label="SPIRE Server", shape="record", style="rounded,solid,filled,bold", color="#6c8ebf", fillcolor="#dae8fc"]
+    }
+
+    // ==========================================
+    // WORKLOAD & IDENTITY EXCHANGE NODE (K8s Node)
+    // ==========================================
+    subgraph cluster_workload_node {
+        label = "node name: k8s-worker-01"
+        style = "filled,solid,bold";
+        color = "#b3b3b3";
+        fillcolor = "#f5f5f5";
+
+        subgraph cluster_node_k8s {
+            label = "k8s managed";
+            style = "dashed,filled";
+            color = "#939393";
+            fillcolor = "#d5d5d5";
+
+            // Pod 1: Core SPIRE Agent
+            subgraph cluster_pod_main_agent {
+                label = "daemonset/pod: spire-agent-xxxx";
+                style = "solid,filled";
+                fillcolor = "#e8e8e8";
+                spire_agent_main[label="SPIRE Agent (Host)", shape="record", style="rounded,solid,filled,bold", color="#82b366", fillcolor="#d5e8d4"]
+            }
+
+            // Pod 2: SPIFFE CSI Driver Pod
+            subgraph cluster_pod_csi_driver {
+                label = "daemonset/pod: spiffe-csi-driver-yyyy";
+                style = "solid,filled";
+                fillcolor = "#e8e8e8";
+                spiffe_csi_driver[label="SPIFFE CSI Driver", shape="record", style="rounded,solid,filled,bold", color="#d79b00", fillcolor="#ffe6cc"]
+            }
+
+            // Pod 3: Identity Exchange Engine
+            subgraph cluster_pod_six_exchange {
+                label = "deployment/pod: spire-identity-exchange";
+                style = "solid,filled";
+                fillcolor = "#e8e8e8";
+                spire_agent_six[label="SPIRE Agent (Local)", shape="record", style="rounded,solid,filled,bold", color="#82b366", fillcolor="#d5e8d4"]
+                identity_exchange[label="SPIRE Identity Exchange", shape="record", style="rounded,solid,filled,bold", color="#d79b00", fillcolor="#ffe6cc"]
+            }
+
+            // Pod 5: Ingress Controller (Updated to match green agent colors)
+            subgraph cluster_pod_ingress {
+                label = "deployment/pod: ingress-controller";
+                style = "solid,filled";
+                fillcolor = "#e8e8e8";
+                ingress_controller[label="Ingress Controller", shape="box", style="rounded,solid,filled,bold", color="#82b366", fillcolor="#d5e8d4"]
+            }
+        }
+    }
+
+    // ==========================================
+    // RELATIONSHIPS & TRAFFIC FLOW
+    // ==========================================
+    
+    // Infrastructure
+    spire_server -> spire_agent_main [dir=back]
+    spire_server -> spire_agent_six [dir=back]
+    spire_agent_main -> spiffe_csi_driver [dir=back, label=" Proxies Workload API"]
+    spiffe_csi_driver -> identity_exchange [dir=back, label=" Fetches Own SVID"]
+    spiffe_csi_driver -> spire_agent_six [dir=back, label=" Attestation"]
+    spire_agent_six -> identity_exchange [dir=back, label=" Delegated API"]
+
+    // New External Traffic Flow
+    ingress_controller -> grpcurl_client [label=" TLS Handshake (Port 443)", dir=back]
+    identity_exchange -> ingress_controller identity_exchange [label="SPIRE Identity Exchange", dir=back]
+}
