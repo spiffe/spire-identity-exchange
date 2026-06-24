@@ -90,6 +90,12 @@ sudo /bin/bash -c "(echo 'SPIFFE_STEP_SSH_PORT=7443'; echo 'SPIFFE_STEP_SSH_FETC
 
 sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx spiffe-step-ssh@main.service
 
+# Install ansible
+sudo apt install software-properties-common -y
+sudo add-apt-repository --yes --update ppa:ansible/ansible
+sudo apt install ansible -y
+ansible --version
+
 # Tests
 
 # Github Tests
@@ -149,3 +155,4 @@ ssh-add -L
 
 ssh -T -n -v mockhub@test.example.org hostname
 
+ansible-playbook -i "${SCRIPTPATH}/ansible/inventory.ini" "${SCRIPTPATH}/ansible/hello.yml"

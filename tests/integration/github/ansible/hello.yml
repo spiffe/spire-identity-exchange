@@ -1,0 +1,11 @@
+---
+- name: Verify Remote Execution
+  hosts: webservers
+  tasks:
+    - name: Get the remote hostname
+      ansible.builtin.command: hostname
+      register: remote_hostname
+
+    - name: Print the proof
+      ansible.builtin.debug:
+        msg: "I am running on: {{ remote_hostname.stdout }}"
