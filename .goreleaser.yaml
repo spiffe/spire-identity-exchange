@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    main: ./cmd/spire-identity-exchange-server
+    binary: spire-identity-exchange-server
+    id: spire-identity-exchange-server
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    main: ./cmd/spire-credentialcomposer-identity-exchange
+    binary: spire-credentialcomposer-identity-exchange
+    id: spire-credentialcomposer-identity-exchange
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    main: ./cmd/spire-server-attestor-spiffe-workload-api
+    binary: spire-server-attestor-spiffe-workload-api
+    id: spire-server-attestor-spiffe-workload-api
+
+archives:
+  - format: tar.gz
+    builds:
+      - spire-identity-exchange-server
+    id: spire-identity-exchange-server
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      spire-identity-exchange-server_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - systemd/spire-identity-exchange@.service
+      - config/default.conf
+      - config/default.env
+      - README.md
+      - LICENSE
+  - format: tar.gz
+    builds:
+      - spire-credentialcomposer-identity-exchange
+    id: spire-credentialcomposer-identity-exchange
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      spire-credentialcomposer-identity-exchange_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+  - format: tar.gz
+    builds:
+      - spire-server-attestor-spiffe-workload-api
+    id: spire-server-attestor-spiffe-workload-api
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      spire-server-attestor-spiffe-workload-api_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - systemd/spire-server-attestor-spiffe-workload-api@.service
+      - README.md
+      - LICENSE
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
