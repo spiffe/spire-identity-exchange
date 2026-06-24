@@ -146,7 +146,7 @@ spire-identity-exchange is configured via a JSON or YAML file passed with `--con
 ```bash
 export SPIFFE_TRUST_DOMAIN=example.org
 source config/defualt.env
-build/linux/amd64/spire-identity-exchange --config config/default.conf -expand-env
+build/linux/amd64/spire-identity-exchange-server --config config/default.conf -expand-env
 ```
 
 ### Plugin-based configuration (default)
@@ -246,7 +246,7 @@ go run ./examples/mock-github-oidc --audience spire-identity-exchange
 **3. Start spire-identity-exchange** (in a separate terminal):
 ```bash
 make build
-build/bin/spire-identity-exchange --config config/legacy/config.example-local.json
+build/linux/amd64/spire-identity-exchange-server --config config/legacy/config.example-local.json
 ```
 
 **4. Mint a certificate via the PluginAuth gRPC API:**
