@@ -52,7 +52,13 @@ docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-identity-exchange-server:dev
 kind load docker-image ghcr.io/spiffe/spire-identity-exchange-server:dev --name chart-testing
 
 helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spiffe.github.io/helm-charts-hardened/ --create-namespace
-timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
+#FIXME until release
+#timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
+git clone https://github.com/spiffe/helm-charts-hardened
+cd helm-charts-hardened/charts/spire
+helm dep up
+cd -
+timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --wait
 
 mkdir -p certs
 openssl req -x509 -newkey rsa:2048 \

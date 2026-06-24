@@ -1,18 +1,4 @@
 spire-server:
-  initContainers:
-    - name: install-custom-plugin-busybox
-      image: busybox:1.37.0-uclibc
-      command: ["busybox", "sh", "-ec", "cp -a /bin/busybox /custom-plugin/busybox"]
-      volumeMounts:
-        - name: plugin-staging
-          mountPath: /custom-plugin
-    - name: install-custom-plugin
-      image: ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
-      imagePullPolicy: Never
-      command: ["/custom-plugin/busybox", "sh", "-ec", "/custom-plugin/busybox cp -a /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && /custom-plugin/busybox rm /custom-plugin/busybox"]
-      volumeMounts:
-        - name: plugin-staging
-          mountPath: /custom-plugin
   controllerManager:
     identities:
       clusterSPIFFEIDs:
@@ -65,13 +51,6 @@ spire-server:
           spiffeID: spiffe://example.org/service/spire-identity-exchange
           selectors:
             - unix:uid:0
-  extraVolumes:
-    - name: plugin-staging
-      emptyDir: {}
-  extraVolumeMounts:
-    - name: plugin-staging
-      mountPath: /custom-plugin/spire-credentialcomposer-identity-exchange
-      subPath: spire-credentialcomposer-identity-exchange
   nodeAttestor:
       x509POP:
         enabled: true
@@ -80,6 +59,11 @@ spire-server:
   customPlugins:
     credentialComposer:
       spire-credentialcomposer-identity-exchange:
-        plugin_cmd: /custom-plugin/spire-credentialcomposer-identity-exchange
+        image:
+          registry: ghcr.io
+          repository: spiffe/spire-credentialcomposer-identity-exchange
+          tag: dev
+          pullPolicy: Never
+        plugin_cmd: /ko-app/spire-credentialcomposer-identity-exchange
         plugin_checksum: ""
         plugin_data: {}
