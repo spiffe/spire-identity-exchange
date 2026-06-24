@@ -56,6 +56,7 @@ helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spif
 #timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
 git clone https://github.com/spiffe/helm-charts-hardened
 cd helm-charts-hardened/charts/spire
+git checkout plugin-loader
 helm dep up
 cd -
 timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --wait
