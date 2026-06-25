@@ -1,9 +1,9 @@
 # spire-identity-exchange
 
-An agentless SPIRE integration service that bridges workload identity attestation to the [SPIRE](https://spiffe.io/docs/latest/spire-about/) server — without requiring a SPIRE agent on every workload host.
+A SPIRE integration service that bridges non-SPIFFE workload identity to the [SPIRE](https://spiffe.io/docs/latest/spire-about/) ecosystem — enabling platform-native tokens (GitHub Actions OIDC, GitLab CI/CD OIDC, Kubernetes service account tokens, and SPIFFE SVIDs from other trust domains) to be exchanged for SPIRE-issued SVIDs via the SPIRE Agent's Delegated Identity API.
 
 [![Apache 2.0 License](https://img.shields.io/github/license/spiffe/spire-identity-exchange)](https://opensource.org/licenses/Apache-2.0)
-[![Development Phase](https://github.com/spiffe/spiffe/blob/main/.img/maturity/dev.svg)](https://github.com/spiffe/spiffe/blob/main/MATURITY.md#development)
+[![Development Phase](https://github.com/spiffe/spire/blob/main/.img/maturity/dev.svg)](https://github.com/spiffe/spire/blob/main/MATURITY.md#development)
 
 ## Warning
 
@@ -11,15 +11,16 @@ This code is in an early and experimental stage of development. Please do not us
 and possibly submitting fixes.
 
 ## Background
-The traditional SPIRE agent model works well in many environments, but we encountered scenarios where it is not the best fit:
 
-- The overhead of dynamically registering short-lived workloads
-- Environments where deploying a SPIRE agent is not possible
-- The operational burden of managing agents across multiple platforms
+Workloads in CI/CD pipelines, Kubernetes clusters, and other platforms already possess platform-native identity tokens (OIDC tokens, service account tokens). The SPIRE agent model typically requires a SPIRE agent on every host, plus workload registration entries keyed by process-level selectors.
 
-To address these gaps, we introduced an agentless approach: spire-identity-exchange is an intermediate gRPC service that performs workload attestation and authentication, then calls the SPIRE server API directly to mint X.509 SVIDs. Workloads authenticate using tokens they already possess (GitHub Actions OIDC tokens, Kubernetes service account tokens) without needing a local agent.
+spire-identity-exchange bridges these worlds: it accepts platform-native tokens from workloads, validates them using pluggable authentication plugins, generates SPIRE selectors from the validated claims, and calls the SPIRE Agent's Delegated Identity API to mint SVIDs. The SPIRE Agent handles SVID issuance against its existing registration entries — no dynamic registration, no agent per workload host.
 
-Upstreaming this as an open-source project provides a sustainable, community-supported solution rather than an isolated internal fix — reducing fragmentation and helping other organizations avoid duplicating the same work.
+Key differences from the agent-per-host model:
+
+- Workloads authenticate with tokens they already possess — no SPIRE agent binary, socket, or join token required.
+- SVID issuance is governed by SPIRE registration entries matching the generated selectors, not by server-side SPIFFE ID templates.
+- Selectors carry rich claim data (repository, workflow, namespace, SA, trust domain, etc.) enabling fine-grained authorization in SPIRE registration entries.
 
 More details can be found in our talk at **KubeCon + SecurityCon 2025**:
 [From Adoption to Innovation: LinkedIn's SPIRE Journey](https://static.sched.com/hosted_files/colocatedeventsna2025/eb/From%20Adoption%20to%20Innovation%20LinkedIn%E2%80%99s%20SPIRE%20Journey.pdf)
@@ -27,96 +28,130 @@ More details can be found in our talk at **KubeCon + SecurityCon 2025**:
 ## Architecture
 
 ```
-  ┌──────────────────────── Identity Providers (pluggable) ─────────────────────────┐
-  │  GitHub Actions  │  Kubernetes SA  │  GCP / AWS / Azure  │  Any OIDC-compatible │
-  │  (OIDC / JWKS)   │  (TokenReview)  │  (IMDS / JWKS)      │  custom plugin       │
-  └─────────────────────────────────────────────────┬───────────────────────────────┘
-                                                    │ token validation
-                                                    │
-                                                    ▼
-                               ┌──────────────────────────────────────────┐
-                               │          spire-identity-exchange         │
-                               │                                          │
-                               │   config file ≈ registration entries     │
-                               │                                          │
-                               │   1. check replay cache (if applicable)  │
-                               │   2. validate token                      │
-                               │   3. evaluate CEL policy                 │
-┌──────────┐  [A] token + CSR  │   4. match config registration entry     │
-│          │  [B] token only   │   5. verify CSR [A] / generate key [B]   │
-│ Workload │ ─── gRPC (TLS) ─► │                                          │
-│          │ ◄──────────────── │                                          │
-└──────────┘  X.509 SVID       │                                          │
-              or JWT SVID      │                                          │
-                               └─────────────────────┬────────────────────┘
-                                                ▲    │
-                                  X.509 SVID /  │    │  Unix socket
-                                  JWT SVID      │    │  or Workload API (TLS)
-                                                │    ▼
-                                           SPIRE Server
+                        ┌──── Identity Providers (pluggable) ────┐
+                        │  GitHub Actions  │  GitLab CI/CD       │
+                        │  K8s PSAT        │  SPIFFE SVID JWT    │
+                        └────────────────────┬───────────────────┘
+                                             │ token (+ optional CSR)
+                                             │
+                                             ▼
+                     ┌──────────────────────────────────────────┐
+                     │          spire-identity-exchange         │
+                     │                                          │
+                     │   1. check replay cache                  │
+                     │   2. validate token via plugin           │
+                     │   3. generate SPIRE selectors from claims│
+                     │   4. call Delegated Identity API         │
+                     └────────────────────┬─────────────────────┘
+                                          │ selectors
+                                          │ (Unix socket)
+                                          ▼
+                              ┌──────────────────────────┐
+                              │       SPIRE Agent         │
+                              │  Delegated Identity API   │
+                              │                           │
+                              │  match selectors against  │
+                              │  registration entries →   │
+                              │  mint SVID                │
+                              └────────────┬──────────────┘
+                                           │ SVID
+                                           ▼
+                     ┌──────────────────────────────────────────┐
+                     │          spire-identity-exchange         │
+                     │            (return to workload)          │
+                     └──────────────────────────────────────────┘
+                                           │
+                                           ▼
+                                    Workload (X.509 or JWT SVID)
 ```
+
+Systemd:
+
+![systemd](diagrams/spire-agent-mode-systemd.png)
+
+Kubernetes:
+
+![kuberntes](diagrams/spire-agent-mode-k8s.png)
+
+spire-identity-exchange connects to the SPIRE Agent over a Unix domain socket using the Delegated Identity API. The agent matches the generated selectors against its registration entries and returns the SVID. No direct communication with the SPIRE Server is needed — the agent handles all SVID issuance.
 
 For multi-instance deployments, the replay cache should be backed by a shared central store (e.g. Redis) so that a token cannot be replayed against a different instance.
 
 ## Deployment Modes
 
-spire-identity-exchange supports two deployment topologies that differ in how spire-identity-exchange itself authenticates to the SPIRE server.
+spire-identity-exchange supports one primary deployment topology that connects to the SPIRE Agent's Delegated Identity API.
 
-### Mode 1: Co-located with SPIRE Server
+A legacy deployment mode (co-located with SPIRE Server, using SPIFFE ID templates) is available via the `-tags legacy` build flag — see the [Legacy mode](#legacy-mode) section for details.
 
-spire-identity-exchange runs on the same host as the SPIRE server and connects to it directly via a Unix domain socket. No attestation of spire-identity-exchange itself is required — Unix socket access is implicitly trusted by the SPIRE server.
+### Standard Mode: With SPIRE Agent
 
+spire-identity-exchange runs on a host (physical, VM, or container) that also runs a SPIRE Agent. It connects to the SPIRE Agent over a Unix domain socket using the Delegated Identity API.
 
-This is the simpler deployment model and is appropriate for small or single-node setups. The trade-off is that a compromised spire-identity-exchange process has direct local access to the SPIRE server socket — see the threat model for mitigations.
+1. A SPIRE agent runs on the same host as spire-identity-exchange (or is reachable via a mounted Unix socket).
+2. The SPIRE agent has registration entries with selectors matching the claims that spire-identity-exchange's plugins generate.
+3. A workload sends its platform-native token to spire-identity-exchange.
+4. spire-identity-exchange validates the token, generates SPIRE selectors from the claims, and calls the SPIRE Agent's Delegated Identity API.
+5. The agent matches the selectors against its registration entries and mints an SVID.
 
-### Mode 2: Separate Host with Workload Attestation
+The SPIRE agent handles all SVID issuance — spire-identity-exchange never contacts the SPIRE Server directly. This means:
+- SPIFFE IDs are determined by SPIRE registration entries, not by spire-identity-exchange configuration.
+- SVID revocation and rotation follow the agent's standard lifecycle.
+- spire-identity-exchange's privilege is scoped by the agent's `authorized_delegates` configuration.
 
-> **Status:** Under design and development — not yet implemented.
+### Legacy Mode: Co-located with SPIRE Server
 
-spire-identity-exchange runs on a dedicated host, separate from the SPIRE server. In this mode, spire-identity-exchange must authenticate itself to the SPIRE server before it can call `MintX509SVID`. It does this by attesting itself through the standard SPIRE workload attestation flow:
+> Available with the `-tags legacy` build flag.
 
-1. A SPIRE agent runs on the same host as spire-identity-exchange
-2. The SPIRE agent attests the spire-identity-exchange process as a workload and issues it its own X.509 SVID
-3. spire-identity-exchange presents that SVID over mTLS when connecting to the SPIRE server API
-
-
-This topology provides stronger isolation — a compromised spire-identity-exchange process cannot directly access the SPIRE server socket. The SPIRE agent handles attestation of spire-identity-exchange using any SPIRE-supported workload attestor (Unix, Kubernetes, Docker, etc.), and the resulting SVID scopes spire-identity-exchange's privilege on the SPIRE server to only what it needs.
-
-Workloads call spire-identity-exchange's `MintCertificate` RPC with:
-1. An authentication token (GitHub OIDC or Kubernetes SA)
-2. A CSR containing the expected SPIFFE ID as a URI SAN
-
-spire-identity-exchange validates the token, derives the SPIFFE ID from the token claims using a configurable Go template, verifies the CSR matches, and calls the SPIRE server's `MintX509SVID` API to issue the certificate.
+SPIRE server co-location mode is the original deployment model, now maintained as a legacy path. spire-identity-exchange runs on the same host as the SPIRE server and connects via Unix domain socket, using SPIFFE ID templates to derive workload identities from token claims. See the build section for compilation instructions.
 
 ## Supported Authentication Methods
 
-| Method | Description |
-|---|---|
-| **GitHub Actions OIDC** | Validates GitHub Actions OIDC JWTs via JWKS. Supports allowlisting by repository and required claims. |
-| **Kubernetes Service Account** | Validates K8s SA tokens via the Kubernetes TokenReview API using mTLS. |
+spire-identity-exchange supports pluggable authentication via a dynamic plugin system. Each plugin validates a specific token type and generates SPIRE selectors. The following plugins are built in:
+
+| Plugin | Token type | Selector type | Configuration reference |
+|---|---|---|---|
+| **GitHub Actions OIDC** (`github`) | GitHub Actions OIDC JWTs via JWKS | `github_actions` | [plugin_github.md](docs/plugin_github.md) |
+| **GitLab CI/CD OIDC** (`gitlab`) | GitLab CI/CD OIDC JWTs via JWKS | `gitlab_ci` | [plugin_gitlab.md](docs/plugin_gitlab.md) |
+| **Kubernetes PSAT** (`k8s_psat`) | K8s projected SA tokens via JWKS + TokenReview | `k8s_psat` | [plugin_k8s_psat.md](docs/plugin_k8s_psat.md) |
+| **SPIFFE SVID JWT** (`spiffe`) | Incoming SPIFFE SVID JWTs via JWKS | `spiffe` | [plugin_spiffe.md](docs/plugin_spiffe.md) |
+
+Additional authentication methods can be added by implementing the `validator.TokenValidatorLoaderGenerator` interface (see [pkg/validator/](pkg/validator/)).
 
 ## Prerequisites
 
-- spire-identity-exchange must run on the **same host as the SPIRE server**, as it communicates with it via a Unix domain socket
-- A running [SPIRE server](https://spiffe.io/docs/latest/deploying/install-server/)
+- A running [SPIRE Agent](https://spiffe.io/docs/latest/deploying/install-agent/) with the Delegated Identity API enabled (`authorized_delegates` configured)
+- A running [SPIRE Server](https://spiffe.io/docs/latest/deploying/install-server/) that the agent connects to
+- SPIRE registration entries with selectors matching the token claims
 - Go 1.24+
 
 ## Building
 
+The default build produces the agent-based binary:
+
 ```bash
 make build
-# binary at build/bin/spire-identity-exchange
+# binaries under build/<os>/<arch>/ (e.g. build/linux/amd64/spire-identity-exchange-server)
+```
+
+For the legacy server-based workflow (SPIFFE ID templates, direct SPIRE Server API):
+
+```bash
+make build spire_identity_exchange_server_TAGS=legacy
 ```
 
 ## Configuration
 
-spire-identity-exchange is configured via a JSON file passed with `--config`.
+spire-identity-exchange is configured via a JSON or YAML file passed with `--config`.
 
 ```bash
-build/bin/spire-identity-exchange --config config/config.example.json
+export SPIFFE_TRUST_DOMAIN=example.org
+source config/defualt.env
+build/linux/amd64/spire-identity-exchange-server --config config/default.conf -expand-env
 ```
 
-### Full configuration reference
+### Plugin-based configuration (default)
+
+Authentication methods are configured via the `auth.plugins` array. Each entry specifies a user-defined name, a plugin type, and plugin-specific configuration.
 
 ```jsonc
 {
@@ -124,8 +159,9 @@ build/bin/spire-identity-exchange --config config/config.example.json
   "logLevel": "info",
 
   "server": {
-    "port": 8443,           // gRPC server port
+    "grpcPort": 8443,       // gRPC server port
     "metricsPort": 9090,    // Prometheus metrics port
+    "restPort": 8444,       // Optional HTTP REST port (see REST API below)
     "tls": {
       "certFile": "certs/server.crt",
       "keyFile":  "certs/server.key"
@@ -133,73 +169,64 @@ build/bin/spire-identity-exchange --config config/config.example.json
   },
 
   "spire": {
-    "unixSocketPath": "/tmp/spire-server/private/api.sock",
+    "agentDelegatedSocketPath": "/tmp/spire-agent/admin/api.sock",
+    "agentWorkloadSocketPath": "/tmp/spire-agent/public/api.sock",
     "trustDomain": "example.org",
-    "svidTTL": "1h"         // Duration string (e.g. "1h", "30m") or nanoseconds
+    "svidTTL": "5m"
   },
 
-  // GitHub Actions OIDC validator
-  "githubOIDC": {
-    "enabled": true,
-    "issuer": "https://token.actions.githubusercontent.com",
-    "audiences": ["spire-identity-exchange"],
-    "jwksUri": "",           // Optional — defaults to GitHub's well-known JWKS endpoint
-    "spiffeIdTemplate": "spiffe://example.org/github/{{.org}}/{{.repository}}",
-    "allowedRepositories": [
-      "my-org/*"             // Supports exact match or wildcard (e.g. "org/*", "*")
-    ],
-    "requiredClaims": ["repository", "workflow"],
-    "skipTokenExpiration": false,
-    "jwksCacheDuration": "10m"
-  },
-
-  // Kubernetes service account token validator
-  "k8sSAToken": {
-    "enabled": false,
-    "apiHost": "https://kubernetes.default.svc:443",  // Required when enabled: operator-trusted K8s API server URL used for TokenReview
-    "clusterName": "my-cluster",                       // Optional: exposed to templates as {{.k8s_cluster_name}}
-    "audiences": ["spire-identity-exchange"],         // Optional but recommended: bind TokenReview to a dedicated audience
-    "spiffeIdTemplate": "spiffe://example.org/k8s/{{.sub}}",
-    "tls": {
-      "caFile":   "/etc/spire-identity-exchange/k8s/ca.crt",    // CA to verify K8s API server
-      "certFile": "/etc/spire-identity-exchange/k8s/client.crt", // Client cert for mTLS
-      "keyFile":  "/etc/spire-identity-exchange/k8s/client.key"
-    }
+  "auth": {
+    "plugins": [
+      {
+        "name": "github-actions",
+        "plugin": "github",
+        "config": {
+          "issuerURL": "https://token.actions.githubusercontent.com",
+          "audiences": ["spire-identity-exchange"],
+          "allowedRepositoryOwners": ["my-org"]
+        }
+      },
+      {
+        "name": "kubernetes-prod",
+        "plugin": "k8s_psat",
+        "config": {
+          "clusterName": "prod-us-east",
+          "audiences": ["spire-identity-exchange"],
+          "allowedNamespaces": ["prod-*"],
+          "allowedServiceAccounts": ["prod-*/app"]
+        }
+      }
+    ]
   }
 }
 ```
 
-At least one of `githubOIDC` or `k8sSAToken` must be enabled.
+At least one plugin must be configured in `auth.plugins`.
 
-### SPIFFE ID templates
+### Purpose mode
 
-Templates use Go's `text/template` syntax. For GitHub OIDC, all JWT claims are available, along with the following pre-processed fields:
+The `purposeMode` setting controls replay cache scoping:
 
-| Variable | Description |
-|---|---|
-| `{{.org}}` | GitHub organization (sanitized, from `repository`) |
-| `{{.repository}}` | Repository name (sanitized, from `repository`) |
-| `{{.ref}}` | Git ref with `refs/heads/` / `refs/tags/` prefix stripped |
-| `{{.workflow}}` | Workflow name |
-| `{{.actor}}` | Actor (triggering user) |
-| `{{.sha}}` | Commit SHA |
-| `{{.sub}}` | Token subject |
+- `"shared"` (default) — a token can be used exactly once for any SVID type.
+- `"purpose"` — a token can be used once per SVID type (one X.509 + one JWT per token).
 
-For Kubernetes SA tokens, all raw JWT claims are available directly. Modern projected
-service-account tokens (produced by `kubectl create token` and the TokenRequest API) nest
-the cluster-side fields under a `kubernetes.io` object, so use chained `index`:
-`{{.sub}}`, `{{index . "kubernetes.io" "namespace"}}`,
-`{{index . "kubernetes.io" "serviceaccount" "name"}}`.
+### Legacy configuration
 
-For a full security reference — including claim inventories, recommended encoding/gating claims, claims to avoid, canonical templates, and common anti-patterns — see [docs/spiffe-id-template-guide.md](docs/spiffe-id-template-guide.md).
+The legacy build (`-tags legacy`) uses top-level `githubOIDC` and `k8sSAToken` configuration blocks instead of `auth.plugins`. See the [Legacy mode](#legacy-mode) section.
+
+### Selectors vs. SPIFFE ID templates
+
+In the default (agent-based) mode, spire-identity-exchange does **not** derive SPIFFE IDs from token claims. Instead, each plugin generates **SPIRE selectors** from the validated claims, and SVID issuance is driven by SPIRE registration entries that match those selectors. This means SPIFFE IDs are entirely managed in SPIRE registration entries — no Go templates required.
+
+The legacy mode (`-tags legacy`) uses SPIFFE ID templates to derive workload identities. For a full security reference on template-based SPIFFE ID derivation, see [docs/spiffe-id-template-guide.md](docs/spiffe-id-template-guide.md) and [docs/spiffe-id-token-reference.md](docs/spiffe-id-token-reference.md).
 
 ## Local testing
 
 ### End-to-end testing
 
-No GitHub Actions access needed. The mock OIDC server generates signed tokens locally and serves the JWKS endpoint.
+An automated end-to-end test script is available at [scripts/e2e-local.sh](scripts/e2e-local.sh). It starts a SPIRE server and agent, configures the exchange, runs a mock GitHub OIDC server, and exercises the gRPC MintCertificate flow end-to-end.
 
-**Prerequisites:** [SPIRE server](https://spiffe.io/docs/latest/deploying/install-server/) running locally, [grpcurl](https://github.com/fullstorydev/grpcurl) installed.
+**Prerequisites:** [SPIRE](https://spiffe.io/docs/latest/deploying/install-server/) (server + agent) running locally with the Delegated Identity API enabled, [grpcurl](https://github.com/fullstorydev/grpcurl).
 
 **1. Generate TLS certs for the gRPC/HTTP server (one-time):**
 ```bash
@@ -215,105 +242,53 @@ openssl req -x509 -newkey rsa:4096 \
 ```bash
 go run ./examples/mock-github-oidc --audience spire-identity-exchange
 ```
-It prints a signed `GITHUB_TOKEN` and serves JWKS at `http://localhost:9999/.well-known/jwks`. The mock server generates a new key pair each time it starts, so always use a token from the currently running instance.
 
 **3. Start spire-identity-exchange** (in a separate terminal):
 ```bash
 make build
-build/bin/spire-identity-exchange --config config/config.example-local.json
-```
-Start spire-identity-exchange **after** the mock OIDC server so the initial JWKS fetch succeeds.
-
-**4. Mint a certificate** using the token printed in step 2:
-
-> **Each token is single-use (single attempted use).** The GitHub OIDC validator records
-> the token's `jti` as soon as token validation succeeds — before MintCertificate runs —
-> so the second example below, or any of the CSR / K8s examples that follow, will be
-> rejected with `token replay detected` if run with the same `GITHUB_TOKEN`, even if the
-> earlier call ultimately failed. This is intentional: marking after a successful mint
-> would leave a race window in which a concurrent replay could slip through. Pick one
-> example per token, or restart the mock OIDC server (step 2) to get a fresh token+JWKS
-> pair, then restart spire-identity-exchange (step 3) so it picks up the new JWKS. For a
-> fully automated alternative see [scripts/e2e-local.sh](scripts/e2e-local.sh).
-
-```bash
-export GITHUB_TOKEN="<token from step 2>"
-
-# Option A — gRPC (server-side key generation — no CSR needed)
-grpcurl -insecure \
-  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"serverKeyGenRequest\":{}}" \
-  localhost:8443 \
-  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
-
-# Option B — HTTP gateway (requires a fresh token; see note above)
-curl -k -X POST https://localhost:8444/v1/mint-certificate \
-  -H "Content-Type: application/json" \
-  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"serverKeyGenRequest\":{}}"
+build/linux/amd64/spire-identity-exchange-server --config config/legacy/config.example-local.json
 ```
 
-### Testing with a CSR (client-side key generation)
-
-Instead of server-side key generation, you can provide your own CSR. The SPIFFE ID in the CSR must match what the server derives from the token claims using the configured `spiffeIdTemplate`. With `config.example-local.json` and the default mock token claims, the derived SPIFFE ID is:
-
-> Restart the mock OIDC server and spire-identity-exchange before running this if you've
-> already used `GITHUB_TOKEN` above — the replay cache will reject a second use.
-
+**4. Mint a certificate via the PluginAuth gRPC API:**
 ```bash
-SPIFFE_ID="spiffe://example.org/github/my-org/my-repo/mock-workflow-yml"
-
-openssl req -new \
-  -newkey rsa:2048 -nodes -keyout workload.key \
-  -subj "/CN=workload" \
-  -addext "subjectAltName=URI:${SPIFFE_ID}" \
-  -out workload.csr
-
-CSR_B64=$(openssl req -in workload.csr -outform DER | base64 | tr -d '\n')
+export GITHUB_TOKEN="<token from mock server output>"
 
 grpcurl -insecure \
-  -d "{\"githubOIDC\":{\"githubToken\":\"${GITHUB_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${CSR_B64}\"}}" \
+  -d '{
+    "pluginAuthList": {
+      "plugins": [
+        {
+          "pluginName": "github-actions",
+          "token": "'"${GITHUB_TOKEN}"'"
+        }
+      ]
+    },
+    "serverKeyGenRequest": {}
+  }' \
   localhost:8443 \
   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
 ```
 
-### Testing with Kubernetes Service Account tokens
-
-The server validates the CSR's URI SAN against the SPIFFE ID it derives from the K8s SA
-token claims using the configured `k8sSAToken.spiffeIdTemplate`. The GitHub-derived
-`CSR_B64` from the previous section will be rejected with a CSR SPIFFE ID mismatch — you
-need a CSR built for the K8s SPIFFE ID. The example below uses `serverKeyGenRequest`
-(no CSR required) to avoid that gotcha; switch to `mintX509SVIDRequest` once you generate
-a CSR whose URI SAN matches the K8s template's output.
-
+**5. Mint a certificate via the REST API:**
 ```bash
-K8S_TOKEN=$(kubectl create token my-service-account -n my-namespace)
+export GITHUB_TOKEN="<token from mock server output>"
 
-# Option A — no CSR (server-side key generation)
-grpcurl -insecure \
-  -d "{\"k8sSA\":{\"k8sSAToken\":\"${K8S_TOKEN}\"},\"serverKeyGenRequest\":{}}" \
-  localhost:8443 \
-  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
-
-# Option B — CSR-based (build K8S_CSR_B64 from a CSR whose URI SAN matches the
-# K8s template output, e.g. spiffe://example.org/k8s/system:serviceaccount:my-namespace:my-service-account):
-#   openssl req -new -newkey rsa:2048 -nodes -keyout k8s-workload.key \
-#     -subj "/CN=workload" \
-#     -addext "subjectAltName=URI:${K8S_SPIFFE_ID}" \
-#     -out k8s-workload.csr
-#   K8S_CSR_B64=$(openssl req -in k8s-workload.csr -outform DER | base64 | tr -d '\n')
-# grpcurl -insecure \
-#   -d "{\"k8sSA\":{\"k8sSAToken\":\"${K8S_TOKEN}\"},\"mintX509SVIDRequest\":{\"csr\":\"${K8S_CSR_B64}\"}}" \
-#   localhost:8443 \
-#   proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate
+curl -k -X POST https://localhost:8444/api/v1/svid/github-actions/x509 \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Content-Type: application/json"
 ```
 
 ### Inspecting the service
 
 ```bash
-# List services
+# List gRPC services
 grpcurl -insecure localhost:8443 list
 
 # Describe the API
 grpcurl -insecure localhost:8443 describe proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi
+
+# Fetch the trust bundle via REST
+curl -k https://localhost:8444/api/v1/trustbundle/x509
 ```
 
 ## Metrics
@@ -328,7 +303,7 @@ Key metrics:
 
 | Metric | Description |
 |---|---|
-| `pki_spire_identity_exchange_operation_duration_seconds` | Latency histogram per operation (`validate_token`, `fetch_jwks`, `mint_certificate_by_github_oidc`, `mint_certificate_by_k8s_sa`). Labels: `component`, `plugin`, `operation`, `status`. |
+| `pki_spire_identity_exchange_operation_duration_seconds` | Latency histogram per operation (`validate_token`, `fetch_jwks`, `mint_certificate_by_plugin`, `mint_certificate_by_github_oidc`, `mint_certificate_by_k8s_sa`). Labels: `component`, `plugin`, `operation`, `status`. |
 | `pki_spire_identity_exchange_operation_count_total` | Request count, same labels and operations as above. |
 
 Standard Go runtime and process metrics are also exported with the `pki_spire_identity_exchange_` prefix (e.g. `pki_spire_identity_exchange_go_goroutines`, `pki_spire_identity_exchange_process_cpu_seconds_total`).
@@ -336,24 +311,44 @@ Standard Go runtime and process metrics are also exported with the `pki_spire_id
 ## Project structure
 
 ```
-api/                        # Protobuf definitions and generated Go code
+api/                            # Protobuf definitions and generated Go code
+cmd/
+  spire-identity-exchange-server/  # Main server binary (entry point + wiring)
+  spire-credentialcomposer-identity-exchange/  # SPIRE CredentialComposer plugin
+  spire-server-attestor-spiffe-workload-api/   # Trust bundle HTTP server
+docs/                           # Documentation (plugin reference, SPIFFE ID guides)
+config/                         # Example configuration files
+pkg/
+  validator/                    # Plugin system
+    interface.go                # Core interfaces (TokenValidator, SelectorGenerator)
+    purpose.go                  # Purpose / PurposeResolver for replay cache
+    claims.go / jwtclaims.go    # Claim types
+    allowlist.go                # Wildcard suffix matching
+    registry/
+      registry.go               # AllBuiltinPlugins map
+    jwt/                        # Generic JWT validator + key provider (base for github, gitlab, spiffe)
+    github/                     # GitHub Actions OIDC plugin
+    gitlab/                     # GitLab CI/CD OIDC plugin
+    k8s/                        # Kubernetes PSAT plugin
+    spiffe/                     # SPIFFE SVID JWT plugin
 internal/
-  config/                   # Configuration structs and validation
-  const/                    # Shared constants (claim names, metric labels)
-  github-oidc/              # GitHub Actions OIDC token validator
-  k8s-sa-token/             # Kubernetes service account token validator
-  metrics/                  # Metrics interface and Prometheus implementation
-  service/                  # gRPC server, request dispatch, certificate minting
-  utils/                    # JWT claim helpers, SPIFFE ID template execution
-  validator/                # TokenValidator and KeySynchronizer interfaces
-main.go                     # Entry point
-config.example.json         # Example configuration
+  config/                       # Configuration structs and validation
+  const/                        # Shared constants (claim names, metric labels)
+  cache/                        # Replay detection (ReplayCache, ReplayCheckingValidator)
+  github-oidc/                  # Legacy GitHub Actions OIDC validator
+  k8s-sa-token/                 # Legacy Kubernetes SA token validator
+  metrics/                      # Metrics interface and Prometheus implementation
+  service/                      # gRPC server, request dispatch, certificate minting
+  spireagent/delegated/         # Delegated Identity API client
+  utils/                        # JWT claim helpers, certificate utilities
+k8s/                            # Kubernetes manifests
+examples/                       # Example servers (mock OIDC)
+scripts/                        # Automation (e2e-local.sh)
 ```
 
 ## Contributing
 
 Contributions are welcome. Please open an issue or pull request. When adding a new authentication method:
 
-1. Implement `validator.TokenValidator` in a new `internal/<method>/` package
-2. Add a corresponding config struct in `internal/config/config.go`
-3. Wire it up in `main.go` and `internal/service/`
+1. Implement `validator.TokenValidatorLoaderGenerator` in a new `pkg/validator/<method>/` package (see existing plugins for reference)
+2. Register it in `pkg/validator/registry/registry.go`

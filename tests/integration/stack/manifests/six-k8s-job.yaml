@@ -1,0 +1,11 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: six-k8s-test
+spec:
+  parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/test
+  selectors:
+  - k8s_psat:namespace:default
+  - k8s_psat:service_account_name:default
+  - github_actions:repository:my-org/my-repo

@@ -1,0 +1,122 @@
+digraph G {
+    compound=true;
+    fontname="Helvetica,Arial,sans-serif";
+    
+    // Default edge styling
+    edge [fontname="Helvetica,Arial,sans-serif", fontsize=10, color="#4d4d4d"];
+    node [fontname="Helvetica,Arial,sans-serif"];
+
+    // ==========================================
+    // CLIENT VM DOMAIN (External Tester)
+    // ==========================================
+    subgraph cluster_github_vm {
+        label = "node name: github-vm"
+        style = "filled,solid,bold";
+        color = "#b3b3b3";
+        fillcolor = "#f5f5f5";
+        labeljust = "l"; 
+
+        subgraph cluster_github_systemd {
+            label = "systemd managed";
+            style = "dashed,filled";
+            color = "#939393";
+            fillcolor = "#d5d5d5";
+            labeljust = "l";
+
+            identity_client[label="curl CLI\n(Test Client)", shape="box", style="rounded,solid,filled,bold", color="#d6b656", fillcolor="#fff2cc"]
+        }
+    }
+
+    // ==========================================
+    // SPIRE SERVER DOMAIN (Control Plane / Host)
+    // ==========================================
+    subgraph cluster_server_host {
+        label = "node name: spire-server-host"
+        style = "filled,solid,bold";
+        color = "#b3b3b3";
+        fillcolor = "#f5f5f5";
+        labeljust = "l"; 
+
+        subgraph cluster_server_systemd {
+            label = "systemd managed";
+            style = "dashed,filled";
+            color = "#939393";
+            fillcolor = "#d5d5d5";
+            labeljust = "l";
+
+            spire_server[label=<<table border="0" cellborder="0" cellpadding="3">
+                <tr><td><b>SPIRE Server</b></td></tr>
+                <tr><td align="left"><font point-size="9">Instance: @main</font></td></tr>
+                <tr><td align="left"><font point-size="9">Private Socket: /run/spire/.../private/api.sock</font></td></tr>
+            </table>>, shape="record", style="rounded,solid,filled,bold", color="#6c8ebf", fillcolor="#dae8fc"]
+
+            spire_controller[label=<<table border="0" cellborder="0" cellpadding="3">
+                <tr><td><b>SPIRE Controller Manager</b></td></tr>
+                <tr><td align="left"><font point-size="9">Instance: @main</font></td></tr>
+                <tr><td align="left"><font point-size="9">Task: Reconcile CRDs / Manifests</font></td></tr>
+            </table>>, shape="record", style="rounded,solid,filled,bold", color="#6c8ebf", fillcolor="#dae8fc"]
+        }
+    }
+
+    // ==========================================
+    // WORKLOAD & IDENTITY EXCHANGE NODE
+    // ==========================================
+    subgraph cluster_workload_node {
+        label = "node name: spire-identity-exchange vm"
+        style = "filled,solid,bold";
+        color = "#b3b3b3";
+        fillcolor = "#f5f5f5";
+        labeljust = "l"; 
+
+        // Systemd Managed Environment
+        subgraph cluster_node_systemd {
+            label = "systemd managed";
+            style = "dashed,filled";
+            color = "#939393";
+            fillcolor = "#d5d5d5";
+            labeljust = "l"; 
+
+            spire_agent_main[label=<<table border="0" cellborder="0" cellpadding="3">
+                <tr><td><b>SPIRE Agent (Main)</b></td></tr>
+                <tr><td align="left"><font point-size="9">Instance: @main</font></td></tr>
+                <tr><td align="left"><font point-size="9">Attestor: join_token (node1)</font></td></tr>
+                <tr><td align="left"><font point-size="9">Public Socket: /var/run/spire/.../main/public/api.sock</font></td></tr>
+            </table>>, shape="record", style="rounded,solid,filled,bold", color="#82b366", fillcolor="#d5e8d4"]
+
+            spire_agent_six[label=<<table border="0" cellborder="0" cellpadding="3">
+                <tr><td><b>SPIRE Agent (SIX)</b></td></tr>
+                <tr><td align="left"><font point-size="9">Instance: @six</font></td></tr>
+                <tr><td align="left"><font point-size="9">Config: /etc/spire/agent/six.conf</font></td></tr>
+                <tr><td align="left"><font point-size="9">Public Socket: /var/run/spire/.../six/public/api.sock</font></td></tr>
+            </table>>, shape="record", style="rounded,solid,filled,bold", color="#82b366", fillcolor="#d5e8d4"]
+
+            identity_exchange[label=<<table border="0" cellborder="0" cellpadding="3">
+                <tr><td><b>SPIRE Identity Exchange</b></td></tr>
+                <tr><td align="left"><font point-size="9">Instance: @main.service</font></td></tr>
+                <tr><td align="left"><font point-size="9">Endpoint: Remote Port 8443</font></td></tr>
+                <tr><td align="left"><font point-size="9">Config: default.json</font></td></tr>
+            </table>>, shape="record", style="rounded,solid,filled,bold", color="#d79b00", fillcolor="#ffe6cc"]
+        }
+    }
+
+    // ==========================================
+    // RELATIONSHIPS & TRAFFIC FLOW
+    // ==========================================
+    
+    // Controller orchestrates local server
+    spire_controller -> spire_server [label=" Manages", style="dashed"]
+
+    // Node Attestation & Core SPIFFE APIs
+    spire_server -> spire_agent_main [dir=back]
+    spire_server -> spire_agent_six [dir=back]
+
+    // Identity Exchange utilizing the specific agent instance socket
+    spire_agent_main -> identity_exchange [dir=back, label=" Fetches Own SVID via\nWorkload API socket"]
+
+    spire_agent_main -> spire_agent_six [dir=back, label=" Fetches SVID via\nWorkload API socket\n for Node attestation"]
+
+    spire_agent_six -> identity_exchange [dir=back, label=" Fetches delegated SVIDs via\nDelegated API socket"]
+
+    // End-to-end Cross-VM Network Request
+    identity_exchange -> identity_client [dir=back, label=" MintCertificate via Network\n(TLS Handshake / Port 443)", color="#d79b00", fontcolor="#b8860b", style="bold"]
+}

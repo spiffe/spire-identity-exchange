@@ -85,10 +85,7 @@ message MintCertificateRequest {
     GithubOIDC githubOIDC = 1;
     K8sSA k8sSA = 2;
     // Generic plugin-based authentication routed through the pkg/validator
-    // registry. Same plugin pool as the REST /svid/{stack}/x509 endpoint, so a
-    // single operator-configured plugin (e.g. gitlab) is usable over both
-    // surfaces with no proto change. Carried as a list (currently single-
-    // element) to leave room for future multi-plugin stack composition.
+    // registry. Same plugin pool as the REST /svid/{stack}/x509 endpoint.
     PluginAuthList pluginAuthList = 6;
   }
   // CSR-based X.509 SVID issuance (default mode). Client generates the key pair and
@@ -100,6 +97,8 @@ message MintCertificateRequest {
   // Server-side key generation for X.509 SVID. No CSR required;
   // spire-identity-exchange generates the ECDSA P-256 key pair. Requires TLS.
   ServerKeyGenRequest serverKeyGenRequest = 5;
+  // When len(pluginAuthList ) > 1, which stack are you authenticating against.
+  string stackName = 7;
 }
 
 // MintCertificateResponse is the response for the MintCertificate method.

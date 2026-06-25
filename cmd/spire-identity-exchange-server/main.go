@@ -12,6 +12,7 @@ import (
 	prommetrics "github.com/spiffe/spire-identity-exchange/internal/metrics/prometheus"
 	"github.com/spiffe/spire-identity-exchange/internal/service"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	stacklib "github.com/spiffe/spire-identity-exchange/pkg/validator/stack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.yaml.in/yaml/v3"
@@ -166,7 +167,22 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 			return nil, fmt.Errorf("failed to create validator for plugin %q: %w", plugin.Name, err)
 		}
 		cfg.Auth.LoadedPlugins[plugin.Name] = v
-		cfg.Auth.LoadedStacks[plugin.Name] = v
+		if cfg.Auth.PassthroughPlugins == nil || *cfg.Auth.PassthroughPlugins == true {
+			cfg.Auth.LoadedStacks[plugin.Name] = v
+		}
+	}
+	for _, stack := range cfg.Auth.Stacks {
+		s := &stacklib.Config{
+			Plugins: stack.Plugins,
+		}
+		if err := s.ValidateConfig(cfg.Auth.LoadedPlugins); err != nil {
+			return nil, fmt.Errorf("invalid stack %q: %w", stack.Name, err)
+		}
+		v, err := s.NewValidator()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create validator for stack %q: %w", stack.Name, err)
+		}
+		cfg.Auth.LoadedStacks[stack.Name] = v
 	}
 
 	return &cfg, nil

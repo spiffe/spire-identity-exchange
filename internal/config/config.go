@@ -16,7 +16,7 @@ import (
 // string (e.g. "1h", "10m") or an integer number of nanoseconds.
 type Duration time.Duration
 
-var pluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-_]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
+var PluginNamePattern = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-_]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,6})?$`)
 
 func (d *Duration) UnmarshalYAML(b *yaml.Node) error {
 	var s string
@@ -63,7 +63,9 @@ type TLSConfig struct {
 
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
-	Plugins       []PluginConfig                                          `yaml:"plugins"`
+	Plugins            []PluginConfig                                     `yaml:"plugins"`
+	Stacks             []StackConfig                                      `yaml:"stacks"`
+	PassthroughPlugins *bool                                              `yaml:"passthroughPlugins"`
 	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `yaml:"-"`
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `yaml:"-"`
 }
@@ -77,6 +79,12 @@ type PluginConfig struct {
 	Enabled   *bool                          `yaml:"enabled"`
 	RawConfig yaml.Node                      `yaml:"config"`
 	Config    validator.TokenValidatorLoader `yaml:"-"`
+}
+
+// StackConfig is the operator config for one stack
+type StackConfig struct {
+	Name      string                         `json:"name"`
+	Plugins   []string                       `json:"plugins"`
 }
 
 // SPIREConfig contains SPIRE server configurations
@@ -190,7 +198,12 @@ type K8sSATokenConfig struct {
 }
 
 func (c *AuthConfig) Validate() error {
+	passthroughPlugins := true
+	if (c.PassthroughPlugins != nil && *c.PassthroughPlugins == false) {
+		passthroughPlugins = false
+	}
 	usedPlugins := make(map[string]struct{})
+	usedStacks := make(map[string]struct{})
 	var errs []error
 	for i, plugin := range c.Plugins {
 		if plugin.Enabled != nil && !*plugin.Enabled {
@@ -204,7 +217,7 @@ func (c *AuthConfig) Validate() error {
 			errs = append(errs, fmt.Errorf("plugin name %s is defined more than once", plugin.Name))
 			continue
 		}
-		if !pluginNamePattern.MatchString(plugin.Name) {
+		if !PluginNamePattern.MatchString(plugin.Name) {
 			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", plugin.Name))
 			continue
 		}
@@ -224,6 +237,21 @@ func (c *AuthConfig) Validate() error {
 			}
 		}
 		usedPlugins[plugin.Name] = struct{}{}
+	}
+	for _, stack := range c.Stacks {
+		if _, exists := usedPlugins[stack.Name]; passthroughPlugins && exists {
+			errs = append(errs, fmt.Errorf("stack name %s is defined the same as an existing plugin", stack.Name))
+			continue
+		}
+		if _, exists := usedStacks[stack.Name]; exists {
+			errs = append(errs, fmt.Errorf("stack name %s is defined more than once", stack.Name))
+			continue
+		}
+		if !PluginNamePattern.MatchString(stack.Name) {
+			errs = append(errs, fmt.Errorf("Stack name %s is invalid", stack.Name))
+			continue
+		}
+		usedStacks[stack.Name] = struct{}{}
 	}
 	return errors.Join(errs...)
 }
