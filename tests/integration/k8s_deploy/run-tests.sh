@@ -26,7 +26,7 @@ teardown() {
   kubectl logs deploy/spire-identity-exchange -c spire-agent || true
   kubectl logs deploy/spire-identity-exchange -c spire-server-attestor || true
   kubectl describe pod -n spire-server spire-server-0 || true
-  kubectl logs -n spire-server spire-server-0 -c install-custom-plugin || true
+  kubectl logs -n spire-server spire-server-0 -c init-plugin-0 || true
   kubectl logs -n spire-server spire-server-0 -c spire-server || true
   kubectl exec -it -n spire-server spire-server-0 -c spire-server -- spire-server entry show || true
   kubectl get pods -A || true
