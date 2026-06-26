@@ -6,7 +6,7 @@ spire-server:
           spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/trustbundle-spire-identity-exchange
           podSelector:
             matchLabels:
-              pp.kubernetes.io/name: spire-identity-exchange
+              app.kubernetes.io/name: spire-identity-exchange
           namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: default
@@ -16,7 +16,7 @@ spire-server:
           spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/spire-identity-exchange
           podSelector:
             matchLabels:
-              pp.kubernetes.io/name: spire-identity-exchange
+              app.kubernetes.io/name: spire-identity-exchange
           namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: default
@@ -26,7 +26,7 @@ spire-server:
           spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/spire-identity-exchange/{{ .PodMeta.Name }}
           podSelector:
             matchLabels:
-              pp.kubernetes.io/name: spire-identity-exchange
+              app.kubernetes.io/name: spire-identity-exchange
           namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: default
