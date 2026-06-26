@@ -55,10 +55,14 @@ helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spif
 #FIXME until release
 #timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
 git clone https://github.com/spiffe/helm-charts-hardened
-cd helm-charts-hardened/charts/spire
-git checkout plugin-loader
+cd helm-charts-hardened/charts/spire-identity-exchange
+git checkout spire-identity-exchange
 helm dep up
 cd -
+cd helm-charts-hardened/charts/spire
+helm dep up
+cd -
+
 timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --wait
 
 mkdir -p certs
@@ -70,12 +74,24 @@ openssl req -x509 -newkey rsa:2048 \
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
 kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
-kubectl create configmap spire-identity-exchange --from-file="${SCRIPTPATH}/default.conf" --from-file="${SCRIPTPATH}/six-agent.conf"
-kubectl apply -f "${SCRIPTPATH}/service.yaml"
-kubectl apply -f "${SCRIPTPATH}/serviceaccount.yaml"
-kubectl apply -f "${SCRIPTPATH}/../../../k8s/spire-identity-exchange-clusterrole.yaml"
-kubectl create clusterrolebinding spire-identity-exchange --clusterrole=spire-identity-exchange --serviceaccount="default:spire-identity-exchange"
-kubectl apply -f "${SCRIPTPATH}/deployment.yaml"
+timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --wait
+
+cat > test-values.yaml <<EOF
+tls:
+  externalSecret:
+    enabled: true
+    secretName: spire-identity-exchange
+auth:
+  plugins:
+    - plugin: k8s_psat
+      config:
+        audiences:
+          - spire-identity-exchange
+        allowedServiceAccounts:
+          - default/default
+EOF
+
+helm upgrade --install spire-identity-exchange helm-charts-hardened/charts/spire-identity-exchange -f test-values.yaml
 kubectl wait --for=condition=available --timeout=30s deployment/spire-identity-exchange
 
 sleep 15
