@@ -76,7 +76,6 @@ openssl req -x509 -newkey rsa:2048 \
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
 kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
-timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --wait
 
 cat > test-values.yaml <<EOF
 tls:
