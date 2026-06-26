@@ -95,7 +95,7 @@ image:
 spireServerAttestorSPIFFEWorkloadAPI:
   image:
     tag: "dev"
-  pullPolicy: Never
+    pullPolicy: Never
 EOF
 
 helm upgrade --install spire-identity-exchange helm-charts-hardened/charts/spire-identity-exchange -f test-values.yaml
