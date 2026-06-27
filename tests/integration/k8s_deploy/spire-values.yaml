@@ -51,7 +51,8 @@ spire-server:
           spiffeID: spiffe://example.org/service/spire-identity-exchange
           selectors:
             #FIXME.... this needs to somehow be related to the uid the actual container is running on in its security context...
-            - unix:uid:1000
+            #- unix:uid:1000
+            - unix:path:/ko-app/spire-identity-exchange-server
   nodeAttestor:
       x509POP:
         enabled: true
