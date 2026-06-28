@@ -42,6 +42,7 @@ teardown() {
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
 IMAGE_REF=$(ko build ./cmd/spire-credentialcomposer-identity-exchange/ --platform=linux/amd64 --local)
+CC_IMAGE_REF="${IMAGE_REF}"
 docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
 kind load docker-image ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev --name chart-testing
 
@@ -65,7 +66,9 @@ cd helm-charts-hardened/charts/spire-identity-exchange
 helm dep up
 cd -
 
-timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --wait
+docker create --name temp "${CC_IMAGE_REF}"
+SUM=$(docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange - | sha256sum
+timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
 
 mkdir -p certs
 openssl req -x509 -newkey rsa:2048 \

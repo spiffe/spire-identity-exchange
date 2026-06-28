@@ -53,19 +53,24 @@ spire-server:
             - unix:path:/ko-app/spire-identity-exchange-server
   spireIdentityExchange:
     enabled: true
+  credentialComposer:
+    spireIdentityExchange:
+      image:
+        tag: dev
+        pullPolicy: Never
 # nodeAttestor:
 #   x509POP:
 #     enabled: true
-  customPlugins:
-    credentialComposer:
-      spire-credentialcomposer-identity-exchange:
-        image:
+# customPlugins:
+#   credentialComposer:
+#     spire-credentialcomposer-identity-exchange:
+#       image:
 #         registry: ghcr.io
 #         repository: spiffe/spire-credentialcomposer-identity-exchange
-          tag: dev
-          pullPolicy: Never
+#         tag: dev
+#         pullPolicy: Never
 #       plugin_cmd: /ko-app/spire-credentialcomposer-identity-exchange
-        plugin_checksum: ""
+#       plugin_checksum: ""
 #       plugin_data: {
 #         prefix: "spire-exchange/k8s/example-cluster/spire-identity-exchange"
 #       }
