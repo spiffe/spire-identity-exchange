@@ -73,7 +73,7 @@ openssl req -x509 -newkey rsa:2048 \
     -addext "basicConstraints=critical,CA:TRUE" \
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
-kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
+kubectl create secret tls -n spire-server spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
 
 docker create --name temp "${CC_IMAGE_REF}"
 docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange /tmp/cc
