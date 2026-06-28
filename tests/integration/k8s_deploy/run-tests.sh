@@ -21,7 +21,7 @@ teardown() {
   echo "::group::Status Output"
   kubectl get pods -l job-name=test -o name | xargs kubectl describe || true
   kubectl logs job/test || true
-  kubectl get pods -n spire-server -l component=spire-identity-exchange -n spire-server -o name | xargs kubectl describe || true
+  kubectl get pods -n spire-server -l component=spire-identity-exchange -n spire-server -o name | xargs kubectl describe -n spire-server || true
   kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-identity-exchange || true
   kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-agent || true
   kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-server-attestor || true
