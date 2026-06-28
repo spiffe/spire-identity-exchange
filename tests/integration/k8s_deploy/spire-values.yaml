@@ -38,7 +38,7 @@ spire-server:
           parentID: spiffe://example.org/spire/server
           spiffeID: spiffe://example.org/spire-identity-exchange
           selectors:
-            - x509pop:subject:cn:spire-exchange/spire-identity-exchange
+            - x509pop:subject:cn:spire-exchange/k8s/example-cluster/spire-identity-exchange
         test:
           parentID: spiffe://example.org/spire-identity-exchange
           spiffeID: spiffe://example.org/k8s-psat/test
