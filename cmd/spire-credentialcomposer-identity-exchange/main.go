@@ -4,9 +4,12 @@ import (
 	"context"
 	"path"
 	"strings"
+	"sync"
 
+	"github.com/hashicorp/hcl"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/spire-plugin-sdk/pluginmain"
+	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	credentialcomposerv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/server/credentialcomposer/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,6 +21,8 @@ type PluginConfig struct {
 
 type Plugin struct {
 	credentialcomposerv1.UnsafeCredentialComposerServer
+	configv1.UnsafeConfigServer
+
 	mu                     sync.RWMutex
 	identityExchangePrefix string
 }
@@ -74,8 +79,9 @@ func (p *Plugin) ComposeWorkloadJWTSVID(context.Context, *credentialcomposerv1.C
 }
 
 func main() {
+	p := &Plugin{}
 	pluginmain.Serve(
-		credentialcomposerv1.CredentialComposerPluginServer(&Plugin{}),
-		configv1.ConfigServiceServer(plugin),
+		credentialcomposerv1.CredentialComposerPluginServer(p),
+		configv1.ConfigServiceServer(p),
 	)
 }
