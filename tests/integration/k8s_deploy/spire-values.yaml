@@ -50,14 +50,10 @@ spire-server:
           parentID: spiffe://example.org/spire-identity-exchange
           spiffeID: spiffe://example.org/service/spire-identity-exchange
           selectors:
-            #FIXME.... this needs to somehow be related to the uid the actual container is running on in its security context...
-            #- unix:uid:1000
             - unix:path:/ko-app/spire-identity-exchange-server
   nodeAttestor:
-      x509POP:
-        enabled: true
-        svidPrefix: /spire-exchange/spire-identity-exchange/
-        agentPathTemplate: "/{{ .PluginName }}/spire-identity-exchange/{{ .SVIDPathTrimmed }}"
+    x509POP:
+      enabled: true
   customPlugins:
     credentialComposer:
       spire-credentialcomposer-identity-exchange:
@@ -68,4 +64,6 @@ spire-server:
           pullPolicy: Never
         plugin_cmd: /ko-app/spire-credentialcomposer-identity-exchange
         plugin_checksum: ""
-        plugin_data: {}
+        plugin_data: {
+          prefix: "spire-exchange/k8s/example-cluster/spire-identity-exchange"
+        }
