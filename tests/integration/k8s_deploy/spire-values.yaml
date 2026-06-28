@@ -23,7 +23,7 @@ spire-server:
           workloadSelectorTemplates:
             - "k8s:container-name:spire-identity-exchange"
         agent-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/spire-identity-exchange/{{ .PodMeta.Name }}
+          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/k8s/example-cluster/spire-identity-exchange/{{ .PodMeta.Name }}
           podSelector:
             matchLabels:
               app.kubernetes.io/name: spire-identity-exchange
