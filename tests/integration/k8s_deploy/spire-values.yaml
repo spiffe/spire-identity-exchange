@@ -51,19 +51,21 @@ spire-server:
           spiffeID: spiffe://example.org/service/spire-identity-exchange
           selectors:
             - unix:path:/ko-app/spire-identity-exchange-server
-  nodeAttestor:
-    x509POP:
-      enabled: true
+  spireIdentityExchange:
+    enabled: true
+# nodeAttestor:
+#   x509POP:
+#     enabled: true
   customPlugins:
     credentialComposer:
       spire-credentialcomposer-identity-exchange:
         image:
-          registry: ghcr.io
-          repository: spiffe/spire-credentialcomposer-identity-exchange
+#         registry: ghcr.io
+#         repository: spiffe/spire-credentialcomposer-identity-exchange
           tag: dev
           pullPolicy: Never
-        plugin_cmd: /ko-app/spire-credentialcomposer-identity-exchange
+#       plugin_cmd: /ko-app/spire-credentialcomposer-identity-exchange
         plugin_checksum: ""
-        plugin_data: {
-          prefix: "spire-exchange/k8s/example-cluster/spire-identity-exchange"
-        }
+#       plugin_data: {
+#         prefix: "spire-exchange/k8s/example-cluster/spire-identity-exchange"
+#       }
