@@ -67,7 +67,8 @@ helm dep up
 cd -
 
 docker create --name temp "${CC_IMAGE_REF}"
-SUM=$(docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange - | sha256sum | awk '{print $1}')
+docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange /tmp/cc
+SUM=$(sha256sum /tmp/cc | awk '{print $1}')
 timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
 
 mkdir -p certs
