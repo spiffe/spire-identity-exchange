@@ -66,11 +66,6 @@ cd helm-charts-hardened/charts/spire-identity-exchange
 helm dep up
 cd -
 
-docker create --name temp "${CC_IMAGE_REF}"
-docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange /tmp/cc
-SUM=$(sha256sum /tmp/cc | awk '{print $1}')
-timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
-
 mkdir -p certs
 openssl req -x509 -newkey rsa:2048 \
     -keyout certs/server.key \
@@ -81,32 +76,10 @@ openssl req -x509 -newkey rsa:2048 \
 
 kubectl create secret tls spire-identity-exchange --key=certs/server.key --cert=certs/server.pem
 
-cat > test-values.yaml <<EOF
-tls:
-  externalSecret:
-    enabled: true
-    secretName: spire-identity-exchange
-auth:
-  plugins:
-    - plugin: k8s_psat
-      config:
-        audiences:
-          - spire-identity-exchange
-        allowedServiceAccounts:
-          - default/default
-image:
-  tag: "dev"
-  pullPolicy: Never
-spireServerAttestorSPIFFEWorkloadAPI:
-  image:
-    tag: "dev"
-    pullPolicy: Never
-EOF
-
-helm upgrade --install spire-identity-exchange helm-charts-hardened/charts/spire-identity-exchange -f test-values.yaml
-kubectl wait --for=condition=available --timeout=30s deployment/spire-identity-exchange
-
-sleep 15
+docker create --name temp "${CC_IMAGE_REF}"
+docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange /tmp/cc
+SUM=$(sha256sum /tmp/cc | awk '{print $1}')
+timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
 
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \

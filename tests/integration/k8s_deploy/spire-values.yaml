@@ -1,37 +1,37 @@
 spire-server:
   controllerManager:
     identities:
-      clusterSPIFFEIDs:
-        trustbundle-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/trustbundle-spire-identity-exchange
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: spire-identity-exchange
-          namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-          workloadSelectorTemplates:
-            - "k8s:container-name:spire-server-attestor"
-        service-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/spire-identity-exchange
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: spire-identity-exchange
-          namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-          workloadSelectorTemplates:
-            - "k8s:container-name:spire-identity-exchange"
-        agent-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/k8s/example-cluster/spire-identity-exchange/{{ .PodMeta.Name }}
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: spire-identity-exchange
-          namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-          workloadSelectorTemplates:
-            - "k8s:container-name:spire-agent"
+#     clusterSPIFFEIDs:
+#       trustbundle-spire-identity-exchange:
+#         spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/trustbundle-spire-identity-exchange
+#         podSelector:
+#           matchLabels:
+#             app.kubernetes.io/name: spire-identity-exchange
+#         namespaceSelector:
+#           matchLabels:
+#             kubernetes.io/metadata.name: default
+#         workloadSelectorTemplates:
+#           - "k8s:container-name:spire-server-attestor"
+#       service-spire-identity-exchange:
+#         spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/spire-identity-exchange
+#         podSelector:
+#           matchLabels:
+#             app.kubernetes.io/name: spire-identity-exchange
+#         namespaceSelector:
+#           matchLabels:
+#             kubernetes.io/metadata.name: default
+#         workloadSelectorTemplates:
+#           - "k8s:container-name:spire-identity-exchange"
+#       agent-spire-identity-exchange:
+#         spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/k8s/example-cluster/spire-identity-exchange/{{ .PodMeta.Name }}
+#         podSelector:
+#           matchLabels:
+#             app.kubernetes.io/name: spire-identity-exchange
+#         namespaceSelector:
+#           matchLabels:
+#             kubernetes.io/metadata.name: default
+#         workloadSelectorTemplates:
+#           - "k8s:container-name:spire-agent"
       clusterStaticEntries:
         spire-identity-exchange:
           #FXIME can we template trust domain?
@@ -58,19 +58,25 @@ spire-server:
       image:
         tag: dev
         pullPolicy: Never
-# nodeAttestor:
-#   x509POP:
-#     enabled: true
-# customPlugins:
-#   credentialComposer:
-#     spire-credentialcomposer-identity-exchange:
-#       image:
-#         registry: ghcr.io
-#         repository: spiffe/spire-credentialcomposer-identity-exchange
-#         tag: dev
-#         pullPolicy: Never
-#       plugin_cmd: /ko-app/spire-credentialcomposer-identity-exchange
-#       plugin_checksum: ""
-#       plugin_data: {
-#         prefix: "spire-exchange/k8s/example-cluster/spire-identity-exchange"
-#       }
+
+spire-identity-exchange:
+  enabled: true
+  tls:
+    externalSecret:
+      enabled: true
+      secretName: spire-identity-exchange
+  auth:
+    plugins:
+      - plugin: k8s_psat
+        config:
+          audiences:
+            - spire-identity-exchange
+          allowedServiceAccounts:
+            - default/default
+  image:
+    tag: "dev"
+    pullPolicy: Never
+  spireServerAttestorSPIFFEWorkloadAPI:
+    image:
+      tag: "dev"
+      pullPolicy: Never
