@@ -44,7 +44,7 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     files:
-      - systemd/spire-identity-exchange@.service
+      - systemd/spire-identity-exchange-server@.service
       - config/default.conf
       - config/default.env
       - README.md
