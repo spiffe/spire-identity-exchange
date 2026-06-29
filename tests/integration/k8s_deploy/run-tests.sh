@@ -30,7 +30,7 @@ teardown() {
   kubectl exec -it -n spire-server spire-server-0 -c spire-server -- spire-server entry show 2>&1 || true
   kubectl get pods -A 2>&1 || true
   kubectl get nodes 2>&1 || true
-  EXCHANGE_POD_NAME=$(kubectl get pods -n spire-server -l app.kubernetes.io/name=spire-identity-exchange -o jsonpath='{.items[*].metadata.name}')
+  EXCHANGE_POD_NAME=$(kubectl get pods -n spire-server -l app.kubernetes.io/name=identity-exchange -o jsonpath='{.items[*].metadata.name}')
   kubectl describe pod -n spire-server "${EXCHANGE_POD_NAME}" 2>&1 || true
   kubectl logs -n spire-server "${EXCHANGE_POD_NAME}" 2>&1 || true
   NODE_NAME=$(kubectl get pod "${EXCHANGE_POD_NAME}" -n spire-server -o jsonpath='{.spec.nodeName}')
