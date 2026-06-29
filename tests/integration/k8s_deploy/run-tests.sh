@@ -19,23 +19,23 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  kubectl get pods -l job-name=test -o name | xargs kubectl describe || true
-  kubectl logs job/test || true
-  kubectl get pods -n spire-server -l component=spire-identity-exchange -n spire-server -o name | xargs kubectl describe -n spire-server || true
-  kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-identity-exchange || true
-  kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-agent || true
-  kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-server-attestor || true
-  kubectl describe pod -n spire-server spire-server-0 || true
-  kubectl logs -n spire-server spire-server-0 -c spire-server || true
-  kubectl exec -it -n spire-server spire-server-0 -c spire-server -- spire-server entry show || true
-  kubectl get pods -A || true
-  kubectl get nodes || true
+  kubectl get pods -l job-name=test -o name | xargs kubectl describe 2>&1 || true
+  kubectl logs job/test 2>&1 || true
+  kubectl get pods -n spire-server -l component=spire-identity-exchange -n spire-server -o name | xargs kubectl describe -n spire-server 2>&1 || true
+  kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-identity-exchange 2>&1 || true
+  kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-agent 2>&1 || true
+  kubectl logs -n spire-server deploy/spire-identity-exchange -c spire-server-attestor 2>&1 || true
+  kubectl describe pod -n spire-server spire-server-0 2>&1 || true
+  kubectl logs -n spire-server spire-server-0 -c spire-server 2>&1 || true
+  kubectl exec -it -n spire-server spire-server-0 -c spire-server -- spire-server entry show 2>&1 || true
+  kubectl get pods -A 2>&1 || true
+  kubectl get nodes 2>&1 || true
   EXCHANGE_POD_NAME=$(kubectl get pods -n spire-server -l app.kubernetes.io/name=spire-identity-exchange -o jsonpath='{.items[*].metadata.name}')
-  kubectl describe pod -n spire-server "${EXCHANGE_POD_NAME}"
-  kubectl logs -n spire-server "${EXCHANGE_POD_NAME}"
+  kubectl describe pod -n spire-server "${EXCHANGE_POD_NAME}" 2>&1 || true
+  kubectl logs -n spire-server "${EXCHANGE_POD_NAME}" 2>&1 || true
   NODE_NAME=$(kubectl get pod "${EXCHANGE_POD_NAME}" -n spire-server -o jsonpath='{.spec.nodeName}')
   AGENT_POD=$(kubectl get pods -n spire-system -l app.kubernetes.io/name=agent --field-selector "spec.nodeName=${NODE_NAME}" -o jsonpath='{.items[0].metadata.name}')
-  kubectl logs "${AGENT_POD}" -n spire-system
+  kubectl logs "${AGENT_POD}" -n spire-system 2>&1 || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
