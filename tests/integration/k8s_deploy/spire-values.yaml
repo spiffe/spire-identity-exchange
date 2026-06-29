@@ -1,63 +1,27 @@
 spire-server:
   controllerManager:
     identities:
-#     clusterSPIFFEIDs:
-#       trustbundle-spire-identity-exchange:
-#         spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/trustbundle-spire-identity-exchange
-#         podSelector:
-#           matchLabels:
-#             app.kubernetes.io/name: spire-identity-exchange
-#         namespaceSelector:
-#           matchLabels:
-#             kubernetes.io/metadata.name: default
-#         workloadSelectorTemplates:
-#           - "k8s:container-name:spire-server-attestor"
-#       service-spire-identity-exchange:
-#         spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/spire-identity-exchange
-#         podSelector:
-#           matchLabels:
-#             app.kubernetes.io/name: spire-identity-exchange
-#         namespaceSelector:
-#           matchLabels:
-#             kubernetes.io/metadata.name: default
-#         workloadSelectorTemplates:
-#           - "k8s:container-name:spire-identity-exchange"
-#       agent-spire-identity-exchange:
-#         spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/k8s/example-cluster/spire-identity-exchange/{{ .PodMeta.Name }}
-#         podSelector:
-#           matchLabels:
-#             app.kubernetes.io/name: spire-identity-exchange
-#         namespaceSelector:
-#           matchLabels:
-#             kubernetes.io/metadata.name: default
-#         workloadSelectorTemplates:
-#           - "k8s:container-name:spire-agent"
       clusterStaticEntries:
-        spire-identity-exchange:
-          #FXIME can we template trust domain?
-          parentID: spiffe://example.org/spire/server
-          spiffeID: spiffe://example.org/spire-identity-exchange
-          selectors:
-            - x509pop:subject:cn:spire-exchange/k8s/example-cluster/spire-identity-exchange
+#       spire-identity-exchange:
+#         #FXIME can we template trust domain?
+#         parentID: spiffe://example.org/spire/server
+#         spiffeID: spiffe://example.org/spire-identity-exchange
+#         selectors:
+#           - x509pop:subject:cn:spire-exchange/k8s/example-cluster/spire-identity-exchange
         test:
           parentID: spiffe://example.org/spire-identity-exchange
           spiffeID: spiffe://example.org/k8s-psat/test
           selectors:
             - k8s_psat:namespace:default
             - k8s_psat:service_account_name:default
-        #FIXME Only needed for delegated api. Can remove once switched to the broker api.
-        spire-identity-exchange-agent:
-          parentID: spiffe://example.org/spire-identity-exchange
-          spiffeID: spiffe://example.org/service/spire-identity-exchange
-          selectors:
-            - unix:path:/ko-app/spire-identity-exchange-server
+#       #FIXME Only needed for delegated api. Can remove once switched to the broker api.
+#       spire-identity-exchange-agent:
+#         parentID: spiffe://example.org/spire-identity-exchange
+#         spiffeID: spiffe://example.org/service/spire-identity-exchange
+#         selectors:
+#           - unix:path:/ko-app/spire-identity-exchange-server
   spireIdentityExchange:
     enabled: true
-  credentialComposer:
-    spireIdentityExchange:
-      image:
-        tag: dev
-        pullPolicy: Never
 
 spire-identity-exchange:
   enabled: true
@@ -73,10 +37,4 @@ spire-identity-exchange:
             - spire-identity-exchange
           allowedServiceAccounts:
             - default/default
-  image:
-    tag: "dev"
-    pullPolicy: Never
-  spireServerAttestorSPIFFEWorkloadAPI:
-    image:
-      tag: "dev"
-      pullPolicy: Never
+
