@@ -34,8 +34,8 @@ teardown() {
   kubectl describe pod -n spire-server "${EXCHANGE_POD_NAME}" 2>&1 || true
   kubectl logs -n spire-server "${EXCHANGE_POD_NAME}" 2>&1 || true
   NODE_NAME=$(kubectl get pod "${EXCHANGE_POD_NAME}" -n spire-server -o jsonpath='{.spec.nodeName}')
-  AGENT_POD=$(kubectl get pods -n spire-system -l app.kubernetes.io/name=agent --field-selector "spec.nodeName=${NODE_NAME}" -o jsonpath='{.items[0].metadata.name}')
-  kubectl logs "${AGENT_POD}" -n spire-system 2>&1 || true
+  AGENT_POD=$(kubectl get pods -n spire-server -l app.kubernetes.io/name=agent --field-selector "spec.nodeName=${NODE_NAME}" -o jsonpath='{.items[0].metadata.name}')
+  kubectl logs "${AGENT_POD}" -n spire-server 2>&1 || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
