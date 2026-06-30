@@ -163,9 +163,9 @@ setup_identity_exchange() {
     -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
 
   sudo cp "${SCRIPTPATH}/default.conf" /etc/spire/identity-exchange/
-  sudo cp "${COMMONPATH}/../../../systemd/spire-identity-exchange@.service" /etc/systemd/system
+  sudo cp "${COMMONPATH}/../../../systemd/spire-identity-exchange-server@.service" /etc/systemd/system
   sudo systemctl daemon-reload
-  sudo systemctl restart spire-identity-exchange@main.service
+  sudo systemctl restart spire-identity-exchange-server@main.service
 
   wait_for_spire_identity_exchange
 }
