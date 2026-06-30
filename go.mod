@@ -8,6 +8,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
+	github.com/hashicorp/hcl v1.0.1-vault-5
 	github.com/prometheus/client_golang v1.19.1
 	github.com/spiffe/go-spiffe/v2 v2.6.0
 	github.com/spiffe/spire v1.8.5
