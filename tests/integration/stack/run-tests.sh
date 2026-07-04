@@ -40,6 +40,28 @@ trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 deploy_credential_composer
 deploy_server_attestor
 
+# Setup github mock service. Consider moving this out to a systemd service
+go build -o mock-github-oidc ${SCRIPTPATH}/../../../examples/mock-github-oidc/main.go
+rm -f token
+./mock-github-oidc -token token &
+MAX_WAIT=30
+ELAPSED=0
+while true; do
+  if [ -f token ]; then
+    break
+  fi
+  if [ $ELAPSED -ge $MAX_WAIT ]; then
+    echo "Timed out after ${MAX_WAIT} seconds."
+    exit 1
+  fi
+  sleep 1
+  ((ELAPSED++)) || true
+done
+set +x
+export MOCKHUB_TOKEN="$(cat token)"
+echo "::add-mask::${MOCKHUB_TOKEN}"
+set -x
+
 sudo mkdir -p /etc/spire/server/main/manifests
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
@@ -80,10 +102,11 @@ sudo ls /etc/kubernetes/pki/
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Tests
+kubectl create secret generic test --from-literal="token=${MOCKHUB_TOKEN}"
 
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 kubectl logs job/test | base64 -d | tar -xvf -
-openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/k8s-psat/test'
+openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/test'

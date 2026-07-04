@@ -19,11 +19,11 @@ fi
 teardown() {
   echo ---------------------------
   echo "::group::Status Output"
-  sudo journalctl -u spire-identity-exchange@main.service || true
+  sudo journalctl -u spire-identity-exchange-server@main.service || true
   sudo journalctl -u k8s-spiffe-oidc-discovery-provider.service || true
   sudo systemctl status k8s-spiffe-oidc-discovery-provider.service 2>&1 || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
-  sudo systemctl status spire-identity-exchange@main.service -n 50 2>&1 || true
+  sudo systemctl status spire-identity-exchange-server@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main -n 50 2>&1 || true
   sudo spire-server entry show 2>&1 || true
   sudo systemctl status spire-controller-manager@main 2>&1 || true

@@ -4,16 +4,41 @@ import (
 	"context"
 	"path"
 	"strings"
+	"sync"
 
+	"github.com/hashicorp/hcl"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/spire-plugin-sdk/pluginmain"
+	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	credentialcomposerv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/server/credentialcomposer/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
+type PluginConfig struct {
+	IdentityExchangePrefix string `hcl:"prefix"`
+}
+
 type Plugin struct {
 	credentialcomposerv1.UnsafeCredentialComposerServer
+	configv1.UnsafeConfigServer
+
+	mu                     sync.RWMutex
+	identityExchangePrefix string
+}
+
+func (p *Plugin) Configure(ctx context.Context, req *configv1.ConfigureRequest) (*configv1.ConfigureResponse, error) {
+	config := &PluginConfig{
+		IdentityExchangePrefix: "spire-exchange/spire-identity-exchange",
+	}
+	if err := hcl.Decode(config, req.HclConfiguration); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to decode configuration: %v", err)
+	}
+	prefix := path.Clean(strings.Trim(config.IdentityExchangePrefix, "/"))
+	p.mu.Lock()
+	p.identityExchangePrefix = prefix
+	p.mu.Unlock()
+	return &configv1.ConfigureResponse{}, nil
 }
 
 func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcomposerv1.ComposeWorkloadX509SVIDRequest) (*credentialcomposerv1.ComposeWorkloadX509SVIDResponse, error) {
@@ -29,7 +54,10 @@ func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcom
 	cleanedPath := path.Clean(strings.TrimPrefix(id.Path(), "/"))
 	dir, _ := path.Split(cleanedPath)
 	dir = strings.TrimSuffix(dir, "/")
-	if strings.HasPrefix(cleanedPath, "spire-exchange/spire-identity-exchange") {
+	p.mu.RLock()
+	prefix := p.identityExchangePrefix
+	p.mu.RUnlock()
+	if strings.HasPrefix(cleanedPath, prefix) {
 		attrs.Subject.CommonName = dir
 	}
 	return &credentialcomposerv1.ComposeWorkloadX509SVIDResponse{
@@ -51,7 +79,9 @@ func (p *Plugin) ComposeWorkloadJWTSVID(context.Context, *credentialcomposerv1.C
 }
 
 func main() {
+	p := &Plugin{}
 	pluginmain.Serve(
-		credentialcomposerv1.CredentialComposerPluginServer(&Plugin{}),
+		credentialcomposerv1.CredentialComposerPluginServer(p),
+		configv1.ConfigServiceServer(p),
 	)
 }

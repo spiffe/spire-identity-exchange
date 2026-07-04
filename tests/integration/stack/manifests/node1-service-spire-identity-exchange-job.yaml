@@ -1,9 +1,9 @@
 apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterStaticEntry
 metadata:
-  name: node1-service-spire-identity-exchange
+  name: node1-service-spire-identity-exchange-job
 spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/service/spire-identity-exchange
   selectors:
-  - systemd:id:spire-identity-exchange-server@main.service
+  - systemd:id:spire-identity-exchange-job.service

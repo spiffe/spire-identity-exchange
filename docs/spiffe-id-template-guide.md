@@ -1,5 +1,7 @@
 # SPIFFE ID Template Guide
 
+> **Legacy mode notice:** This guide applies to the legacy server-based workflow (compiled with `-tags legacy`). In the default (agent-based) workflow, SPIFFE IDs are determined by SPIRE registration entries matching selectors — not by templates. See [docs/plugin_github.md](plugin_github.md) and related plugin docs for the selector-based approach.
+
 A SPIFFE ID is a workload identity. The `spiffeIdTemplate` you configure in spire-identity-exchange determines
 what identity a workload receives — and therefore what resources it can access. A template that
 is too broad issues the same SVID to multiple distinct workloads, which is a privilege escalation
