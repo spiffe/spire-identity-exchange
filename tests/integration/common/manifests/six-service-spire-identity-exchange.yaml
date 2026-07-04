@@ -7,4 +7,4 @@ spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/spire-identity-exchange
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/service/spire-identity-exchange
   selectors:
-  - systemd:id:spire-identity-exchange@main.service
+  - systemd:id:spire-identity-exchange-server@main.service
