@@ -59,7 +59,6 @@ helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spif
 #timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
 git clone https://github.com/spiffe/helm-charts-hardened
 cd helm-charts-hardened/charts/spire
-git checkout spire-identity-exchange
 helm dep up
 cd -
 cd helm-charts-hardened/charts/spire-identity-exchange
