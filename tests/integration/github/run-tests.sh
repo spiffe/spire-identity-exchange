@@ -63,13 +63,6 @@ sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 # Common spire setup bits
 setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
-# allowedRepositories in default.conf expands ${GITHUB_REPOSITORY} so this test
-# passes on forks too, not just spiffe/spire-identity-exchange. The service reads
-# it via EnvironmentFile=-/etc/spire/identity-exchange/%i/env, so it must be
-# written before the service (re)starts.
-sudo mkdir -p /etc/spire/identity-exchange
-sudo /bin/bash -c "echo GITHUB_REPOSITORY=${GITHUB_REPOSITORY} > /etc/spire/identity-exchange/main/env"
-
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Tests
