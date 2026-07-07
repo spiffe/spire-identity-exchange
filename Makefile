@@ -9,7 +9,7 @@ APPS := \
 	spire-credentialcomposer-identity-exchange:cmd/spire-credentialcomposer-identity-exchange:linux/amd64,linux/arm64 \
 	spire-server-attestor-spiffe-workload-api:cmd/spire-server-attestor-spiffe-workload-api:linux/amd64,linux/arm64 \
 	spire-identity-exchange-server:cmd/spire-identity-exchange-server:linux/amd64,linux/arm64 \
-        k8s-image-cred-spire-identity-exchange:cmd/k8s-image-cred-spire-identity-exchange:linux/amd64,linux/arm64
+	k8s-image-cred-spire-identity-exchange:cmd/k8s-image-cred-spire-identity-exchange:linux/amd64,linux/arm64
 
 # --- Build Logic ---
 
