@@ -94,5 +94,22 @@ IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
-kubectl logs job/test | base64 -d | tar -xvf -
-openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/k8s-psat/test'
+K8STOKEN=$(kubectl logs job/test | tr -d '[:space:]')
+FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/github-actions/jwt \
+  -H "Authorization: Bearer k8s_psat=${K8STOKEN}:$SPIFFETOEN=${SPIFFETOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"audiences": ["zot"]}')
+
+AUTH_STR=$(echo -n "zot:$FINALTOKEN" | base64 -w 0)
+
+mkdir -p crane-config
+cat <<EOF > crane-config/config.json
+{
+  "auths": {
+    "zot.example.org:5000": {
+      "registryToken": "$FINALTOKEN"
+    }
+  }
+}
+EOF
+cat crane-config/config.json
