@@ -52,7 +52,8 @@ cd zot
 make binary-minimal
 sudo cp -a bin/zot-linux-amd64-minimal /usr/bin/zot
 cd ..
-zot --help
+spire-server bundle show -format pem > /tmp/ca.pem
+zot serve -c "${SCRIPT_PATH}/zot.conf" &
 
 # K8s specific bits
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
