@@ -50,7 +50,7 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 git clone https://github.com/project-zot/zot
 cd zot
 make binary-minimal
-cp -a bin/zot-linux-amd64-minimal ../zot
+sudo cp -a bin/zot-linux-amd64-minimal /usr/bin/zot
 cd ..
 ./zot --help
 
