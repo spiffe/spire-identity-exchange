@@ -52,7 +52,7 @@ cd zot
 make binary-minimal
 sudo cp -a bin/zot-linux-amd64-minimal /usr/bin/zot
 cd ..
-spire-server bundle show -format pem > /tmp/ca.pem
+sudo spire-server bundle show -format pem > /tmp/ca.pem
 zot serve -c "${SCRIPT_PATH}/zot.conf" &
 
 # K8s specific bits
