@@ -46,6 +46,14 @@ sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 # Common spire setup bits
 setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
+# Zot bits
+git clone https://github.com/project-zot/zot
+cd zot
+make binary-minimal
+cp -a bin/zot-linux-amd64-minimal ../zot
+cd ..
+./zot --help
+
 # K8s specific bits
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml

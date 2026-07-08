@@ -16,4 +16,36 @@ nodes:
         containerPath: /etc/hosts
         readOnly: true
   - role: worker
+    extraMounts:
+      - hostPath: ./k8s-image-cred-spire-identity-exchange
+        containerPath: /credential-plugins/k8s-image-cred-spire-identity-exchange
+      - hostPath: ./tests/integration/common/credential-provider-config.yaml
+        containerPath: /etc/kubernetes/credential-provider-config.yaml
+      - hostPath: /etc/kubernetes/hosts
+        containerPath: /etc/hosts
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta3
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            image-credential-provider-bin-dir: /credential-plugins
   - role: worker
+    extraMounts:
+      - hostPath: ./k8s-image-cred-spire-identity-exchange
+        containerPath: /credential-plugins/k8s-image-cred-spire-identity-exchange
+      - hostPath: ./tests/integration/common/credential-provider-config.yaml
+        containerPath: /etc/kubernetes/credential-provider-config.yaml
+      - hostPath: /etc/kubernetes/hosts
+        containerPath: /etc/hosts
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta3
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            image-credential-provider-bin-dir: /credential-plugins

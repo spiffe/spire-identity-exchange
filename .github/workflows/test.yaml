@@ -30,6 +30,11 @@ jobs:
         with:
           name: spire-identity-exchange-server
           path: build/linux/amd64/spire-identity-exchange-server
+      - name: Upload the file as an artifact k8s
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-image-cred-spire-identity-exchange
+          path: build/linux/amd64/k8s-image-cred-spire-identity-exchange
 
   basic-tests:
     name: Basic Tests
@@ -91,14 +96,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: spire-identity-exchange-server
+      - name: Download the artifact k8s
+        uses: actions/download-artifact@v4
+        with:
+          name: k8s-image-cred-spire-identity-exchange
       - name: Prep kind environment
         run: |
           sudo mkdir -p /etc/kubernetes/pki
           sudo /bin/bash -c '(echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml'
           sudo cp -a tests/integration/common/hosts /etc/kubernetes/hosts
           IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-          echo "$IP k8ssodp.example.org" >> /etc/kubernetes/hosts
-          sudo sh -c "echo '$IP k8ssodp.example.org' >> /etc/hosts"
+          echo "$IP k8ssodp.example.org zot.example.org" >> /etc/kubernetes/hosts
+          sudo sh -c "echo '$IP k8ssodp.example.org zot.example.org' >> /etc/hosts"
       - name: Setup KO
         uses: ko-build/setup-ko@v0.8
       - name: Create kind cluster
