@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -287,6 +288,7 @@ func runSpireIdentityExchangeServer(
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
 		purposeResolver := validator.NewPurposeResolver(validator.PurposeMode(cfg.PurposeMode))
 		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, delegatedClient, purposeResolver, logger))
+		mux.HandleFunc("POST /api/v1/svid/{stack}/jwt", handleGetJWTSVID(cfg, delegatedClient, purposeResolver, logger))
 
 		httpServer = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
@@ -527,6 +529,120 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 		default:
 			logger.Error("response encode failed")
 			http.Error(w, "Invalid format", http.StatusBadRequest)
+		}
+	}
+}
+
+// jwtSVIDRequest is the JSON body expected by POST /api/v1/svid/{stack}/jwt.
+type jwtSVIDRequest struct {
+	Audiences []string `json:"audiences"`
+}
+
+// jwtSVIDResponse is the JSON body returned by POST /api/v1/svid/{stack}/jwt.
+type jwtSVIDResponse struct {
+	SpiffeID  string `json:"spiffeId"`
+	Token     string `json:"token"`
+	ExpiresAt int64  `json:"expiresAt"` // Unix seconds
+}
+
+// handleGetJWTSVID validates the bearer token, derives selectors via the
+// stack's SelectorGenerator, fetches a JWT-SVID via the delegated client for
+// the requested audiences, and returns it as JSON.
+//
+// Error mapping mirrors handleGetX509SVID:
+//   - missing/malformed Authorization header  → 401
+//   - unknown {stack} path-param              → 400
+//   - malformed body / empty audiences        → 400
+//   - token rejected by validator              → 401
+//   - validator returned no selectors          → 400
+//   - delegated client found no matching entry → 404
+//   - delegated client unavailable / denied    → 503
+//   - any other error                          → 500
+func handleGetJWTSVID(cfg *config.SpireIdentityExchangeConfig, dc *delegated.Client, pr *validator.PurposeResolver, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, err := extractBearerToken(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		stack := r.PathValue("stack")
+		if stack == "" {
+			http.Error(w, "Stack parameter is missing", http.StatusBadRequest)
+			return
+		}
+		v, exists := cfg.Auth.LoadedStacks[stack]
+		if !exists {
+			http.Error(w, fmt.Sprintf("Unknown stack: %q", stack), http.StatusBadRequest)
+			return
+		}
+
+		var req jwtSVIDRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "Malformed request body", http.StatusBadRequest)
+			return
+		}
+		if len(req.Audiences) == 0 {
+			http.Error(w, "audiences must be non-empty", http.StatusBadRequest)
+			return
+		}
+
+		claims, err := v.Validate(r.Context(), token, pr.JWT(req.Audiences))
+		if err != nil {
+			logger.Info("token validation failed", zap.String("stack", stack), zap.Error(err))
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		selectors := v.GenerateSelectors(claims)
+		if len(selectors) == 0 {
+			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
+			return
+		}
+
+		svid, err := dc.FetchJWTSVID(r.Context(), selectors, req.Audiences)
+		switch {
+		case errors.Is(err, delegated.ErrNoMatchingEntry):
+			logger.Info("no entry matched selectors",
+				zap.String("stack", stack),
+				zap.Int("selector_count", len(selectors)),
+				zap.Any("selectors", debugSelectors(selectors)))
+			http.Error(w, "No registration entry matches the validated identity", http.StatusNotFound)
+			return
+		case errors.Is(err, delegated.ErrPermissionDenied):
+			logger.Error("delegated API rejected this exchange — check authorized_delegates", zap.Error(err))
+			http.Error(w, "Delegated issuance unavailable", http.StatusServiceUnavailable)
+			return
+		case errors.Is(err, delegated.ErrUnavailable):
+			logger.Error("delegated API unavailable", zap.Error(err))
+			http.Error(w, "Delegated issuance unavailable", http.StatusServiceUnavailable)
+			return
+		case errors.Is(err, delegated.ErrInvalidArgument):
+			// SIE built the selectors from claims it just validated, so a
+			// rejection here is a server-side bug, not a client request error.
+			logger.Error("delegated API rejected selectors as invalid",
+				zap.String("stack", stack),
+				zap.Any("selectors", debugSelectors(selectors)),
+				zap.Error(err))
+			http.Error(w, "Issuance failed", http.StatusInternalServerError)
+			return
+		case err != nil:
+			logger.Error("delegated svid fetch failed", zap.Error(err))
+			http.Error(w, "Issuance failed", http.StatusInternalServerError)
+			return
+		}
+
+		resp := jwtSVIDResponse{
+			SpiffeID:  svid.SpiffeID,
+			Token:     svid.Token,
+			ExpiresAt: svid.ExpiresAt.Unix(),
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+			logger.Error("response encode failed", zap.Error(err))
+			http.Error(w, "encoding failed", http.StatusInternalServerError)
 		}
 	}
 }
