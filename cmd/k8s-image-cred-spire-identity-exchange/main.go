@@ -1,32 +1,47 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/svid/jwtsvid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubelet/pkg/apis/credentialprovider/v1"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 )
+
+type jwtSVIDRequest struct {
+	Audiences []string `json:"audiences"`
+}
+
+type jwtSVIDResponse struct {
+	SpiffeID  string `json:"spiffeId"`
+	Token     string `json:"token"`
+	ExpiresAt int64  `json:"expiresAt"` // Unix seconds
+}
 
 func main() {
 	usernameFlag := flag.String("username", "", "Registry username (Required)")
 	modeFlag := flag.String("mode", "spire-identity-exchange", "Operation mode: spire-identity-exchange, passthrough-k8s, or passthrough-spiffe")
 	urlFlag := flag.String("url", "", "URL (Required if mode is spire-identity-exchange)")
-	registryAudienceFlag := flag.String("registry-audience", "", "Registry audience (Required)")
+	stackFlag := flag.String("stack", "", "Stack (Required if SPIFFE workload API is enabled)")
+	registryAudienceFlag := flag.String("registry-audience", "", "Registry audience (Required if SPIFFE workload API is enabled")
 	spiffeAudienceFlag := flag.String("spiffe-audience", "", "SPIFFE audience (Required if SPIFFE workload API is enabled)")
 	disableSpiffeFlag := flag.Bool("disable-spiffe-workload-api", false, "Disable SPIFFE workload API")
 	timeoutFlag := flag.Duration("timeout", 0, "Global timeout for the entire process (e.g., 5s, 30s). 0 means no timeout.")
 	spiffeIDFlag := flag.String("spiffe-id", "", "SPIFFE ID to validate against the identity exchange.")
-
-	_ = spiffeIDFlag
+	k8sPSATFlag := flag.String("k8s-psat", "k8s_psat", "Name of the k8s psat plugin in the stack")
+	spiffeFlag := flag.String("spiffe", "spiffe", "Name of the spiffe plugin in the stack")
 
 	flag.Parse()
 
@@ -51,17 +66,31 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: --username flag is required\n")
 		os.Exit(1)
 	}
+
 	if *modeFlag == "passthrough-k8s" {
 		*disableSpiffeFlag = true
 	}
-	if *registryAudienceFlag == "" && *modeFlag == "spiffe-identity-exchange" {
-		fmt.Fprintf(os.Stderr, "error: --registry-audience flag is required\n")
+
+	if *modeFlag == "passthrough-spiffe" && *disableSpiffeFlag {
+		fmt.Fprintf(os.Stderr, "error: cannot disable the SPIFFE workload API when using mode passthrough-spiffe\n")
 		os.Exit(1)
 	}
-	if *modeFlag == "spire-identity-exchange" && *urlFlag == "" {
-		fmt.Fprintf(os.Stderr, "error: --url flag is required when mode is spire-identity-exchange\n")
-		os.Exit(1)
+
+	if *modeFlag == "spire-identity-exchange" {
+		if *registryAudienceFlag == "" {
+			fmt.Fprintf(os.Stderr, "error: --registry-audience flag is required when mode is spire-identity-exchange\n")
+			os.Exit(1)
+		}
+		if *urlFlag == "" {
+			fmt.Fprintf(os.Stderr, "error: --url flag is required when mode is spire-identity-exchange\n")
+			os.Exit(1)
+		}
+		if *stackFlag == "" {
+			fmt.Fprintf(os.Stderr, "error: --stack flag is required when mode is spire-identity-exchange\n")
+			os.Exit(1)
+		}
 	}
+
 	if !*disableSpiffeFlag && *spiffeAudienceFlag == "" {
 		fmt.Fprintf(os.Stderr, "error: --spiffe-audience flag is required unless --disable-spiffe-workload-api is set\n")
 		os.Exit(1)
@@ -84,9 +113,13 @@ func main() {
 	}
 
 	saToken := request.ServiceAccountToken
-	if saToken == "" && *modeFlag != "passthrough-spiffe" {
-		fmt.Fprintf(os.Stderr, "warning: no service account token provided in request\n")
-		os.Exit(1)
+	switch *modeFlag {
+	case "passthrough-k8s", "spire-identity-exchange":
+		if saToken == "" {
+			fmt.Fprintf(os.Stderr, "error: service account token is required for mode %q\n", *modeFlag)
+			os.Exit(1)
+		}
+	case "passthrough-spiffe":
 	}
 
 	var token string
@@ -97,7 +130,7 @@ func main() {
 		token = spiffeToken
 	default:
 		var err error
-		_, token, err = exchangeTokenForRegistryCreds(saToken, request.Image)
+		token, err = exchangeTokenForRegistryCreds(*urlFlag, *stackFlag, saToken, spiffeToken, *registryAudienceFlag, *k8sPSATFlag, *spiffeFlag, *spiffeIDFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to exchange token for registry credentials: %v\n", err)
 			os.Exit(1)
@@ -185,12 +218,76 @@ func getRemainingCacheDuration(jwtToken string) (*metav1.Duration, error) {
 	return &metav1.Duration{Duration: remaining}, nil
 }
 
-func exchangeTokenForRegistryCreds(token string, image string) (string, string, error) {
-	if token == "" {
-		return "", "", fmt.Errorf("empty service account token")
+func exchangeTokenForRegistryCreds(baseURL, stack, saToken, spiffeToken, registryAudience, k8sPSATFlag, spiffeFlag, expectedSpiffeID string) (string, error) {
+	if saToken == "" {
+		return "", fmt.Errorf("empty service account token")
 	}
 
-	//FIXME call spire-identity-exchange and swap k8s token and optionally local spiffe token for registry token
+	bearerToken := saToken
+	if spiffeToken != "" {
+		bearerToken = fmt.Sprintf("%s=%s:%s=%s", k8sPSATFlag, saToken, spiffeFlag, spiffeToken)
+	}
 
-	return "oauth2accesstoken", "your-dynamically-exchanged-password-or-token", nil
+	url := fmt.Sprintf("%s/api/v1/svid/%s/jwt", strings.TrimSuffix(baseURL, "/"), stack)
+
+	reqBody := jwtSVIDRequest{
+		Audiences: []string{registryAudience},
+	}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	var client *http.Client
+	if expectedSpiffeID != "" {
+		ctx := context.Background()
+
+		source, err := workloadapi.NewBundleSource(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to create BundleSource: %w", err)
+		}
+		defer source.Close()
+
+		id, err := spiffeid.FromString(expectedSpiffeID)
+		if err != nil {
+			return "", fmt.Errorf("invalid spiffe-id: %w", err)
+		}
+
+		tlsConfig := tlsconfig.TLSClientConfig(source, tlsconfig.AuthorizeID(id))
+
+		client = &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+			},
+		}
+	} else {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("server returned non-200 status: %d", resp.StatusCode)
+	}
+
+	var result jwtSVIDResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return result.Token, nil
 }
+
