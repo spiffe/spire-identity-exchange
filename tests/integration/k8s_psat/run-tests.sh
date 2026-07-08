@@ -52,7 +52,7 @@ cd zot
 make binary-minimal
 sudo cp -a bin/zot-linux-amd64-minimal /usr/bin/zot
 cd ..
-./zot --help
+zot --help
 
 # K8s specific bits
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
