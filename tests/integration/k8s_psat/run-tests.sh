@@ -121,5 +121,6 @@ EOF
 cat crane-config/config.json
 docker pull docker.io/library/busybox:latest
 docker tag docker.io/library/busybox:latest zot.example.org:5000/test/busybox:latest
-DOCKER_CONFIG=./crane-config ~/go/bin/crane copy daemon://zot.example.org:5000/test/busybox:latest zot.example.org:5000/test/busybox:latest
+docker save zot.example.org:5000/test/busybox:latest -o busybox.tar
+DOCKER_CONFIG=./crane-config ~/go/bin/crane push busybox.tar zot.example.org:5000/test/busybox:latest
 
