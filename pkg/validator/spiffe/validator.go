@@ -4,7 +4,6 @@ package spiffe
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -120,7 +119,7 @@ func NewValidator(cfg Config) (*Validator, error) {
         socketAddr := "unix://" + strings.TrimPrefix(cfg.AgentWorkloadSocketPath, "unix://")
         source, err := workloadapi.NewX509Source(
             context.Background(),
-            workloadapi.WithClientOptions(workloadapi.WithAddress(socketAddr)),
+            workloadapi.WithClientOptions(workloadapi.WithAddr(socketAddr)),
         )
         if err != nil {
             return nil, fmt.Errorf("failed to create SPIFFE X509 source: %w", err)
