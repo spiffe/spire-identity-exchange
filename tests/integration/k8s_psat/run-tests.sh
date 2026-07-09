@@ -90,7 +90,7 @@ setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Tests
 
-SPIFFE_TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job spire-agent api fetch jwt -audience spire-identity-exchange -output json | jq -r '.[0].svids[0].svid')
+SPIFFE_TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=zot-job spire-agent api fetch jwt -audience spire-identity-exchange -output json | jq -r '.[0].svids[0].svid')
 
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"

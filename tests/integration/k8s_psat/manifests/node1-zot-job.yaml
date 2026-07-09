@@ -4,6 +4,6 @@ metadata:
   name: node1-service-spire-identity-exchange-job
 spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
-  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/service/spire-identity-exchange
+  spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/somejob
   selectors:
-  - systemd:id:spire-identity-exchange-job.service
+  - systemd:id:zot-job.service
