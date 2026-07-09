@@ -13,7 +13,7 @@ http:
       oidc:
         # Dont do this in production. This is just for testing for now. Better to come later.
         - issuer: https://k8ssodp.example.org:8181
-          skipIssuerCheck: true
+          skipIssuerVerification: true
           audiences:
             - zot
             - https://zot.example.org
