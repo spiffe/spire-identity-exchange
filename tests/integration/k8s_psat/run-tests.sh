@@ -90,13 +90,15 @@ setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 # Tests
 
+SPIFFE_TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job spire-agent api fetch jwt -audience spire-identity-exchange -output json | jq -r '.[0].svids[0].svid')
+
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
-K8STOKEN=$(kubectl logs job/test | tr -d '[:space:]')
-FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/github-actions/jwt \
-  -H "Authorization: Bearer k8s_psat=${K8STOKEN}:$SPIFFETOEN=${SPIFFETOKEN}" \
+K8S_TOKEN=$(kubectl logs job/test | tr -d '[:space:]')
+FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/zot/jwt \
+  -H "Authorization: Bearer k8s_psat=${K8S_TOKEN}:spiffe==${SPIFFE_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"audiences": ["zot"]}')
 
@@ -107,7 +109,7 @@ cat <<EOF > crane-config/config.json
 {
   "auths": {
     "zot.example.org:5000": {
-      "registryToken": "$FINALTOKEN"
+      "registryToken": "${AUTH_STR}"
     }
   }
 }
