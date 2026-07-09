@@ -98,9 +98,11 @@ kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 K8S_TOKEN=$(kubectl logs job/test | tr -d '[:space:]')
 #FIXME
+echo foo
 echo "${SPIFFE_TOKEN} ${K8S_TOKEN}" | base64
+echo bar
 FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/zot/jwt \
-  -H "Authorization: Bearer k8s_psat=${K8S_TOKEN}:spiffe==${SPIFFE_TOKEN}" \
+  -H "Authorization: Bearer k8s_psat=${K8S_TOKEN}:spiffe=${SPIFFE_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"audiences": ["zot"]}')
 
@@ -117,3 +119,8 @@ cat <<EOF > crane-config/config.json
 }
 EOF
 cat crane-config/config.json
+docker pull docker.io/library/busybox:latest
+docker tag docker.io/library/busybox:latest zot.example.org:5000/test/busybox:latest
+docker save --format oci-dir -o image-oci zot.example.org:5000/test/busybox:latest
+DOCKER_CONFIG=./crane-config crane push image-oci/ zot.example.org:5000/test/busybox:latest
+
