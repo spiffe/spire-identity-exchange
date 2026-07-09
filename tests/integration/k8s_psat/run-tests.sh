@@ -97,6 +97,8 @@ sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 K8S_TOKEN=$(kubectl logs job/test | tr -d '[:space:]')
+#FIXME
+echo "${SPIFFE_TOKEN} ${K8S_TOKEN}" | base64
 FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/zot/jwt \
   -H "Authorization: Bearer k8s_psat=${K8S_TOKEN}:spiffe==${SPIFFE_TOKEN}" \
   -H "Content-Type: application/json" \
