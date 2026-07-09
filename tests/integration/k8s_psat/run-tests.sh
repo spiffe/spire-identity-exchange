@@ -60,7 +60,7 @@ sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
-sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.com",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
+sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
