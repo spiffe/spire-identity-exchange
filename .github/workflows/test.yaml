@@ -106,8 +106,8 @@ jobs:
           sudo /bin/bash -c '(echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml'
           sudo cp -a tests/integration/common/hosts /etc/kubernetes/hosts
           IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-          echo "$IP k8ssodp.example.org zot.example.org" >> /etc/kubernetes/hosts
-          sudo sh -c "echo '$IP k8ssodp.example.org zot.example.org' >> /etc/hosts"
+          echo "$IP k8ssodp.example.org zot.example.org oidc-discovery-provider.example.org" >> /etc/kubernetes/hosts
+          sudo sh -c "echo '$IP k8ssodp.example.org zot.example.org oidc-discovery-provider.example.org ' >> /etc/hosts"
       - name: Setup KO
         uses: ko-build/setup-ko@v0.8
       - name: Install Crane

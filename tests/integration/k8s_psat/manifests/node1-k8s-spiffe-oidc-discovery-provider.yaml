@@ -7,5 +7,6 @@ spec:
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/k8s-spiffe-oidc-discovery-provider
   dnsNames:
     -  k8ssodp.${SPIFFE_TRUST_DOMAIN} 
+    -  oidc-discovery-provider.${SPIFFE_TRUST_DOMAIN} 
   selectors:
   - systemd:id:k8s-spiffe-oidc-discovery-provider.service
