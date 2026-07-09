@@ -121,6 +121,5 @@ EOF
 cat crane-config/config.json
 docker pull docker.io/library/busybox:latest
 docker tag docker.io/library/busybox:latest zot.example.org:5000/test/busybox:latest
-docker save --format oci-dir -o image-oci zot.example.org:5000/test/busybox:latest
-DOCKER_CONFIG=./crane-config crane push image-oci/ zot.example.org:5000/test/busybox:latest
+DOCKER_CONFIG=./crane-config crane push daemon:zot.example.org:5000/test/busybox:latest zot.example.org:5000/test/busybox:latest
 
