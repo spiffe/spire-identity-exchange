@@ -8,7 +8,7 @@ http:
   realm: zot-basic
   auth:
     bearer:
-      realm: zot-oidc
+      realm: http://zot.example.org:5000/v2/auth
       service: zot-service
       oidc:
         # Dont do this in production. This is just for testing for now. Better to come later.

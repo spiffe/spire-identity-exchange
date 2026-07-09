@@ -24,6 +24,10 @@ nodes:
       - hostPath: /etc/kubernetes/hosts
         containerPath: /etc/hosts
         readOnly: true
+    containerdConfigPatches:
+      - |
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."zot.example.org:5000"]
+          endpoint = ["http://zot.example.org:5000"]
     kubeadmConfigPatches:
       - |
         apiVersion: kubeadm.k8s.io/v1beta3
@@ -49,3 +53,7 @@ nodes:
           kubeletExtraArgs:
             image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
             image-credential-provider-bin-dir: /credential-plugins
+    containerdConfigPatches:
+      - |
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."zot.example.org:5000"]
+          endpoint = ["http://zot.example.org:5000"]
