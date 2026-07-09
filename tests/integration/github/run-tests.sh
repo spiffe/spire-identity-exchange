@@ -156,3 +156,11 @@ ssh-add -L
 ssh -T -n -v mockhub@test.example.org hostname
 
 ansible-playbook -i "${SCRIPTPATH}/ansible/inventory.ini" "${SCRIPTPATH}/ansible/hello.yml"
+
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+
+if [ -n "$GITHUB_TOKEN" ]; then
+	curl -f -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d '{"audiences": ["foo"]}' -X POST https://localhost:8444/api/v1/svid/github/jwt --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+fi
+
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -H "Content-Type: application/json" -d '{"audiences": ["bar"]}' -X POST https://localhost:8444/api/v1/svid/mockhub/jwt --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
