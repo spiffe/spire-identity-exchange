@@ -33,7 +33,7 @@ teardown() {
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@main-six 2>&1 || true
-  sudo cat /etc/kubernetes/pki/auth-config.yaml
+  kubectl logs job/test2 || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
@@ -140,3 +140,6 @@ docker push zot.example.org:5000/test/busybox:latest
 #docker save zot.example.org:5000/test/busybox:latest -o busybox.tar
 #DOCKER_CONFIG=./crane-config ~/go/bin/crane push busybox.tar zot.example.org:5000/test/busybox:latest --insecure --format=oci
 
+kubectl apply -f "${SCRIPTPATH}/test2-job.yaml"
+kubectl wait --for=condition=complete --timeout=60s job/test2
+kubectl logs job/test2

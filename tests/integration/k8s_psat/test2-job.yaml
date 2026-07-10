@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test2
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: main
+        image: zot.example.org:5000
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo Hello there
