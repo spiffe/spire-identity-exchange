@@ -33,6 +33,7 @@ teardown() {
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@main-six 2>&1 || true
+  kubectl get pods -l job-name=test2 -o name | xargs kubectl describe || true
   kubectl logs job/test2 || true
 }
 
