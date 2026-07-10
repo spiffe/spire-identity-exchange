@@ -63,11 +63,11 @@ sudo zot serve "${SCRIPTPATH}/zot.yaml" &
 
 # K8s specific bits
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
-sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
-sudo sed -i 's@"jwt_issuer".*@"jwt_issuer": "https://oidc-discovery-provider.example.org:8181",@' /etc/spiffe/k8s-oidc-discovery-provider.conf
-sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
+sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/auth-config.yaml"
+sed -i 's@"jwt_issuer".*@"jwt_issuer": "https://oidc-discovery-provider.example.org:8181",@' "${SCRIPTPATH}/auth-config.yaml"
+sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' "${SCRIPTPATH}/auth-config.yaml"
+sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
