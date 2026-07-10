@@ -62,6 +62,7 @@ sudo zot serve "${SCRIPTPATH}/zot.yaml" &
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
+sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
@@ -90,6 +91,9 @@ sudo ls /etc/kubernetes/pki/
 
 # Setup spire-identity-exchange
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
+
+#serve out fakeish oidc discovery provider
+sudo socat TCP-LISTEN:443,fork,reuseaddr TCP:127.0.0.1:8181 &
 
 # Tests
 

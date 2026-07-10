@@ -8,8 +8,8 @@ http:
   realm: zot-basic
   auth:
     bearer:
-      realm: http://zot.example.org:5000/v2/auth
-      service: zot-service
+      realm: http://zot.example.org:5000/zot/auth/token
+      service: http://zot.example.org:5000
       oidc:
         # Dont do this in production. This is just for testing for now. Better to come later.
         - issuer: https://k8ssodp.example.org:8181
