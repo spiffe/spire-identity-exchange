@@ -79,7 +79,7 @@ wait_for_kubectl() {
       sleep 1
       ((count++)) || true
       sudo systemctl reset-failed spire-identity-exchange-job
-      timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /usr/bin/spire-agent api fetch jwt -audience k8s-main || rc=$?
+      timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /usr/bin/spire-agent api fetch jwt -audience k8s-main | base64
       sudo systemctl reset-failed spire-identity-exchange-job
   done
   return 1
