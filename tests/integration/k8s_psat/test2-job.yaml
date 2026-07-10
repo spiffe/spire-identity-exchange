@@ -9,8 +9,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: main
-        image: zot.example.org:5000
+        image: zot.example.org:5000/test/busybox:latest
         command: ["/bin/sh", "-c"]
         args:
-        - |
-          echo Hello there
+        - echo Hello there
