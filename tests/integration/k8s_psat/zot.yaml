@@ -11,8 +11,7 @@ http:
       realm: http://zot.example.org:5000/zot/auth/token
       service: http://zot.example.org:5000
       oidc:
-        # Dont do this in production. This is just for testing for now. Better to come later.
-        - issuer: https://k8ssodp.example.org:8181
+        - issuer: https://oidc-discovery-provider.example.org
           skipIssuerVerification: true
           audiences:
             - zot
