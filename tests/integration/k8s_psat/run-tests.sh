@@ -59,7 +59,7 @@ sudo spire-server bundle show -format pem > /tmp/ca.pem
 sudo zot serve "${SCRIPTPATH}/zot.yaml" &
 
 # K8s specific bits
-sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
+sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider socat
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
