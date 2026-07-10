@@ -36,10 +36,6 @@ teardown() {
   sudo cat /etc/kubernetes/pki/auth-config.yaml
 }
 
-update_issuer() {
-  sudo sed -i 's@jwt_issuer.*@jwt_issuer = "https://oidc-discovery-provider.example.org:8181"@' /etc/spire/server/default.conf
-}
-
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
 deploy_credential_composer
@@ -49,7 +45,7 @@ sudo mkdir -p /etc/spire/server/main/manifests
 sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
 # Common spire setup bits
-setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common" update_issuer
+setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 sudo cat /etc/spire/server/default.conf
 
@@ -66,8 +62,6 @@ sudo zot serve "${SCRIPTPATH}/zot.yaml" &
 sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
-sudo sed -i 's@"jwt_issuer".*@"jwt_issuer": "https://oidc-discovery-provider.example.org:8181",@' /etc/spiffe/k8s-oidc-discovery-provider.conf
-sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
