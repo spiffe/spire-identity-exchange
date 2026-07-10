@@ -115,6 +115,8 @@ FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/zot/jwt \
 
 AUTH_STR=$(echo -n "zot:$FINALTOKEN" | base64 -w 0)
 
+echo $FINALTOKEN | base64
+
 mkdir -p crane-config
 cat <<EOF > crane-config/config.json
 {
