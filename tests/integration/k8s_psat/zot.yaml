@@ -12,7 +12,8 @@ http:
       service: zot-service
       oidc:
         # Dont do this in production. This is just for testing for now. Better to come later.
-        - issuer: https://oidc-discovery-provider.example.org
+        - issuer: https://k8ssodp.example.org:8181
+          skipIssuerVerification: true
           audiences:
             - zot
             - https://zot.example.org
