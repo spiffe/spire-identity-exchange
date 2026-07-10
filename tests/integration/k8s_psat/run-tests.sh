@@ -127,9 +127,16 @@ cat <<EOF > crane-config/config.json
   }
 }
 EOF
+
+echo '{"insecure-registries" : ["zot.example.org:5000"]}' | sudo tee /etc/docker/daemon.json
+systemctl restart docker
+
 cat crane-config/config.json
 docker pull docker.io/library/busybox:latest
 docker tag docker.io/library/busybox:latest zot.example.org:5000/test/busybox:latest
-docker save zot.example.org:5000/test/busybox:latest -o busybox.tar
-DOCKER_CONFIG=./crane-config ~/go/bin/crane push busybox.tar zot.example.org:5000/test/busybox:latest --insecure --format=oci
+echo "${FINALTOKEN}" | docker login -u zot --password-stdin zot.example.org:5000
+docker push zot.example.org:5000/test/busybox:latest
+
+#docker save zot.example.org:5000/test/busybox:latest -o busybox.tar
+#DOCKER_CONFIG=./crane-config ~/go/bin/crane push busybox.tar zot.example.org:5000/test/busybox:latest --insecure --format=oci
 
