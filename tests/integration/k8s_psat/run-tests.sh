@@ -33,6 +33,7 @@ teardown() {
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@main-six 2>&1 || true
+  sudo cat /etc/kubernetes/pki/auth-config.yaml
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
