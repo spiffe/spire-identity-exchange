@@ -129,7 +129,7 @@ cat <<EOF > crane-config/config.json
 EOF
 
 echo '{"insecure-registries" : ["zot.example.org:5000"]}' | sudo tee /etc/docker/daemon.json
-sudo systemctl restart docker
+sudo systemctl reload docker
 
 cat crane-config/config.json
 docker pull docker.io/library/busybox:latest
