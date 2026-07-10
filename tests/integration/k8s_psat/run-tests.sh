@@ -49,6 +49,7 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 sudo sed -i 's@jwt_issuer.*@jwt_issuer = "https://oidc-discovery-provider.example.org:8181"@' /etc/spire/server/default.conf
 sudo systemctl restart spire-server@main
+sudo systemctl restart spire-agent@main
 sudo cat /etc/spire/server/default.conf
 
 # Zot bits
