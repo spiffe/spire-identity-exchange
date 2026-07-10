@@ -120,7 +120,7 @@ cat <<EOF > crane-config/config.json
 {
   "auths": {
     "zot.example.org:5000": {
-      "registryToken": "${AUTH_STR}"
+      "registryToken": "${FINALTOKEN}"
     }
   }
 }
