@@ -111,7 +111,7 @@ echo bar
 FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/zot/jwt \
   -H "Authorization: Bearer k8s_psat=${K8S_TOKEN}:spiffe=${SPIFFE_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"audiences": ["zot"]}')
+  -d '{"audiences": ["zot"]}' | jq -r .token)
 
 AUTH_STR=$(echo -n "zot:$FINALTOKEN" | base64 -w 0)
 
