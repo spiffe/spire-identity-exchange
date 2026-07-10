@@ -93,7 +93,7 @@ sudo ls /etc/kubernetes/pki/
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 #serve out fakeish oidc discovery provider
-sudo socat TCP-LISTEN:443,fork,reuseaddr TCP:127.0.0.1:8181 &
+sudo socat TCP-LISTEN:443,fork,reuseaddr "TCP:$IP:8181" &
 
 # Tests
 
