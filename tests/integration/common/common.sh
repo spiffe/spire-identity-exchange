@@ -80,7 +80,7 @@ wait_for_kubectl() {
       ((count++)) || true
       sudo systemctl reset-failed spire-identity-exchange-job
       timeout 10 sudo systemd-run --wait --pipe --unit=spire-identity-exchange-job /usr/bin/spire-agent api fetch jwt -audience k8s-main | base64
-      sudo systemctl reset-failed spire-identity-exchange-job
+      sudo systemctl reset-failed spire-identity-exchange-job || true
   done
   return 1
 }
@@ -121,6 +121,7 @@ deploy_server_attestor() {
 setup_base_spire() {
   local SCRIPTPATH="$1"
   local COMMONPATH="$2"
+  local CONFIG_HOOK="$3"
 
   # Get the package repo and install the packages
   sudo curl -s -o /etc/apt/sources.list.d/spire-examples.list https://raw.githubusercontent.com/spiffe/spire-examples/refs/heads/main/examples/debs/amd64/spire-examples.list
@@ -130,6 +131,11 @@ setup_base_spire() {
   # register some workloads with the spire server using manifests
   sudo mkdir -p /etc/spire/server/main/manifests/
   sudo cp "${COMMONPATH}/manifests"/* /etc/spire/server/main/manifests/
+
+  if [[ -n "$CONFIG_HOOK" ]] && [[ "$(type -t "$CONFIG_HOOK")" == "function" ]]; then
+    echo "Executing configuration hook: $CONFIG_HOOK"
+    "$CONFIG_HOOK" "$COMMONPATH"
+  fi
 
   # Startup server and make sure its ready
   sudo cp "${COMMONPATH}/server.conf" /etc/spire/server/main/config
