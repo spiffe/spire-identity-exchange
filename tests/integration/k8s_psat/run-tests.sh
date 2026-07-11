@@ -36,7 +36,7 @@ teardown() {
   kubectl get pods -l job-name=test2 -o name | xargs kubectl describe || true
   kubectl logs job/test2 || true
   NODE_NAME=$(kubectl get pods -l job-name=test2 -o jsonpath='{.items[0].spec.nodeName}')
-  docker exec -i "$NODE_NAME" journalctl -u kubelet
+  docker exec -i "$NODE_NAME" journalctl -u kubelet | grep 'execing credential provider'
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT

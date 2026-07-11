@@ -35,7 +35,7 @@ nodes:
           kubeletExtraArgs:
             image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
             image-credential-provider-bin-dir: /credential-plugins
-            v: "5"
+            v: "4"
   - role: worker
     extraMounts:
       - hostPath: ./k8s-image-cred-spire-identity-exchange
@@ -52,4 +52,4 @@ nodes:
           kubeletExtraArgs:
             image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
             image-credential-provider-bin-dir: /credential-plugins
-            v: "5"
+            v: "4"
