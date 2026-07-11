@@ -41,6 +41,7 @@ trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
 docker ps
 docker exec -it chart-testing-worker ls /etc/kubernetes/credential-provider-config.yaml
+docker exec -it chart-testing-worker ps ax | grep kubelet
 exit -1
 
 deploy_credential_composer
