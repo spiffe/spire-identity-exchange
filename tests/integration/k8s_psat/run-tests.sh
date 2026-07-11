@@ -52,7 +52,6 @@ sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 
 # Common spire setup bits
 docker exec -i chart-testing-worker ps ax | grep kubelet
-exit -1
 
 deploy_credential_composer
 deploy_server_attestor
