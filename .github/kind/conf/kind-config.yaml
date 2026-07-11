@@ -33,7 +33,7 @@ nodes:
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            #image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
             image-credential-provider-bin-dir: /credential-plugins
   - role: worker
     extraMounts:
@@ -49,5 +49,5 @@ nodes:
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            #image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
             image-credential-provider-bin-dir: /credential-plugins
