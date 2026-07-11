@@ -38,6 +38,10 @@ http:
               - update
               - delete
           - users:
+              - spiffe://example.org/k8s-psat/test2
+            actions:
+              - read
+          - users:
               - root
             actions:
               - create
