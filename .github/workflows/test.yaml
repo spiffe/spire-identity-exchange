@@ -102,6 +102,7 @@ jobs:
           name: k8s-image-cred-spire-identity-exchange
       - name: Prep kind environment
         run: |
+          chmod +x ./k8s-image-cred-spire-identity-exchange
           sudo mkdir -p /etc/kubernetes/pki
           sudo /bin/bash -c '(echo "apiVersion: apiserver.config.k8s.io/v1"; echo "kind: AuthenticationConfiguration") > /etc/kubernetes/pki/auth-config.yaml'
           sudo cp -a tests/integration/common/hosts /etc/kubernetes/hosts
