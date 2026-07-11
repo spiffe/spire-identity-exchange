@@ -168,7 +168,7 @@ setup_identity_exchange() {
     -out /etc/spire/identity-exchange/main/certs/server.pem -sha256 -days 365 -nodes \
     -subj "/CN=localhost" \
     -addext "basicConstraints=critical,CA:TRUE" \
-    -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,IP:127.0.0.1"
+    -addext "subjectAltName=DNS:localhost,DNS:spire-identity-exchange.example.org,DNS:spire-identity-exchange-rest.example.org,IP:127.0.0.1"
 
   sudo cp "${SCRIPTPATH}/default.conf" /etc/spire/identity-exchange/
   sudo cp "${COMMONPATH}/../../../systemd/spire-identity-exchange-server@.service" /etc/systemd/system
