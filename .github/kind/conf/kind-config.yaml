@@ -30,7 +30,6 @@ nodes:
         readOnly: true
     kubeadmConfigPatches:
       - |
-        apiVersion: kubeadm.k8s.io/v1beta3
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
@@ -47,7 +46,6 @@ nodes:
         readOnly: true
     kubeadmConfigPatches:
       - |
-        apiVersion: kubeadm.k8s.io/v1beta3
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
