@@ -39,6 +39,10 @@ teardown() {
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
+docker ps
+exit -1
+#ls /etc/kubernetes/credential-provider-config.yaml
+
 deploy_credential_composer
 deploy_server_attestor
 
