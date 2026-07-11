@@ -13,3 +13,11 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - echo Hello there
+      volumes:
+      - name: spire-token-gate
+        projected:
+          sources:
+          - serviceAccountToken:
+              audience: spire-identity-exchange
+              expirationSeconds: 3600
+              path: token
