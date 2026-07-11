@@ -30,11 +30,14 @@ nodes:
         readOnly: true
     kubeadmConfigPatches:
       - |
+        apiVersion: kubeadm.k8s.io/v1beta4
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
-            image-credential-provider-bin-dir: /credential-plugins
+            - name: "image-credential-provider-config"
+              value: "/etc/kubernetes/credential-provider-config.yaml"
+            - name: "image-credential-provider-bin-dir"
+              value: "/credential-plugins"
   - role: worker
     extraMounts:
       - hostPath: ./k8s-image-cred-spire-identity-exchange
@@ -46,8 +49,11 @@ nodes:
         readOnly: true
     kubeadmConfigPatches:
       - |
+        apiVersion: kubeadm.k8s.io/v1beta4
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
-            image-credential-provider-bin-dir: /credential-plugins
+            - name: "image-credential-provider-config"
+              value: "/etc/kubernetes/credential-provider-config.yaml"
+            - name: "image-credential-provider-bin-dir"
+              value: "/credential-plugins"
