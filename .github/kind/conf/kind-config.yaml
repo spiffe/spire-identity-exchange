@@ -33,9 +33,8 @@ nodes:
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "foo=bar"
-            #"image-credential-provider-config": "/etc/kubernetes/credential-provider-config.yaml"
-            #"image-credential-provider-bin-dir": "/credential-plugins"
+            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            image-credential-provider-bin-dir: /credential-plugins
   - role: worker
     extraMounts:
       - hostPath: ./k8s-image-cred-spire-identity-exchange
@@ -50,6 +49,5 @@ nodes:
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "foo=bar"
-            #"image-credential-provider-config": "/etc/kubernetes/credential-provider-config.yaml"
-            #"image-credential-provider-bin-dir": "/credential-plugins"
+            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            image-credential-provider-bin-dir: /credential-plugins
