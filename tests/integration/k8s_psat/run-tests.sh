@@ -35,6 +35,8 @@ teardown() {
   sudo systemctl status spire-agent@main-six 2>&1 || true
   kubectl get pods -l job-name=test2 -o name | xargs kubectl describe || true
   kubectl logs job/test2 || true
+  NODE_NAME=$(kubectl get pods -l job-name=test2 -o jsonpath='{.items[0].spec.nodeName}')
+  docker exec -i "$NODE_NAME" journalctl -u kubelet
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
