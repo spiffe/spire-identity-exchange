@@ -28,18 +28,14 @@ nodes:
       - hostPath: /etc/kubernetes/hosts
         containerPath: /etc/hosts
         readOnly: true
-    kubeadmConfigPatchesJson6902:
-      - group: kubeadm.k8s.io
-        version: v1beta4
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta4
         kind: JoinConfiguration
-        patch: |
-          - op: add
-            path: /nodeRegistration/kubeletExtraArgs
-            value:
-              - name: "image-credential-provider-config"
-                value: "/etc/kubernetes/credential-provider-config.yaml"
-              - name: "image-credential-provider-bin-dir"
-                value: "/credential-plugins"
+        nodeRegistration:
+          kubeletExtraArgs:
+            "image-credential-provider-config": "/etc/kubernetes/credential-provider-config.yaml"
+            "image-credential-provider-bin-dir": "/credential-plugins"
   - role: worker
     extraMounts:
       - hostPath: ./k8s-image-cred-spire-identity-exchange
@@ -49,15 +45,11 @@ nodes:
       - hostPath: /etc/kubernetes/hosts
         containerPath: /etc/hosts
         readOnly: true
-    kubeadmConfigPatchesJson6902:
-      - group: kubeadm.k8s.io
-        version: v1beta4
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta4
         kind: JoinConfiguration
-        patch: |
-          - op: add
-            path: /nodeRegistration/kubeletExtraArgs
-            value:
-              - name: "image-credential-provider-config"
-                value: "/etc/kubernetes/credential-provider-config.yaml"
-              - name: "image-credential-provider-bin-dir"
-                value: "/credential-plugins"
+        nodeRegistration:
+          kubeletExtraArgs:
+            "image-credential-provider-config": "/etc/kubernetes/credential-provider-config.yaml"
+            "image-credential-provider-bin-dir": "/credential-plugins"
