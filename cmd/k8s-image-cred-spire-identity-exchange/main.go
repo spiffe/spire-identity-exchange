@@ -42,6 +42,7 @@ func main() {
 	spiffeIDFlag := flag.String("spiffe-id", "", "SPIFFE ID to validate against the identity exchange.")
 	k8sPSATFlag := flag.String("k8s-psat", "k8s_psat", "Name of the k8s psat plugin in the stack")
 	spiffeFlag := flag.String("spiffe", "spiffe", "Name of the spiffe plugin in the stack")
+	caFileFlag := flag.String("ca-file", "", "Path to a custom CA file to validate the URL's TLS certificate")
 
 	flag.Parse()
 
@@ -130,7 +131,7 @@ func main() {
 		token = spiffeToken
 	default:
 		var err error
-		token, err = exchangeTokenForRegistryCreds(*urlFlag, *stackFlag, saToken, spiffeToken, *registryAudienceFlag, *k8sPSATFlag, *spiffeFlag, *spiffeIDFlag)
+		token, err = exchangeTokenForRegistryCreds(*urlFlag, *stackFlag, saToken, spiffeToken, *registryAudienceFlag, *k8sPSATFlag, *spiffeFlag, *spiffeIDFlag, *caFileFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to exchange token for registry credentials: %v\n", err)
 			os.Exit(1)
@@ -218,7 +219,7 @@ func getRemainingCacheDuration(jwtToken string) (*metav1.Duration, error) {
 	return &metav1.Duration{Duration: remaining}, nil
 }
 
-func exchangeTokenForRegistryCreds(baseURL, stack, saToken, spiffeToken, registryAudience, k8sPSATFlag, spiffeFlag, expectedSpiffeID string) (string, error) {
+func exchangeTokenForRegistryCreds(baseURL, stack, saToken, spiffeToken, registryAudience, k8sPSATFlag, spiffeFlag, expectedSpiffeID, caFile string) (string, error) {
 	if saToken == "" {
 		return "", fmt.Errorf("empty service account token")
 	}
@@ -247,9 +248,9 @@ func exchangeTokenForRegistryCreds(baseURL, stack, saToken, spiffeToken, registr
 	req.Header.Set("Content-Type", "application/json")
 
 	var client *http.Client
+
 	if expectedSpiffeID != "" {
 		ctx := context.Background()
-
 		source, err := workloadapi.NewBundleSource(ctx)
 		if err != nil {
 			return "", fmt.Errorf("failed to create BundleSource: %w", err)
@@ -262,11 +263,33 @@ func exchangeTokenForRegistryCreds(baseURL, stack, saToken, spiffeToken, registr
 		}
 
 		tlsConfig := tlsconfig.TLSClientConfig(source, tlsconfig.AuthorizeID(id))
-
 		client = &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: tlsConfig,
+			},
+		}
+	} else if caFile != "" {
+		rootCAs, err := x509.SystemCertPool()
+		if err != nil {
+			rootCAs = x509.NewCertPool()
+		}
+
+		caBytes, err := os.ReadFile(caFile)
+		if err != nil {
+			return "", fmt.Errorf("failed to read CA file %q: %w", caFile, err)
+		}
+
+		if ok := rootCAs.AppendCertsFromPEM(caBytes); !ok {
+			return "", fmt.Errorf("failed to parse any certificates from CA file %q", caFile)
+		}
+
+		client = &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs: rootCAs,
+				},
 			},
 		}
 	} else {

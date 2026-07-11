@@ -28,6 +28,9 @@ nodes:
       - hostPath: /etc/kubernetes/hosts
         containerPath: /etc/hosts
         readOnly: true
+      - hostPath: /etc/spire/identity-exchange/main
+        containerPath: /etc/spire/identity-exchange/main
+        readOnly: true
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
@@ -44,6 +47,9 @@ nodes:
         containerPath: /etc/kubernetes/credential-provider-config.yaml
       - hostPath: /etc/kubernetes/hosts
         containerPath: /etc/hosts
+        readOnly: true
+      - hostPath: /etc/spire/identity-exchange/main
+        containerPath: /etc/spire/identity-exchange/main
         readOnly: true
     kubeadmConfigPatches:
       - |
