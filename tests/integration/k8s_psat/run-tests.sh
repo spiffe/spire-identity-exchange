@@ -41,6 +41,17 @@ trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
 
 docker ps
 docker exec -i chart-testing-worker cat /etc/kubernetes/credential-provider-config.yaml
+docker exec -i chart-testing-worker ls -l /credential-plugins
+docker exec -i chart-testing-worker ps ax | grep kubelet
+exit -1
+
+deploy_credential_composer
+deploy_server_attestor
+
+sudo mkdir -p /etc/spire/server/main/manifests
+sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
+
+# Common spire setup bits
 docker exec -i chart-testing-worker ps ax | grep kubelet
 exit -1
 
