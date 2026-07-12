@@ -1,0 +1,52 @@
+storage:
+  rootDirectory: /var/lib/registry
+http:
+  address: 0.0.0.0
+  port: "5000"
+  compat:
+    - docker2s2
+  readTimeout: 60s
+  writeTimeout: 60s
+  realm: zot-basic
+  auth:
+    bearer:
+      realm: http://zot.example.org:5000/zot/auth/token
+      service: http://zot.example.org:5000
+      oidc:
+        - issuer: https://oidc-discovery-provider.example.org
+          skipIssuerVerification: true
+          audiences:
+            - zot
+            - https://zot.example.org
+          certificateAuthorityFile: /tmp/ca.pem
+          claimMapping:
+            username: claims.sub
+  accessControl:
+    adminPolicy:
+      users:
+        - root
+      actions:
+        - '*'
+    repositories:
+      '**':
+        policies:
+          - users:
+              - spiffe://example.org/k8s-psat/test
+            actions:
+              - read
+              - create
+              - update
+              - delete
+          - users:
+              - spiffe://example.org/k8s-psat/test2
+            actions:
+              - read
+          - users:
+              - root
+            actions:
+              - create
+              - read
+              - update
+              - delete
+log:
+  level: debug
