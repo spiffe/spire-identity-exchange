@@ -25,10 +25,7 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          TOKEN=$(cat /var/run/secrets/tokens/token)
-          curl -f -H "Authorization: Bearer ${TOKEN}" \
-            -X POST https://spire-identity-exchange.example.org:8444/api/v1/svid/k8s_psat/x509?format=spiffe-fd-tar \
-            -k -sS -q | base64
+          cat /var/run/secrets/tokens/token
         volumeMounts:
         - name: token-volume
           mountPath: /var/run/secrets/tokens

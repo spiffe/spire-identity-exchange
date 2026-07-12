@@ -1,5 +1,9 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."zot.example.org:5000"]
+      endpoint = ["http://zot.example.org:5000"]
 nodes:
   - role: control-plane
     kubeadmConfigPatches:
@@ -16,4 +20,42 @@ nodes:
         containerPath: /etc/hosts
         readOnly: true
   - role: worker
+    extraMounts:
+      - hostPath: ./k8s-image-cred-spire-identity-exchange
+        containerPath: /credential-plugins/k8s-image-cred-spire-identity-exchange
+      - hostPath: ./tests/integration/common/credential-provider-config.yaml
+        containerPath: /etc/kubernetes/credential-provider-config.yaml
+      - hostPath: /etc/kubernetes/hosts
+        containerPath: /etc/hosts
+        readOnly: true
+      - hostPath: /etc/spire/identity-exchange/main
+        containerPath: /etc/spire/identity-exchange/main
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            image-credential-provider-bin-dir: /credential-plugins
+            v: "4"
   - role: worker
+    extraMounts:
+      - hostPath: ./k8s-image-cred-spire-identity-exchange
+        containerPath: /credential-plugins/k8s-image-cred-spire-identity-exchange
+      - hostPath: ./tests/integration/common/credential-provider-config.yaml
+        containerPath: /etc/kubernetes/credential-provider-config.yaml
+      - hostPath: /etc/kubernetes/hosts
+        containerPath: /etc/hosts
+        readOnly: true
+      - hostPath: /etc/spire/identity-exchange/main
+        containerPath: /etc/spire/identity-exchange/main
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            image-credential-provider-config: /etc/kubernetes/credential-provider-config.yaml
+            image-credential-provider-bin-dir: /credential-plugins
+            v: "4"
