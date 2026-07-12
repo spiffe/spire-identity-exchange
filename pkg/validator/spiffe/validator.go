@@ -3,16 +3,33 @@
 package spiffe
 
 import (
-    "context"
-    "errors"
-    "fmt"
-    "regexp"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"strings"
+	"time"
 
-    "github.com/spiffe/go-spiffe/v2/spiffeid"
-    jwtauth "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
-    "github.com/spiffe/spire-identity-exchange/pkg/validator"
-    "go.yaml.in/yaml/v3"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator"
+	jwtauth "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
+	"go.yaml.in/yaml/v3"
 )
+
+const (
+	oidcDiscoveryPath = "/.well-known/openid-configuration"
+	discoveryTimeout  = 10 * time.Second
+	maxDiscoveryBytes = 1 << 20 // 1 MiB
+)
+
+type oidcDiscoveryDoc struct {
+	JWKSURI string `json:"jwks_uri"`
+}
 
 func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
     return &Config{}, nil
@@ -25,6 +42,12 @@ type Config struct {
 	Audiences    []string `yaml:"audiences"`
 	TrustDomain  string   `yaml:"trustDomain"`
 	PathPatterns []string `yaml:"pathPatterns"`
+	// ConnectWithTrustBundle determines if the plugin uses its retrieved
+	// trust bundle to validate the remote OIDC discovery endpoint's TLS certs.
+	ConnectWithTrustBundle bool `yaml:"connectWithTrustBundle"`
+	// AgentWorkloadSocketPath specifies a custom UDS socket path for reaching the
+	// SPIFFE Workload API. Required if ConnectWithTrustBundle is enabled.
+	AgentWorkloadSocketPath string `yaml:"agentWorkloadSocketPath"`
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
@@ -57,6 +80,9 @@ func (c *Config) ValidateConfig() error {
     if len(c.PathPatterns) == 0 {
         return errors.New("at least one path pattern must be specified")
     }
+	if c.ConnectWithTrustBundle && c.AgentWorkloadSocketPath == "" {
+		return errors.New("agent workload socket path must be specified when connectWithTrustBundle is enabled")
+	}
     return nil
 }
 
@@ -82,13 +108,72 @@ func NewValidator(cfg Config) (*Validator, error) {
     if discoveryURL == "" {
         discoveryURL = cfg.IssuerURL
     }
-    jv, err := jwtauth.NewValidator(jwtauth.Config{
-        IssuerURL:    cfg.IssuerURL,
-        DiscoveryURL: discoveryURL,
-        Audiences:    cfg.Audiences,
-        KeyProvider:  cfg.KeyProvider,
-        AllowHTTP:    cfg.AllowHTTP,
-        Metrics:      cfg.Metrics,
+
+    keyProvider := cfg.KeyProvider
+    if keyProvider == nil && cfg.ConnectWithTrustBundle && cfg.TrustDomain != "" {
+        td, err := spiffeid.TrustDomainFromString(cfg.TrustDomain)
+        if err != nil {
+            return nil, fmt.Errorf("invalid trust domain: %w", err)
+        }
+
+        socketAddr := "unix://" + strings.TrimPrefix(cfg.AgentWorkloadSocketPath, "unix://")
+        source, err := workloadapi.NewX509Source(
+            context.Background(),
+            workloadapi.WithClientOptions(workloadapi.WithAddr(socketAddr)),
+        )
+        if err != nil {
+            return nil, fmt.Errorf("failed to create SPIFFE X509 source: %w", err)
+        }
+
+        tlsCfg := tlsconfig.TLSClientConfig(source, tlsconfig.AuthorizeMemberOf(td))
+        httpClient := &http.Client{
+            Transport: &http.Transport{
+                TLSClientConfig: tlsCfg,
+            },
+            Timeout: discoveryTimeout,
+        }
+
+        ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
+        defer cancel()
+
+        configURL := strings.TrimRight(discoveryURL, "/") + oidcDiscoveryPath
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
+        if err != nil {
+            return nil, fmt.Errorf("failed to create discovery request: %w", err)
+        }
+
+        resp, err := httpClient.Do(req)
+        if err != nil {
+            return nil, fmt.Errorf("failed to fetch discovery document: %w", err)
+        }
+        defer resp.Body.Close()
+
+        body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes))
+        if err != nil {
+            return nil, fmt.Errorf("failed to read discovery document: %w", err)
+        }
+        if resp.StatusCode != http.StatusOK {
+            return nil, fmt.Errorf("HTTP %d fetching discovery document: %s", resp.StatusCode, string(body))
+        }
+
+        var doc oidcDiscoveryDoc
+        if err := json.Unmarshal(body, &doc); err != nil {
+            return nil, fmt.Errorf("failed to parse discovery document: %w", err)
+        }
+        if doc.JWKSURI == "" {
+            return nil, fmt.Errorf("discovery document missing jwks_uri")
+        }
+
+        keyProvider = jwtauth.NewKeyProviderWithJWKSURI(doc.JWKSURI, httpClient, cfg.Metrics)
+    }
+
+   jv, err := jwtauth.NewValidator(jwtauth.Config{
+        IssuerURL:             cfg.IssuerURL,
+        DiscoveryURL:          discoveryURL,
+        Audiences:             cfg.Audiences,
+        KeyProvider:           keyProvider,
+        AllowHTTP:             cfg.AllowHTTP,
+        Metrics:               cfg.Metrics,
     })
     if err != nil {
         return nil, err
@@ -162,4 +247,3 @@ func (v *Validator) checkAllowLists(raw map[string]interface{}) error {
 
     return nil
 }
-

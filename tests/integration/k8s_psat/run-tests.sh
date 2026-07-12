@@ -33,9 +33,27 @@ teardown() {
   sudo systemctl status spire-controller-manager@main 2>&1 || true
   sudo systemctl status spire-agent@main 2>&1 || true
   sudo systemctl status spire-agent@main-six 2>&1 || true
+  kubectl get pods -l job-name=test2 -o name | xargs kubectl describe || true
+  kubectl logs job/test2 || true
+  NODE_NAME=$(kubectl get pods -l job-name=test2 -o jsonpath='{.items[0].spec.nodeName}')
+  docker exec -i "$NODE_NAME" journalctl -u kubelet | grep 'execing credential provider' || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
+
+docker ps
+docker exec -i chart-testing-worker cat /etc/kubernetes/credential-provider-config.yaml
+docker exec -i chart-testing-worker ls -l /credential-plugins
+docker exec -i chart-testing-worker ps ax | grep kubelet
+
+deploy_credential_composer
+deploy_server_attestor
+
+sudo mkdir -p /etc/spire/server/main/manifests
+sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
+
+# Common spire setup bits
+docker exec -i chart-testing-worker ps ax | grep kubelet
 
 deploy_credential_composer
 deploy_server_attestor
@@ -46,11 +64,23 @@ sudo cp "${SCRIPTPATH}/manifests"/* /etc/spire/server/main/manifests/
 # Common spire setup bits
 setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
+sudo cat /etc/spire/server/default.conf
+
+# Zot bits
+git clone https://github.com/project-zot/zot
+cd zot
+make binary-minimal
+sudo cp -a bin/zot-linux-amd64-minimal /usr/bin/zot
+cd ..
+sudo spire-server bundle show -format pem > /tmp/ca.pem
+sudo zot serve "${SCRIPTPATH}/zot.yaml" &
+
 # K8s specific bits
-sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider
-sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
+sudo apt-get install -y k8s-spiffe-workload-auth-config k8s-spiffe-workload-jwt-exec-auth spiffe-helper spiffe-oidc-discovery-provider k8s-spiffe-oidc-discovery-provider socat
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sudo sed -i "s/127.0.0.1/$IP/" /etc/spiffe/k8s-oidc-discovery-provider.conf
+sudo sed -i 's/"domains": \[/"domains": \[\n    "oidc-discovery-provider.example.org",/' /etc/spiffe/k8s-oidc-discovery-provider.conf
+sudo cp "${SCRIPTPATH}/auth-config.yaml" /etc/kubernetes/auth-config.yaml
 cat /etc/spiffe/k8s-oidc-discovery-provider.conf
 sudo systemctl restart k8s-spiffe-oidc-discovery-provider
 
@@ -79,11 +109,54 @@ sudo ls /etc/kubernetes/pki/
 # Setup spire-identity-exchange
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
+#serve out fakeish oidc discovery provider
+sudo socat TCP-LISTEN:443,fork,reuseaddr "TCP:$IP:8181" &
+
 # Tests
+
+SPIFFE_TOKEN=$(timeout 10 sudo systemd-run --wait --pipe --unit=zot-job spire-agent api fetch jwt -audience spire-identity-exchange -output json | jq -r '.[0].svids[0].svid')
 
 IP=$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 sed -i "s/127.0.0.1/$IP/" "${SCRIPTPATH}/test-job.yaml"
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
-kubectl logs job/test | base64 -d | tar -xvf -
-openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/k8s-psat/test'
+K8S_TOKEN=$(kubectl logs job/test | tr -d '[:space:]')
+#FIXME
+echo foo
+echo "${SPIFFE_TOKEN} ${K8S_TOKEN}" | base64
+echo bar
+FINALTOKEN=$(curl -k -X POST https://localhost:8444/api/v1/svid/zot/jwt \
+  -H "Authorization: Bearer k8s_psat=${K8S_TOKEN}:spiffe=${SPIFFE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"audiences": ["zot"]}' | jq -r .token)
+
+AUTH_STR=$(echo -n "zot:$FINALTOKEN" | base64 -w 0)
+
+echo $FINALTOKEN | base64
+
+mkdir -p crane-config
+cat <<EOF > crane-config/config.json
+{
+  "auths": {
+    "zot.example.org:5000": {
+      "registryToken": "${FINALTOKEN}"
+    }
+  }
+}
+EOF
+
+echo '{"insecure-registries" : ["zot.example.org:5000"]}' | sudo tee /etc/docker/daemon.json
+sudo systemctl reload docker
+
+cat crane-config/config.json
+docker pull docker.io/library/busybox:latest
+docker tag docker.io/library/busybox:latest zot.example.org:5000/test/busybox:latest
+echo "${FINALTOKEN}" | docker login -u zot --password-stdin zot.example.org:5000
+docker push zot.example.org:5000/test/busybox:latest
+
+#docker save zot.example.org:5000/test/busybox:latest -o busybox.tar
+#DOCKER_CONFIG=./crane-config ~/go/bin/crane push busybox.tar zot.example.org:5000/test/busybox:latest --insecure --format=oci
+
+kubectl apply -f "${SCRIPTPATH}/test2-job.yaml"
+kubectl wait --for=condition=complete --timeout=60s job/test2
+kubectl logs job/test2

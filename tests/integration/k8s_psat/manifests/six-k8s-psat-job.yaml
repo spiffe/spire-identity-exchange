@@ -8,3 +8,4 @@ spec:
   selectors:
   - k8s_psat:namespace:default
   - k8s_psat:service_account_name:default
+  - spiffe:source_path:/somejob

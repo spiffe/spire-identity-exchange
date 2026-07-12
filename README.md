@@ -278,6 +278,16 @@ curl -k -X POST https://localhost:8444/api/v1/svid/github-actions/x509 \
   -H "Content-Type: application/json"
 ```
 
+**6. Mint a JWT-SVID via the REST API:**
+```bash
+export GITHUB_TOKEN="<token from mock server output>"
+
+curl -k -X POST https://localhost:8444/api/v1/svid/github-actions/jwt \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"audiences": ["my-workload-audience"]}'
+```
+
 ### Inspecting the service
 
 ```bash
