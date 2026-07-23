@@ -21,7 +21,10 @@ teardown() {
   echo "::group::Status Output"
   sudo journalctl -u spire-identity-exchange-server@main.service || true
   sudo journalctl -u spire-server-attestor-spiffe-workload-api@main.service || true
+  sudo systemctl status spiffe-step-ssh-server@main.service || true
+  sudo systemctl status spiffe-step-ssh-fetchca@main.service || true
   sudo systemctl status spire-server-attestor-spiffe-workload-api@main.service || true
+  sudo systemctl status spiffe-step-ssh@main.service || true
   sudo spire-server agent show -spiffeID spiffe://example.org/spire/agent/x509pop/spire-identity-exchange/node1 || true
   sudo systemctl status spire-identity-exchange-server@main.service -n 50 2>&1 || true
   sudo systemctl status spire-server@main -n 50 2>&1 || true
@@ -65,6 +68,34 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
 setup_identity_exchange "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 
+# Setup step-ssh server & local sshd signed by it
+sudo apt-get update
+
+STEP_VER="0.30.2"
+wget https://dl.smallstep.com/gh-release/certificates/gh-release-header/v${STEP_VER}/step-ca_${STEP_VER}-1_amd64.deb
+sudo apt-get install ./step-ca_${STEP_VER}-1_amd64.deb
+wget https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli_${STEP_VER}-1_amd64.deb
+sudo apt-get install ./step-cli_${STEP_VER}-1_amd64.deb
+sudo apt-get install -y spiffe-helper spiffe-step-ssh-server nginx spiffe-step-ssh-user-agent spiffe-step-ssh
+sudo mkdir -p /etc/spiffe/step-ssh/server/main
+
+sudo setup-spiffe-step-ssh-server main
+
+sudo adduser --system nginx
+sudo groupadd nginx
+sudo systemctl daemon-reload
+sudo mkdir -p /var/log/nginx/
+sudo chown nginx /var/log/nginx
+sudo /bin/bash -c "(echo 'SPIFFE_STEP_SSH_PORT=7443'; echo 'SPIFFE_STEP_SSH_FETCHCA_PORT=5443') > /etc/spiffe/step-ssh/default.env"
+
+sudo systemctl start spiffe-step-ssh-server@main spiffe-step-ssh-fetchca@main nginx spiffe-step-ssh@main.service
+
+# Install ansible
+sudo apt install software-properties-common -y
+sudo add-apt-repository --yes --update ppa:ansible/ansible
+sudo apt install ansible -y
+ansible --version
+
 # Tests
 
 # Github Tests
@@ -97,6 +128,35 @@ if [ -n "$GITHUB_TOKEN" ]; then
 	curl -f -H "Authorization: Bearer ${GITHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/github/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 fi
 
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST "https://localhost:8444/api/v1/svid/mockhub/x509?format=spiffe-fd-tar" --cacert /etc/spire/identity-exchange/main/certs/server.pem -qsS | tar -xvf -
+openssl x509 -in x509/0/credential-bundle.pem -noout -text | grep 'spiffe://example.org/ssh/mockhub'
+
+# SSH test setup
+HIP="$(ip -4 addr show docker0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
+echo "Picked IP ${HIP}"
+echo "${HIP} test.example.org spiffe-step-ssh-fetchca.example.org spiffe-step-ssh.example.org" | sudo bash -c 'cat >> /etc/hosts'
+sudo adduser mockhub
+sudo -u mockhub mkdir -p /home/mockhub/.ssh
+sudo chown mockhub --recursive /home/mockhub
+sudo spiffe-step-ssh-get-cert-authority user main | sudo -u mockhub tee /home/mockhub/.ssh/authorized_keys
+sudo -u mockhub chmod 700 /home/mockhub/.ssh
+sudo -u mockhub chmod 600 /home/mockhub/.ssh/authorized_keys
+sudo spiffe-step-ssh-get-cert-authority host main | sudo tee /etc/ssh/ssh_known_hosts2
+sudo chmod 644 /etc/ssh/ssh_known_hosts2
+
+ls -l $(pwd)/x509/0/
+export SPIFFE_ENDPOINT="file://$(pwd)"
+export SPIFFE_STEP_SSH_USER_AGENT_MODE=continuous
+export SPIFFE_STEP_SSH_FETCHCA_URL="https://spiffe-step-ssh-fetchca.example.org:5443"
+export SPIFFE_STEP_SSH_URL="https://spiffe-step-ssh.example.org:7443"
+eval `spiffe-step-ssh-user-agent -timeout 60s`
+
+ssh-add -L
+
+ssh -T -n -v mockhub@test.example.org hostname
+
+ansible-playbook -i "${SCRIPTPATH}/ansible/inventory.ini" "${SCRIPTPATH}/ansible/hello.yml"
+
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8444/api/v1/svid/mockhub/x509 --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
 
 if [ -n "$GITHUB_TOKEN" ]; then
@@ -104,4 +164,3 @@ if [ -n "$GITHUB_TOKEN" ]; then
 fi
 
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -H "Content-Type: application/json" -d '{"audiences": ["bar"]}' -X POST https://localhost:8444/api/v1/svid/mockhub/jwt --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
-
