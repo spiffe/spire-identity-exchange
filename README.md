@@ -159,12 +159,20 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
   "logLevel": "info",
 
   "server": {
-    "grpcPort": 8443,       // gRPC server port
     "metricsPort": 9090,    // Prometheus metrics port
-    "restPort": 8444,       // Optional HTTP REST port (see REST API below)
+
+    // Listeners served with a certificate loaded from disk.
     "tls": {
       "certFile": "certs/server.crt",
-      "keyFile":  "certs/server.key"
+      "keyFile":  "certs/server.key",
+      "grpc": { "enable": true, "port": 8443 },
+      "rest": { "enable": true, "port": 8444 }   // see REST API below
+    },
+
+    // Listeners served with this process's own X509-SVID.
+    "spiffe": {
+      "grpc": { "enable": true, "port": 8543 },
+      "rest": { "enable": true, "port": 8544 }
     }
   },
 
@@ -202,6 +210,25 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
 ```
 
 At least one plugin must be configured in `auth.plugins`.
+
+### Listeners
+
+Serving is a two-axis matrix: protocol (gRPC or REST) crossed with certificate source. All four
+listeners are independent and can run at the same time.
+
+- `server.tls.*` listeners are served with the certificate at `server.tls.certFile` /
+  `keyFile`, reloaded from disk every five minutes. Those two paths are only required when a
+  `server.tls` listener is enabled.
+- `server.spiffe.*` listeners are served with this process's own X509-SVID, fetched from the SPIRE
+  Agent Workload API at `spire.agentWorkloadSocketPath` and rotated automatically. No certificate
+  files are involved, so a SPIFFE-only deployment needs none. This requires a SPIRE registration
+  entry matching the exchange process; startup fails with a timeout if no SVID arrives.
+
+Client authentication is identical on all four: callers present a bearer token, and the SPIFFE
+listeners do not request a client certificate.
+
+A listener runs when `enable` is true **and** `port` is nonzero — `port: 0` disables it either way.
+At least one listener must be enabled.
 
 ### Purpose mode
 

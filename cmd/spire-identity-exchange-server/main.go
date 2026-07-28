@@ -92,15 +92,16 @@ func run() error {
 		return err
 	}
 
-	// Only initialize validators if the gRPC server is enabled (port != 0)
-	if cfg.Server.GrpcPort != 0 {
+	// Only initialize validators if a gRPC listener is enabled, on either
+	// certificate source.
+	if cfg.Server.AnyGRPCEnabled() {
 		if githubOIDCValidator == nil && k8sSATokenValidator == nil && len(cfg.Auth.Plugins) == 0 {
 			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
 
 	} else {
-		logger.Info("gRPC port is 0; skipping token validator initializations")
+		logger.Info("no gRPC listener enabled; skipping token validator initializations")
 	}
 
 	// REST surface reads pkg/validator instances directly off cfg.Auth.LoadedStacks

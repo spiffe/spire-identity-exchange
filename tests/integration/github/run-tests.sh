@@ -164,3 +164,30 @@ if [ -n "$GITHUB_TOKEN" ]; then
 fi
 
 curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -H "Content-Type: application/json" -d '{"audiences": ["bar"]}' -X POST https://localhost:8444/api/v1/svid/mockhub/jwt --cacert /etc/spire/identity-exchange/main/certs/server.pem -sS
+
+# SPIFFE-sourced TLS listeners (server.spiffe.*)
+#
+# Same API and same bearer-token auth as ports 8443/8444 above; the only
+# difference is that these listeners serve the exchange's own X509-SVID instead
+# of the certificate at server.tls.certFile. So the CA to verify against is the
+# SPIRE trust bundle, not server.pem. Hostname verification works because the
+# exchange's registration entry declares dnsNames (see
+# tests/integration/common/manifests/node1-service-spire-identity-exchange.yaml).
+sudo spire-server bundle show > spire-bundle.pem
+
+# Confirm the served leaf really is this exchange's SVID and not the file cert.
+# The --cacert calls below are what assert the chain and hostname verify; this
+# only inspects the SAN, so s_client's own exit code is not the signal.
+SPIFFE_SERVED_CERT="$(openssl s_client -connect localhost:8544 -servername localhost </dev/null 2>/dev/null || true)"
+echo "${SPIFFE_SERVED_CERT}" | openssl x509 -noout -text | grep 'URI:spiffe://example.org/service/spire-identity-exchange'
+
+diff -u <(curl https://localhost:8544/api/v1/trustbundle/x509 --cacert spire-bundle.pem -s) <(sudo spire-server bundle show)
+
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -X POST https://localhost:8544/api/v1/svid/mockhub/x509 --cacert spire-bundle.pem -sS
+
+curl -f -H "Authorization: Bearer ${MOCKHUB_TOKEN}" -H "Content-Type: application/json" -d '{"audiences": ["bar"]}' -X POST https://localhost:8544/api/v1/svid/mockhub/jwt --cacert spire-bundle.pem -sS
+
+~/go/bin/grpcurl -cacert spire-bundle.pem \
+  -d '{"pluginAuthList": {"plugins": [{"pluginName": "mockhub", "token": "'"${MOCKHUB_TOKEN}"'"}]}, "mintJWTSVIDRequest": {"audiences": ["foo"]}}' \
+  localhost:8543 \
+  proto.spiffe.spireidentityexchange.SpireIdentityExchangeApi/MintCertificate

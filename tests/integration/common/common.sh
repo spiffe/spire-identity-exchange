@@ -86,7 +86,11 @@ wait_for_kubectl() {
 }
 
 wait_for_spire_identity_exchange() {
-  local MAX_WAIT=30
+  # When a server.spiffe.* listener is enabled the exchange needs its own SVID
+  # before it can serve, and it exits (Restart=always, RestartSec=5s) if the
+  # registration entry has not propagated to the agent yet. Allow for a restart
+  # cycle rather than failing the suite on a cold start.
+  local MAX_WAIT=90
   local ELAPSED=0
   while true; do
     if curl -s -o /dev/null https://localhost:8444 -k; then
