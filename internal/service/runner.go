@@ -32,7 +32,12 @@ import (
 
 const (
 	shutdownTimeout    = 5 * time.Second
-	serverStartTimeout = 10 * time.Second
+	serverStartTimeout = 60 * time.Second
+	// How long to wait for teardown to finish after escalating to a forced stop.
+	// grpc.Server.Stop and http.Server.Close both close their listeners
+	// synchronously, so this is only a backstop against a connection that refuses
+	// to unwind.
+	forceStopGrace = 2 * time.Second
 
 	// HTTP gateway timeouts. The gateway is internet-facing; defaults are aimed at
 	// short MintCertificate REST calls — slow-client traffic should not be able to
@@ -185,27 +190,70 @@ func newFileTLSConfig(ctx context.Context, tc config.TLSConfig, logger *zap.Logg
 	}, nil
 }
 
+// newSPIFFETLSConfig builds the TLS config for the listeners served with this
+// process's own X509-SVID, and returns the source as a Closer the caller must
+// close. Client authentication is unchanged from the file-sourced listeners:
+// neither ClientAuth nor VerifyPeerCertificate is set, so no client certificate
+// is requested.
+//
+// timeout bounds the initial SVID fetch. NewX509Source blocks until the agent
+// hands one out, so without a bound a not-yet-ready agent — or a missing
+// registration entry for this process — hangs startup indefinitely.
+func newSPIFFETLSConfig(ctx context.Context, client *workloadapi.Client, timeout time.Duration, logger *zap.Logger) (*tls.Config, io.Closer, error) {
+	bootCtx, bootCancel := context.WithTimeout(ctx, timeout)
+	defer bootCancel()
+
+	source, err := workloadapi.NewX509Source(bootCtx, workloadapi.WithClient(client))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to obtain the server SVID from the workload API within %s "+
+			"(is the SPIRE agent running, and is this exchange's SPIFFE ID registered?): %w", timeout, err)
+	}
+
+	svid, err := source.GetX509SVID()
+	if err != nil {
+		_ = source.Close()
+		return nil, nil, fmt.Errorf("failed to read the server SVID: %w", err)
+	}
+	logger.Info("serving SPIFFE listeners with this process's own X509-SVID",
+		zap.String("spiffe_id", svid.ID.String()))
+
+	// go-spiffe runs the source's watch goroutine under context.Background(), so
+	// cancelling ctx does not stop it — only Close() does. Closing the source does
+	// not close a client supplied via WithClient, so the caller still owns that.
+	return &tls.Config{
+		GetCertificate: tlsconfig.GetCertificate(source),
+		MinVersion:     tls.VersionTLS13,
+	}, source, nil
+}
+
 // listenerPlans resolves the enabled listeners, in a stable order, pairing each
 // with the TLS config for its certificate source.
 func listenerPlans(cfg *config.SpireIdentityExchangeConfig, fileTLS, spiffeTLS *tls.Config) []listenerPlan {
-	candidates := []listenerPlan{
-		{name: "tls.grpc", kind: kindGRPC, port: cfg.Server.TLS.GRPC.Port, tls: fileTLS},
-		{name: "tls.rest", kind: kindREST, port: cfg.Server.TLS.REST.Port, tls: fileTLS},
-		{name: "spiffe.grpc", kind: kindGRPC, port: cfg.Server.SPIFFE.GRPC.Port, tls: spiffeTLS},
-		{name: "spiffe.rest", kind: kindREST, port: cfg.Server.SPIFFE.REST.Port, tls: spiffeTLS},
-	}
-	enabled := []bool{
-		cfg.Server.TLS.GRPC.Enabled(),
-		cfg.Server.TLS.REST.Enabled(),
-		cfg.Server.SPIFFE.GRPC.Enabled(),
-		cfg.Server.SPIFFE.REST.Enabled(),
+	// Each candidate carries the ListenerConfig it came from, so the port and the
+	// enable flag are read from one value and cannot drift apart.
+	candidates := []struct {
+		name     string
+		kind     serverKind
+		listener config.ListenerConfig
+		tls      *tls.Config
+	}{
+		{"tls.grpc", kindGRPC, cfg.Server.TLS.GRPC, fileTLS},
+		{"tls.rest", kindREST, cfg.Server.TLS.REST, fileTLS},
+		{"spiffe.grpc", kindGRPC, cfg.Server.SPIFFE.GRPC, spiffeTLS},
+		{"spiffe.rest", kindREST, cfg.Server.SPIFFE.REST, spiffeTLS},
 	}
 
 	plans := make([]listenerPlan, 0, len(candidates))
-	for i, c := range candidates {
-		if enabled[i] {
-			plans = append(plans, c)
+	for _, c := range candidates {
+		if !c.listener.Enabled() {
+			continue
 		}
+		plans = append(plans, listenerPlan{
+			name: c.name,
+			kind: c.kind,
+			port: c.listener.Port,
+			tls:  c.tls,
+		})
 	}
 	return plans
 }
@@ -277,6 +325,16 @@ func shutdownAll(entries []*serverEntry, timeout time.Duration, logger *zap.Logg
 		logger.Warn("Shutdown timeout exceeded, forcing stop")
 		for _, e := range entries {
 			e.force()
+		}
+		// force() is what unblocks the graceful calls, so this returns promptly.
+		// Waiting means the caller does not return while the graceful and serve
+		// goroutines are still unwinding; the bound only keeps a pathological
+		// hijacked connection from hanging shutdown forever.
+		select {
+		case <-stopped:
+			logger.Info("Server shutdown completed after forced stop")
+		case <-time.After(forceStopGrace):
+			logger.Warn("Forced stop did not complete in time; abandoning teardown")
 		}
 	}
 }
@@ -422,37 +480,14 @@ func runSpireIdentityExchangeServer(
 		}
 	}
 	if cfg.Server.SPIFFEEnabled() {
-		// NewX509Source blocks until the agent hands out an SVID. Bound it so a
-		// not-yet-ready agent, or a missing registration entry for this process,
-		// fails fast with an actionable message instead of hanging forever.
-		bootCtx, bootCancel := context.WithTimeout(ctx, serverStartTimeout)
-		defer bootCancel()
-
-		source, srcErr := workloadapi.NewX509Source(bootCtx, workloadapi.WithClient(wlaClient))
-		if srcErr != nil {
-			return fmt.Errorf("failed to obtain the server SVID from the workload API within %s "+
-				"(is the SPIRE agent running, and is this exchange's SPIFFE ID registered?): %w",
-				serverStartTimeout, srcErr)
+		var source io.Closer
+		spiffeTLS, source, err = newSPIFFETLSConfig(ctx, wlaClient, serverStartTimeout, logger)
+		if err != nil {
+			return err
 		}
-		// go-spiffe runs the source's watch goroutine under context.Background(),
-		// so cancelling ctx does not stop it — only Close() does. Closing the
-		// source does not close a client supplied via WithClient, so this does not
-		// race the wlaClient defer above.
 		defer func() {
 			_ = source.Close()
 		}()
-
-		svid, svidErr := source.GetX509SVID()
-		if svidErr != nil {
-			return fmt.Errorf("failed to read the server SVID: %w", svidErr)
-		}
-		logger.Info("serving SPIFFE listeners with this process's own X509-SVID",
-			zap.String("spiffe_id", svid.ID.String()))
-
-		spiffeTLS = &tls.Config{
-			GetCertificate: tlsconfig.GetCertificate(source),
-			MinVersion:     tls.VersionTLS13,
-		}
 	}
 
 	// --- REST handler, built once and shared by both REST listeners ---
