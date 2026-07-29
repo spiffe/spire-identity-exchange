@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -64,9 +63,7 @@ func TestRunSpireIdentityExchangeServer_InvalidValidatorConfig(t *testing.T) {
 	cancel()
 
 	cfg := &config.SpireIdentityExchangeConfig{
-		Server: config.ServerConfig{
-			Port: 0, // invalid port
-		},
+		Server: config.ServerConfig{}, // no listener enabled
 		SPIRE: config.SPIREConfig{
 			TrustDomain: "example.org",
 		},
@@ -203,12 +200,8 @@ func TestNewGRPCHandler_InvalidTrustDomain(t *testing.T) {
 func TestServerLifecycle(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
-	// Create config with available port
 	cfg := &config.SpireIdentityExchangeConfig{
-		Server: config.ServerConfig{
-			Port: 0,
-			TLS:  config.TLSConfig{},
-		},
+		Server: config.ServerConfig{},
 		SPIRE: config.SPIREConfig{
 			TrustDomain: "example.org",
 			SVIDTTL:     config.Duration(time.Hour),
@@ -228,8 +221,8 @@ func TestServerLifecycle(t *testing.T) {
 	handler, err := NewGRPCHandler(mockSpireClient, nil, cfg, mockValidator, nil, nil, logger)
 	require.NoError(t, err)
 
-	// Create listener
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.Port))
+	// Create listener on an ephemeral loopback port
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
 

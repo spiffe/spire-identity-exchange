@@ -5,5 +5,12 @@ metadata:
 spec:
   parentID: spiffe://${SPIFFE_TRUST_DOMAIN}/agent/node1
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/service/spire-identity-exchange
+  # The server.spiffe.* listeners serve this SVID directly. An X509-SVID carries
+  # only URI SANs by default, so plain TLS clients (curl, grpcurl) need DNS SANs
+  # for hostname verification to succeed.
+  dnsNames:
+  - localhost
+  - "spire-identity-exchange.${SPIFFE_TRUST_DOMAIN}"
+  - "spire-identity-exchange-rest.${SPIFFE_TRUST_DOMAIN}"
   selectors:
   - systemd:id:spire-identity-exchange-server@main.service

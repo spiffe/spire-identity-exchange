@@ -47,18 +47,86 @@ type SpireIdentityExchangeConfig struct {
 	K8sSAToken  K8sSATokenConfig `yaml:"k8sSAToken"`
 }
 
-// ServerConfig contains HTTP server configuration
+// ServerConfig contains HTTP server configuration.
+//
+// Serving is a two-axis matrix: protocol (gRPC or REST) crossed with certificate
+// source (a file on disk under tls, or this process's own X509-SVID under spiffe).
+// All four listeners are independent and can run at once.
 type ServerConfig struct {
-	GrpcPort    int       `yaml:"grpcPort"`
-	MetricsPort int       `yaml:"metricsPort"`
-	RestPort    int       `yaml:"restPort"`
-	TLS         TLSConfig `yaml:"tls"`
+	MetricsPort int                `yaml:"metricsPort"`
+	TLS         TLSConfig          `yaml:"tls"`
+	SPIFFE      SPIFFEServerConfig `yaml:"spiffe"`
+
+	// Removed keys. Retained only so a config written against the old schema
+	// fails with a message naming the replacement — yaml.Unmarshal ignores
+	// unknown keys, so without these a stale config would start nothing and
+	// report the generic "no listener enabled".
+	GrpcPort int `yaml:"grpcPort"`
+	RestPort int `yaml:"restPort"`
 }
 
-// TLSConfig contains TLS configuration
+// ListenerConfig is one protocol surface on one certificate source.
+type ListenerConfig struct {
+	Enable bool `yaml:"enable"`
+	Port   int  `yaml:"port"`
+}
+
+// Enabled reports whether this listener should be started. A zero port means
+// disabled even when enable is true.
+func (l ListenerConfig) Enabled() bool { return l.Enable && l.Port != 0 }
+
+// TLSConfig configures the listeners served with a certificate loaded from disk.
 type TLSConfig struct {
-	CertFile string `yaml:"certFile"`
-	KeyFile  string `yaml:"keyFile"`
+	CertFile string         `yaml:"certFile"`
+	KeyFile  string         `yaml:"keyFile"`
+	GRPC     ListenerConfig `yaml:"grpc"`
+	REST     ListenerConfig `yaml:"rest"`
+}
+
+// SPIFFEServerConfig mirrors TLSConfig minus the cert paths: these listeners are
+// served with this process's own X509-SVID, fetched from the SPIRE Agent Workload
+// API at spire.agentWorkloadSocketPath. Client authentication is unchanged from
+// the tls listeners — callers still present a bearer token.
+type SPIFFEServerConfig struct {
+	GRPC ListenerConfig `yaml:"grpc"`
+	REST ListenerConfig `yaml:"rest"`
+}
+
+// FileTLSEnabled reports whether any listener needs the on-disk certificate.
+func (c *ServerConfig) FileTLSEnabled() bool { return c.TLS.GRPC.Enabled() || c.TLS.REST.Enabled() }
+
+// SPIFFEEnabled reports whether any listener needs a server X509-SVID.
+func (c *ServerConfig) SPIFFEEnabled() bool {
+	return c.SPIFFE.GRPC.Enabled() || c.SPIFFE.REST.Enabled()
+}
+
+// AnyGRPCEnabled reports whether any gRPC listener is enabled, on either
+// certificate source.
+func (c *ServerConfig) AnyGRPCEnabled() bool { return c.TLS.GRPC.Enabled() || c.SPIFFE.GRPC.Enabled() }
+
+// AnyRESTEnabled reports whether any REST listener is enabled, on either
+// certificate source.
+func (c *ServerConfig) AnyRESTEnabled() bool { return c.TLS.REST.Enabled() || c.SPIFFE.REST.Enabled() }
+
+// AnyEnabled reports whether there is anything at all to serve.
+func (c *ServerConfig) AnyEnabled() bool { return c.FileTLSEnabled() || c.SPIFFEEnabled() }
+
+// NamedListeners returns every listener paired with its config key, enabled or
+// not, in a stable order. Callers filter on ListenerConfig.Enabled().
+func (c *ServerConfig) NamedListeners() []NamedListener {
+	return []NamedListener{
+		{Name: "server.tls.grpc", Config: c.TLS.GRPC},
+		{Name: "server.tls.rest", Config: c.TLS.REST},
+		{Name: "server.spiffe.grpc", Config: c.SPIFFE.GRPC},
+		{Name: "server.spiffe.rest", Config: c.SPIFFE.REST},
+	}
+}
+
+// NamedListener is a listener config alongside the config key it came from, so
+// validation and startup logging can name the offending listener.
+type NamedListener struct {
+	Name   string
+	Config ListenerConfig
 }
 
 // AuthConfig contains Authentication configuration
@@ -256,6 +324,8 @@ func (c *AuthConfig) Validate() error {
 	return errors.Join(errs...)
 }
 
+const maxPort = 65535
+
 func (c *ServerConfig) Validate() error {
 	var errs []error
 
@@ -263,16 +333,54 @@ func (c *ServerConfig) Validate() error {
 		errs = append(errs, errors.New("server.metricsPort is required"))
 	}
 
-	if c.TLS.CertFile == "" {
-		errs = append(errs, errors.New("server.tls.certFile path is required"))
-	} else if _, err := os.Stat(c.TLS.CertFile); err != nil {
-		errs = append(errs, fmt.Errorf("server.tls.certFile not found at %q: %w", c.TLS.CertFile, err))
+	if c.GrpcPort != 0 {
+		errs = append(errs, errors.New("server.grpcPort has been removed; use server.tls.grpc.{enable,port}"))
+	}
+	if c.RestPort != 0 {
+		errs = append(errs, errors.New("server.restPort has been removed; use server.tls.rest.{enable,port}"))
 	}
 
-	if c.TLS.KeyFile == "" {
-		errs = append(errs, errors.New("server.tls.keyFile path is required"))
-	} else if _, err := os.Stat(c.TLS.KeyFile); err != nil {
-		errs = append(errs, fmt.Errorf("server.tls.keyFile not found at %q: %w", c.TLS.KeyFile, err))
+	// A zero port disables a listener, so it is never a collision candidate. Any
+	// other out-of-range value is an operator mistake — never silently ignored,
+	// because net.Listen would fail mid-startup with an opaque message.
+	usedPorts := map[int]string{}
+	if c.MetricsPort != 0 {
+		usedPorts[c.MetricsPort] = "server.metricsPort"
+	}
+	for _, l := range c.NamedListeners() {
+		if l.Config.Port < 0 || l.Config.Port > maxPort {
+			errs = append(errs, fmt.Errorf("%s.port %d is out of range (1-%d, or 0 to disable)", l.Name, l.Config.Port, maxPort))
+			continue
+		}
+		if !l.Config.Enabled() {
+			continue
+		}
+		if prev, dup := usedPorts[l.Config.Port]; dup {
+			errs = append(errs, fmt.Errorf("%s.port %d collides with %s", l.Name, l.Config.Port, prev))
+			continue
+		}
+		usedPorts[l.Config.Port] = l.Name
+	}
+
+	// Only the file-sourced listeners need a certificate on disk. A SPIFFE-only
+	// deployment legitimately has no certFile/keyFile at all.
+	if c.FileTLSEnabled() {
+		if c.TLS.CertFile == "" {
+			errs = append(errs, errors.New("server.tls.certFile path is required when a server.tls listener is enabled"))
+		} else if _, err := os.Stat(c.TLS.CertFile); err != nil {
+			errs = append(errs, fmt.Errorf("server.tls.certFile not found at %q: %w", c.TLS.CertFile, err))
+		}
+
+		if c.TLS.KeyFile == "" {
+			errs = append(errs, errors.New("server.tls.keyFile path is required when a server.tls listener is enabled"))
+		} else if _, err := os.Stat(c.TLS.KeyFile); err != nil {
+			errs = append(errs, fmt.Errorf("server.tls.keyFile not found at %q: %w", c.TLS.KeyFile, err))
+		}
+	}
+
+	if !c.AnyEnabled() {
+		errs = append(errs, errors.New("no listener enabled: set a nonzero port and enable on at least one of "+
+			"server.tls.grpc, server.tls.rest, server.spiffe.grpc, server.spiffe.rest"))
 	}
 
 	return errors.Join(errs...)
@@ -361,11 +469,18 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 	errs = append(errs, c.GitHubOIDC.Validate())
 	errs = append(errs, c.K8sSAToken.Validate())
 
-	if c.Server.RestPort != 0 && c.SPIRE.AgentWorkloadSocketPath == "" {
-		errs = append(errs, errors.New("spire.agentWorkloadSocketPath is required when server.restPort is enabled"))
+	// The Workload API socket serves two distinct needs, so name the one that
+	// actually triggered the requirement.
+	if c.SPIRE.AgentWorkloadSocketPath == "" {
+		switch {
+		case c.Server.SPIFFEEnabled():
+			errs = append(errs, errors.New("spire.agentWorkloadSocketPath is required when a server.spiffe listener is enabled; it is the source of the server's own X509-SVID"))
+		case c.Server.AnyRESTEnabled():
+			errs = append(errs, errors.New("spire.agentWorkloadSocketPath is required when a REST listener is enabled; it feeds the trust bundle cache"))
+		}
 	}
-	if c.Server.RestPort != 0 && c.SPIRE.AgentDelegatedSocketPath == "" {
-		errs = append(errs, errors.New("spire.agentDelegatedSocketPath is required when server.restPort is enabled"))
+	if c.Server.AnyRESTEnabled() && c.SPIRE.AgentDelegatedSocketPath == "" {
+		errs = append(errs, errors.New("spire.agentDelegatedSocketPath is required when a REST listener is enabled"))
 	}
 
 	if len(errs) > 0 {

@@ -225,10 +225,10 @@ func TestServer_NewGRPCHandler_AllFieldsSet(t *testing.T) {
 
 	cfg := &config.SpireIdentityExchangeConfig{
 		Server: config.ServerConfig{
-			Port: 8443,
 			TLS: config.TLSConfig{
 				CertFile: "/path/to/cert",
 				KeyFile:  "/path/to/key",
+				GRPC:     config.ListenerConfig{Enable: true, Port: 8443},
 			},
 		},
 		SPIRE: config.SPIREConfig{
@@ -261,7 +261,7 @@ func TestServer_NewGRPCHandler_AllFieldsSet(t *testing.T) {
 	assert.NotNil(t, handler.githubOIDC.spiffeIDTemplate)
 
 	// Verify the config is fully accessible
-	assert.Equal(t, 8443, handler.config.Server.Port)
+	assert.Equal(t, 8443, handler.config.Server.TLS.GRPC.Port)
 	assert.Equal(t, config.Duration(2*time.Hour), handler.config.SPIRE.SVIDTTL)
 	assert.Equal(t, "https://issuer.example.com", handler.config.GitHubOIDC.Issuer)
 }
