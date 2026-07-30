@@ -9,3 +9,4 @@ spec:
   - k8s_psat:namespace:default
   - k8s_psat:service_account_name:default
   - github_actions:repository:my-org/my-repo
+  - spire_identity_exchange:stack:name:foo

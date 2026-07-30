@@ -3,12 +3,12 @@
   "logLevel": "info",
   "purposeMode": "shared",
   "server": {
-    "grpcPort": 8443,
     "metricsPort": 9090,
-    "restPort": 8444,
     "tls": {
       "certFile": "./certs/server.crt",
-      "keyFile": "./certs/server.key"
+      "keyFile": "./certs/server.key",
+      "grpc": { "enable": true, "port": 8443 },
+      "rest": { "enable": true, "port": 8444 }
     }
   },
   "spire": {

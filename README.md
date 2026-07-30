@@ -117,6 +117,40 @@ spire-identity-exchange supports pluggable authentication via a dynamic plugin s
 
 Additional authentication methods can be added by implementing the `validator.TokenValidatorLoaderGenerator` interface (see [pkg/validator/](pkg/validator/)).
 
+### The stack selector
+
+Every exchange addresses a **stack**: either an entry in `auth.stacks` (a composite that validates one token per member plugin), or — when `passthroughPlugins` is enabled, the default — a single plugin addressed under its own name. The stack is the `{stack}` segment of the REST path (`/api/v1/svid/{stack}/x509`) and the `stackName` field of the gRPC `MintCertificateRequest`.
+
+`auth.stacks` is a mapping keyed by stack name, each entry naming its member plugins:
+
+```yaml
+auth:
+  stacks:
+    foo:
+      plugins:
+      - k8s_psat
+      - github-actions
+```
+
+In addition to the plugin selectors above, spire-identity-exchange supplies one selector of its own naming the stack that was addressed:
+
+| Selector type | Value | Example |
+|---|---|---|
+| `spire_identity_exchange` | `stack:name:<stack>` | `spire_identity_exchange:stack:name:foo` |
+
+Add it to a registration entry to scope that entry to a single stack:
+
+```yaml
+selectors:
+- k8s_psat:namespace:default
+- github_actions:repository:my-org/my-repo
+- spire_identity_exchange:stack:name:foo   # only issuable via the "foo" stack
+```
+
+**Existing entries need no change.** SPIRE matches an entry when the entry's selectors are a subset of those supplied, so an entry that omits this selector keeps matching from any stack. Adding it is opt-in tightening, useful when the same token would otherwise be accepted through more than one route — for example a composite stack `foo` and, under `passthroughPlugins`, each of its member plugins individually.
+
+The stack selector is never sufficient on its own: an exchange that derives no plugin selectors from the token claims is rejected before the agent is contacted.
+
 ## Prerequisites
 
 - A running [SPIRE Agent](https://spiffe.io/docs/latest/deploying/install-agent/) with the Delegated Identity API enabled (`authorized_delegates` configured)
@@ -151,7 +185,7 @@ build/linux/amd64/spire-identity-exchange-server --config config/default.conf -e
 
 ### Plugin-based configuration (default)
 
-Authentication methods are configured via the `auth.plugins` array. Each entry specifies a user-defined name, a plugin type, and plugin-specific configuration.
+Authentication methods are configured under `auth.plugins`, a mapping keyed by plugin name. Each entry holds a plugin type and plugin-specific configuration; the key is the plugin's name, and doubles as the type when `plugin` is omitted. `auth.stacks` is keyed the same way.
 
 ```jsonc
 {
@@ -159,12 +193,20 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
   "logLevel": "info",
 
   "server": {
-    "grpcPort": 8443,       // gRPC server port
     "metricsPort": 9090,    // Prometheus metrics port
-    "restPort": 8444,       // Optional HTTP REST port (see REST API below)
+
+    // Listeners served with a certificate loaded from disk.
     "tls": {
       "certFile": "certs/server.crt",
-      "keyFile":  "certs/server.key"
+      "keyFile":  "certs/server.key",
+      "grpc": { "enable": true, "port": 8443 },
+      "rest": { "enable": true, "port": 8444 }   // see REST API below
+    },
+
+    // Listeners served with this process's own X509-SVID.
+    "spiffe": {
+      "grpc": { "enable": true, "port": 8543 },
+      "rest": { "enable": true, "port": 8544 }
     }
   },
 
@@ -176,9 +218,10 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
   },
 
   "auth": {
-    "plugins": [
-      {
-        "name": "github-actions",
+    // Keyed by plugin name. "plugin" is only needed where the name differs
+    // from the plugin type — a plugin keyed "github" needs no "plugin" field.
+    "plugins": {
+      "github-actions": {
         "plugin": "github",
         "config": {
           "issuerURL": "https://token.actions.githubusercontent.com",
@@ -186,8 +229,7 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
           "allowedRepositoryOwners": ["my-org"]
         }
       },
-      {
-        "name": "kubernetes-prod",
+      "kubernetes-prod": {
         "plugin": "k8s_psat",
         "config": {
           "clusterName": "prod-us-east",
@@ -196,12 +238,39 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
           "allowedServiceAccounts": ["prod-*/app"]
         }
       }
-    ]
+    },
+
+    // Keyed by stack name. Optional: with passthroughPlugins (the default)
+    // every plugin above is already addressable as a stack of its own.
+    "stacks": {
+      "prod-deploy": {
+        "plugins": ["github-actions", "kubernetes-prod"]
+      }
+    }
   }
 }
 ```
 
 At least one plugin must be configured in `auth.plugins`.
+
+### Listeners
+
+Serving is a two-axis matrix: protocol (gRPC or REST) crossed with certificate source. All four
+listeners are independent and can run at the same time.
+
+- `server.tls.*` listeners are served with the certificate at `server.tls.certFile` /
+  `keyFile`, reloaded from disk every five minutes. Those two paths are only required when a
+  `server.tls` listener is enabled.
+- `server.spiffe.*` listeners are served with this process's own X509-SVID, fetched from the SPIRE
+  Agent Workload API at `spire.agentWorkloadSocketPath` and rotated automatically. No certificate
+  files are involved, so a SPIFFE-only deployment needs none. This requires a SPIRE registration
+  entry matching the exchange process; startup fails with a timeout if no SVID arrives.
+
+Client authentication is identical on all four: callers present a bearer token, and the SPIFFE
+listeners do not request a client certificate.
+
+A listener runs when `enable` is true **and** `port` is nonzero — `port: 0` disables it either way.
+At least one listener must be enabled.
 
 ### Purpose mode
 
@@ -216,7 +285,7 @@ The legacy build (`-tags legacy`) uses top-level `githubOIDC` and `k8sSAToken` c
 
 ### Selectors vs. SPIFFE ID templates
 
-In the default (agent-based) mode, spire-identity-exchange does **not** derive SPIFFE IDs from token claims. Instead, each plugin generates **SPIRE selectors** from the validated claims, and SVID issuance is driven by SPIRE registration entries that match those selectors. This means SPIFFE IDs are entirely managed in SPIRE registration entries — no Go templates required.
+In the default (agent-based) mode, spire-identity-exchange does **not** derive SPIFFE IDs from token claims. Instead, each plugin generates **SPIRE selectors** from the validated claims, and SVID issuance is driven by SPIRE registration entries that match those selectors. This means SPIFFE IDs are entirely managed in SPIRE registration entries — no Go templates required. Alongside the plugin selectors, spire-identity-exchange asserts the name of the stack that was addressed, so an entry can also be scoped to a single stack — see [The stack selector](#the-stack-selector).
 
 The legacy mode (`-tags legacy`) uses SPIFFE ID templates to derive workload identities. For a full security reference on template-based SPIFFE ID derivation, see [docs/spiffe-id-template-guide.md](docs/spiffe-id-template-guide.md) and [docs/spiffe-id-token-reference.md](docs/spiffe-id-token-reference.md).
 

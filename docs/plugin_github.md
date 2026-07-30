@@ -64,8 +64,7 @@ Selectors are generated for every non-empty claim field in the validated token:
 ```yaml
 auth:
   plugins:
-    - name: "github-actions"
-      plugin: "github"
+    github:
       config:
         issuerURL: "https://token.actions.githubusercontent.com"
         audiences: ["spire-identity-exchange"]

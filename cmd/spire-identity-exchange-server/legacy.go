@@ -20,7 +20,7 @@ import (
 
 func createSpireClient(cfg *config.SpireIdentityExchangeConfig, logger *zap.Logger) (service.SpireClient, error) {
 	socketPath := cfg.SPIRE.UnixSocketPath
-	if cfg.Server.Port != 0 && (cfg.GitHubOIDC.Enabled || cfg.K8sSAToken.Enabled) {
+	if cfg.Server.TLS.GRPC.Enabled() && (cfg.GitHubOIDC.Enabled || cfg.K8sSAToken.Enabled) {
 		if socketPath == "" {
 			logger.Error("unix_socket_path is required")
 			return nil, fmt.Errorf("unix_socket_path is required")
@@ -42,7 +42,7 @@ func createLegacyValidators(ctx context.Context, cfg *config.SpireIdentityExchan
 	var githubOIDCValidator validator.TokenValidator
 	var k8sSATokenValidator validator.TokenValidator
 
-	if cfg.Server.Port != 0 {
+	if cfg.Server.TLS.GRPC.Enabled() {
 		if cfg.GitHubOIDC.Enabled {
 			v, err := githuboidc.NewValidator(ctx, cfg.GitHubOIDC, appMetrics, logger)
 			if err != nil {

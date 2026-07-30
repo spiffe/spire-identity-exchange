@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"github.com/spiffe/spire-identity-exchange/internal/config"
@@ -92,15 +94,16 @@ func run() error {
 		return err
 	}
 
-	// Only initialize validators if the gRPC server is enabled (port != 0)
-	if cfg.Server.GrpcPort != 0 {
+	// Only initialize validators if a gRPC listener is enabled, on either
+	// certificate source.
+	if cfg.Server.AnyGRPCEnabled() {
 		if githubOIDCValidator == nil && k8sSATokenValidator == nil && len(cfg.Auth.Plugins) == 0 {
 			logger.Error("at least one authentication method must be enabled")
 			return fmt.Errorf("no authentication method enabled")
 		}
 
 	} else {
-		logger.Info("gRPC port is 0; skipping token validator initializations")
+		logger.Info("no gRPC listener enabled; skipping token validator initializations")
 	}
 
 	// REST surface reads pkg/validator instances directly off cfg.Auth.LoadedStacks
@@ -158,31 +161,35 @@ func loadSpireIdentityExchangeConfigFile(filePath string, expandEnv bool) (*conf
 	// Load the plugins and stacks from validated config
 	cfg.Auth.LoadedPlugins = make(map[string]validator.TokenValidatorAndSelectorGenerator)
 	cfg.Auth.LoadedStacks = make(map[string]validator.TokenValidatorAndSelectorGenerator)
-	for _, plugin := range cfg.Auth.Plugins {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Auth.Plugins)) {
+		plugin := cfg.Auth.Plugins[name]
+		if plugin.Enabled != nil && !*plugin.Enabled {
+			continue
+		}
 		if plugin.Config == nil {
-			return nil, fmt.Errorf("plugin %q has no loaded config", plugin.Name)
+			return nil, fmt.Errorf("plugin %q has no loaded config", name)
 		}
 		v, err := plugin.Config.NewValidator()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create validator for plugin %q: %w", plugin.Name, err)
+			return nil, fmt.Errorf("failed to create validator for plugin %q: %w", name, err)
 		}
-		cfg.Auth.LoadedPlugins[plugin.Name] = v
+		cfg.Auth.LoadedPlugins[name] = v
 		if cfg.Auth.PassthroughPlugins == nil || *cfg.Auth.PassthroughPlugins == true {
-			cfg.Auth.LoadedStacks[plugin.Name] = v
+			cfg.Auth.LoadedStacks[name] = v
 		}
 	}
-	for _, stack := range cfg.Auth.Stacks {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Auth.Stacks)) {
 		s := &stacklib.Config{
-			Plugins: stack.Plugins,
+			Plugins: cfg.Auth.Stacks[name].Plugins,
 		}
 		if err := s.ValidateConfig(cfg.Auth.LoadedPlugins); err != nil {
-			return nil, fmt.Errorf("invalid stack %q: %w", stack.Name, err)
+			return nil, fmt.Errorf("invalid stack %q: %w", name, err)
 		}
 		v, err := s.NewValidator()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create validator for stack %q: %w", stack.Name, err)
+			return nil, fmt.Errorf("failed to create validator for stack %q: %w", name, err)
 		}
-		cfg.Auth.LoadedStacks[stack.Name] = v
+		cfg.Auth.LoadedStacks[name] = v
 	}
 
 	return &cfg, nil

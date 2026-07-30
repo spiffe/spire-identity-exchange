@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	proto "github.com/spiffe/spire-identity-exchange/api"
@@ -31,7 +32,12 @@ import (
 
 const (
 	shutdownTimeout    = 5 * time.Second
-	serverStartTimeout = 10 * time.Second
+	serverStartTimeout = 60 * time.Second
+	// How long to wait for teardown to finish after escalating to a forced stop.
+	// grpc.Server.Stop and http.Server.Close both close their listeners
+	// synchronously, so this is only a backstop against a connection that refuses
+	// to unwind.
+	forceStopGrace = 2 * time.Second
 
 	// HTTP gateway timeouts. The gateway is internet-facing; defaults are aimed at
 	// short MintCertificate REST calls — slow-client traffic should not be able to
@@ -113,6 +119,234 @@ func (cr *CertReloader) Reload() error {
 	return nil
 }
 
+// serverKind distinguishes the two protocol surfaces a listener can serve.
+type serverKind int
+
+const (
+	kindGRPC serverKind = iota
+	kindREST
+)
+
+// listenerPlan is a listener we intend to open, resolved from configuration
+// before anything is bound.
+type listenerPlan struct {
+	name string // "tls.grpc" | "tls.rest" | "spiffe.grpc" | "spiffe.rest"
+	kind serverKind
+	port int
+	tls  *tls.Config
+}
+
+// serverEntry is one bound listener plus its lifecycle hooks. Binding is
+// separated from serving so a failure to bind the fourth listener tears down the
+// first three without any of them having accepted a connection.
+type serverEntry struct {
+	name     string
+	port     int
+	ln       net.Listener
+	serve    func() error          // blocks until stopped
+	graceful func(context.Context) // GracefulStop / Shutdown
+	force    func()                // Stop / Close; must be idempotent
+}
+
+// newFileTLSConfig builds the TLS config for the listeners served with an on-disk
+// certificate, and starts the background reloader that picks up rotations.
+func newFileTLSConfig(ctx context.Context, tc config.TLSConfig, logger *zap.Logger) (*tls.Config, error) {
+	reloader := &CertReloader{
+		certPath: tc.CertFile,
+		keyPath:  tc.KeyFile,
+	}
+	if err := reloader.Reload(); err != nil {
+		return nil, fmt.Errorf("failed to load initial TLS certificate: %w", err)
+	}
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := reloader.Reload(); err != nil {
+					logger.Error("failed to reload TLS certificate",
+						zap.String("cert_file", reloader.certPath),
+						zap.String("key_file", reloader.keyPath),
+						zap.Error(err),
+					)
+				} else {
+					logger.Debug("TLS certificate reloaded")
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	logger.Info("file-sourced TLS certificate loaded",
+		zap.String("cert_file", tc.CertFile),
+		zap.String("key_file", tc.KeyFile))
+
+	return &tls.Config{
+		GetCertificate: reloader.GetCertificate,
+		MinVersion:     tls.VersionTLS13,
+	}, nil
+}
+
+// newSPIFFETLSConfig builds the TLS config for the listeners served with this
+// process's own X509-SVID, and returns the source as a Closer the caller must
+// close. Client authentication is unchanged from the file-sourced listeners:
+// neither ClientAuth nor VerifyPeerCertificate is set, so no client certificate
+// is requested.
+//
+// timeout bounds the initial SVID fetch. NewX509Source blocks until the agent
+// hands one out, so without a bound a not-yet-ready agent — or a missing
+// registration entry for this process — hangs startup indefinitely.
+func newSPIFFETLSConfig(ctx context.Context, client *workloadapi.Client, timeout time.Duration, logger *zap.Logger) (*tls.Config, io.Closer, error) {
+	bootCtx, bootCancel := context.WithTimeout(ctx, timeout)
+	defer bootCancel()
+
+	source, err := workloadapi.NewX509Source(bootCtx, workloadapi.WithClient(client))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to obtain the server SVID from the workload API within %s "+
+			"(is the SPIRE agent running, and is this exchange's SPIFFE ID registered?): %w", timeout, err)
+	}
+
+	svid, err := source.GetX509SVID()
+	if err != nil {
+		_ = source.Close()
+		return nil, nil, fmt.Errorf("failed to read the server SVID: %w", err)
+	}
+	logger.Info("serving SPIFFE listeners with this process's own X509-SVID",
+		zap.String("spiffe_id", svid.ID.String()))
+
+	// go-spiffe runs the source's watch goroutine under context.Background(), so
+	// cancelling ctx does not stop it — only Close() does. Closing the source does
+	// not close a client supplied via WithClient, so the caller still owns that.
+	return &tls.Config{
+		GetCertificate: tlsconfig.GetCertificate(source),
+		MinVersion:     tls.VersionTLS13,
+	}, source, nil
+}
+
+// listenerPlans resolves the enabled listeners, in a stable order, pairing each
+// with the TLS config for its certificate source.
+func listenerPlans(cfg *config.SpireIdentityExchangeConfig, fileTLS, spiffeTLS *tls.Config) []listenerPlan {
+	// Each candidate carries the ListenerConfig it came from, so the port and the
+	// enable flag are read from one value and cannot drift apart.
+	candidates := []struct {
+		name     string
+		kind     serverKind
+		listener config.ListenerConfig
+		tls      *tls.Config
+	}{
+		{"tls.grpc", kindGRPC, cfg.Server.TLS.GRPC, fileTLS},
+		{"tls.rest", kindREST, cfg.Server.TLS.REST, fileTLS},
+		{"spiffe.grpc", kindGRPC, cfg.Server.SPIFFE.GRPC, spiffeTLS},
+		{"spiffe.rest", kindREST, cfg.Server.SPIFFE.REST, spiffeTLS},
+	}
+
+	plans := make([]listenerPlan, 0, len(candidates))
+	for _, c := range candidates {
+		if !c.listener.Enabled() {
+			continue
+		}
+		plans = append(plans, listenerPlan{
+			name: c.name,
+			kind: c.kind,
+			port: c.listener.Port,
+			tls:  c.tls,
+		})
+	}
+	return plans
+}
+
+// newServerEntry wires a bound listener to a protocol implementation. Both the
+// gRPC handler and the REST handler are shared across entries — only the TLS
+// config differs between the two certificate sources.
+func newServerEntry(p listenerPlan, ln net.Listener, grpcHandler proto.SpireIdentityExchangeApiServer, restHandler http.Handler) *serverEntry {
+	e := &serverEntry{name: p.name, port: p.port, ln: ln}
+
+	switch p.kind {
+	case kindGRPC:
+		// Credentials are bound to the server, not the listener, so each
+		// certificate source needs its own grpc.Server even though one server
+		// can serve several listeners.
+		srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(p.tls)))
+		proto.RegisterSpireIdentityExchangeApiServer(srv, grpcHandler)
+		reflection.Register(srv)
+		e.serve = func() error { return srv.Serve(ln) }
+		// GracefulStop takes no context and can block on a long-lived stream;
+		// the caller's shutdown timeout plus force() is what bounds it.
+		e.graceful = func(context.Context) { srv.GracefulStop() }
+		e.force = srv.Stop
+
+	case kindREST:
+		srv := &http.Server{
+			Handler: restHandler,
+			// http.Server mutates TLSConfig (NextProtos), so the two REST
+			// listeners must not share one *tls.Config.
+			TLSConfig:         p.tls.Clone(),
+			ReadHeaderTimeout: httpReadHeaderTimeout,
+			ReadTimeout:       httpReadTimeout,
+			WriteTimeout:      httpWriteTimeout,
+			IdleTimeout:       httpIdleTimeout,
+		}
+		e.serve = func() error { return srv.ServeTLS(ln, "", "") }
+		e.graceful = func(shutdownCtx context.Context) { _ = srv.Shutdown(shutdownCtx) }
+		// Shutdown does not wait on hijacked connections; Close is the escalation.
+		e.force = func() { _ = srv.Close() }
+	}
+
+	return e
+}
+
+// shutdownAll gracefully stops every entry in parallel, escalating to a forced
+// stop if the timeout expires.
+func shutdownAll(entries []*serverEntry, timeout time.Duration, logger *zap.Logger) {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	stopped := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for _, e := range entries {
+			wg.Add(1)
+			go func(e *serverEntry) {
+				defer wg.Done()
+				e.graceful(shutdownCtx)
+			}(e)
+		}
+		wg.Wait()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		logger.Info("Server shutdown completed")
+	case <-shutdownCtx.Done():
+		logger.Warn("Shutdown timeout exceeded, forcing stop")
+		for _, e := range entries {
+			e.force()
+		}
+		// force() is what unblocks the graceful calls, so this returns promptly.
+		// Waiting means the caller does not return while the graceful and serve
+		// goroutines are still unwinding; the bound only keeps a pathological
+		// hijacked connection from hanging shutdown forever.
+		select {
+		case <-stopped:
+			logger.Info("Server shutdown completed after forced stop")
+		case <-time.After(forceStopGrace):
+			logger.Warn("Forced stop did not complete in time; abandoning teardown")
+		}
+	}
+}
+
+func entryNames(entries []*serverEntry) []string {
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, fmt.Sprintf("%s:%d", e.name, e.port))
+	}
+	return names
+}
+
 // Run runs spire-identity-exchange gRPC server (and optionally HTTP REST server) and waits for
 // termination signals. Pass nil for a validator to disable that auth method.
 // Returns the first error encountered during startup or runtime so the caller can exit
@@ -153,9 +387,18 @@ func runSpireIdentityExchangeServer(
 		return fmt.Errorf("configuration is nil")
 	}
 
-	// Fail fast if both servers are intentionally or accidentally disabled
-	if cfg.Server.GrpcPort == 0 && cfg.Server.RestPort == 0 {
-		return fmt.Errorf("both gRPC (port %d) and REST (port %d) servers are disabled; nothing to run", cfg.Server.GrpcPort, cfg.Server.RestPort)
+	// Config validation catches this too, but callers can build a config directly
+	// and reach this function without going through Validate().
+	if !cfg.Server.AnyEnabled() {
+		return fmt.Errorf("no listener enabled; nothing to run")
+	}
+
+	// A listener with enable: true and port 0 is disabled by design, not an error.
+	// Say so, or the missing port looks like a bug.
+	for _, l := range cfg.Server.NamedListeners() {
+		if l.Config.Enable && l.Config.Port == 0 {
+			logger.Warn("listener enabled but port is 0; treating as disabled", zap.String("listener", l.Name))
+		}
 	}
 
 	// Start key syncers for any validator that supports it
@@ -177,8 +420,8 @@ func runSpireIdentityExchangeServer(
 		delegatedClient *delegated.Client
 		err             error
 	)
-	needDelegated := cfg.Server.RestPort != 0 ||
-		(cfg.Server.GrpcPort != 0 && len(cfg.Auth.LoadedPlugins) > 0)
+	needDelegated := cfg.Server.AnyRESTEnabled() ||
+		(cfg.Server.AnyGRPCEnabled() && len(cfg.Auth.LoadedPlugins) > 0)
 	if needDelegated {
 		logger.Info("connecting to delegated identity socket", zap.String("socket_path", cfg.SPIRE.AgentDelegatedSocketPath))
 		delegatedClient, err = delegated.New(cfg.SPIRE.AgentDelegatedSocketPath)
@@ -195,193 +438,130 @@ func runSpireIdentityExchangeServer(
 		return fmt.Errorf("failed to create gRPC server handler: %w", err)
 	}
 
-	reloader := &CertReloader{
-		certPath: cfg.Server.TLS.CertFile,
-		keyPath:  cfg.Server.TLS.KeyFile,
-	}
-	if err := reloader.Reload(); err != nil {
-		return fmt.Errorf("failed to load initial TLS certificate: %w", err)
-	}
-
-	tlsConfig := &tls.Config{
-		GetCertificate: reloader.GetCertificate,
-		MinVersion:     tls.VersionTLS13,
-	}
-
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if err := reloader.Reload(); err != nil {
-					logger.Error("failed to reload TLS certificate",
-						zap.String("cert_file", reloader.certPath),
-						zap.String("key_file", reloader.keyPath),
-						zap.Error(err),
-					)
-				} else {
-					logger.Debug("TLS certificate reloaded")
-				}
-			case <-childCtx.Done():
-				return
-			}
-		}
-	}()
-
-	errCh := make(chan error, 3)
-
-	// --- gRPC server ---
-	var grpcServer *grpc.Server
-	var listener net.Listener
-
-	if cfg.Server.GrpcPort != 0 {
-		logger.Info("Starting spire-identity-exchange gRPC server", zap.Int("port", cfg.Server.GrpcPort))
-
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.GrpcPort))
-		if err != nil {
-			return fmt.Errorf("failed to create network listener: %w", err)
-		}
-
-		grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConfig)))
-		logger.Info("gRPC server configured with TLS",
-			zap.String("cert_file", cfg.Server.TLS.CertFile),
-			zap.String("key_file", cfg.Server.TLS.KeyFile))
-
-		proto.RegisterSpireIdentityExchangeApiServer(grpcServer, handler)
-		reflection.Register(grpcServer)
-
-		go func() {
-			errCh <- grpcServer.Serve(listener)
-		}()
-	} else {
-		logger.Info("gRPC server port is 0; gRPC server is disabled.")
-	}
-
-	// --- REST server ---
-	var httpServer *http.Server
-	if cfg.Server.RestPort != 0 {
-		// delegatedClient is shared from above. Trust bundle cache fed by Main agent's Workload API.
-		cache := &trustBundleCache{logger: logger}
+	// --- Workload API client ---
+	// Shared by the REST trust-bundle watcher and the SPIFFE listeners' X509
+	// source: one UDS connection, one dial/backoff policy, two independent
+	// FetchX509SVID streams.
+	var wlaClient *workloadapi.Client
+	if cfg.Server.AnyRESTEnabled() || cfg.Server.SPIFFEEnabled() {
 		socketAddr := "unix://" + cfg.SPIRE.AgentWorkloadSocketPath
-		logger.Info("initializing workload API watcher", zap.String("socket_path", socketAddr))
+		logger.Info("connecting to workload API", zap.String("socket_path", socketAddr))
 
-		wlaClient, err := workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
+		wlaClient, err = workloadapi.New(ctx, workloadapi.WithAddr(socketAddr))
 		if err != nil {
-			// gRPC server is already serving in a goroutine at this point (if
-			// Server.GrpcPort != 0). Tear it down before bailing so we don't leak
-			// the bound listener; supervisors expect startup failure to leave
-			// no listening sockets.
-			if grpcServer != nil {
-				grpcServer.Stop()
-			}
 			return fmt.Errorf("failed to create workload API client: %w", err)
 		}
+		defer func() {
+			_ = wlaClient.Close()
+		}()
+	}
+
+	// --- Trust bundle cache (REST only) ---
+	// Fed by WatchX509Context rather than derived from the X509Source below: this
+	// concatenates the authorities of every trust domain in the context, which
+	// federated callers depend on, and X509Source only exposes a per-trust-domain
+	// bundle accessor.
+	var cache *trustBundleCache
+	if cfg.Server.AnyRESTEnabled() {
+		cache = &trustBundleCache{logger: logger}
 		go func() {
-			defer wlaClient.Close()
 			if watchErr := wlaClient.WatchX509Context(ctx, cache); watchErr != nil {
 				logger.Error("workload API watcher stopped with error", zap.Error(watchErr))
 			}
 		}()
+	}
 
+	// --- TLS configs, one per certificate source ---
+	var fileTLS, spiffeTLS *tls.Config
+	if cfg.Server.FileTLSEnabled() {
+		fileTLS, err = newFileTLSConfig(childCtx, cfg.Server.TLS, logger)
+		if err != nil {
+			return err
+		}
+	}
+	if cfg.Server.SPIFFEEnabled() {
+		var source io.Closer
+		spiffeTLS, source, err = newSPIFFETLSConfig(ctx, wlaClient, serverStartTimeout, logger)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = source.Close()
+		}()
+	}
+
+	// --- REST handler, built once and shared by both REST listeners ---
+	// The handlers are stateless closures and ServeMux is safe for concurrent use.
+	var restHandler http.Handler
+	if cfg.Server.AnyRESTEnabled() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /api/v1/trustbundle/x509", handleTrustBundleX509(cache, logger))
 		purposeResolver := validator.NewPurposeResolver(validator.PurposeMode(cfg.PurposeMode))
 		mux.HandleFunc("POST /api/v1/svid/{stack}/x509", handleGetX509SVID(cfg, cache, delegatedClient, purposeResolver, logger))
 		mux.HandleFunc("POST /api/v1/svid/{stack}/jwt", handleGetJWTSVID(cfg, delegatedClient, purposeResolver, logger))
+		restHandler = http.MaxBytesHandler(mux, httpMaxRequestBodyBytes)
+	}
 
-		httpServer = &http.Server{
-			Addr:              fmt.Sprintf(":%d", cfg.Server.RestPort),
-			Handler:           http.MaxBytesHandler(mux, httpMaxRequestBodyBytes),
-			TLSConfig:         tlsConfig.Clone(),
-			ReadHeaderTimeout: httpReadHeaderTimeout,
-			ReadTimeout:       httpReadTimeout,
-			WriteTimeout:      httpWriteTimeout,
-			IdleTimeout:       httpIdleTimeout,
-		}
-		go func() {
-			if err := httpServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				errCh <- err
+	// --- Bind every listener before serving any of them ---
+	// A failure partway through then leaves nothing bound and nothing accepting,
+	// which is what a supervisor expects from a failed start.
+	plans := listenerPlans(cfg, fileTLS, spiffeTLS)
+	entries := make([]*serverEntry, 0, len(plans))
+	allBound := false
+	defer func() {
+		if !allBound {
+			for _, e := range entries {
+				_ = e.ln.Close()
 			}
-		}()
-		logger.Info("HTTP REST server configured with TLS",
-			zap.Int("port", cfg.Server.RestPort),
-			zap.String("cert_file", cfg.Server.TLS.CertFile),
-			zap.String("key_file", cfg.Server.TLS.KeyFile))
-	} else {
-		logger.Info("HTTP REST server port is 0; REST server is disabled.")
+		}
+	}()
+	for _, p := range plans {
+		ln, listenErr := net.Listen("tcp", fmt.Sprintf(":%d", p.port))
+		if listenErr != nil {
+			return fmt.Errorf("failed to bind %s on port %d: %w", p.name, p.port, listenErr)
+		}
+		entries = append(entries, newServerEntry(p, ln, handler, restHandler))
+		logger.Info("listener bound", zap.String("listener", p.name), zap.Int("port", p.port))
+	}
+	allBound = true
+
+	errCh := make(chan error, len(entries))
+	for _, e := range entries {
+		go func(e *serverEntry) {
+			serveErr := e.serve()
+			// A graceful stop returns nil (gRPC) or ErrServerClosed (HTTP).
+			// Forwarding those would race the runtime-error select below and turn
+			// a clean shutdown into a non-zero exit.
+			if serveErr == nil || errors.Is(serveErr, http.ErrServerClosed) || errors.Is(serveErr, grpc.ErrServerStopped) {
+				return
+			}
+			errCh <- fmt.Errorf("%s: %w", e.name, serveErr)
+		}(e)
 	}
 
-	// stopStarted tears down anything we already brought up. Used when one server fails to
-	// start while the other is already listening — without this, a bind failure on the HTTP
-	// REST server would leak the gRPC listener (port stays bound, supervisor restarts re-fail).
-	stopStarted := func() {
-		if grpcServer != nil {
-			grpcServer.Stop()
-		}
-		if httpServer != nil {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-			defer cancel()
-			_ = httpServer.Shutdown(shutdownCtx)
-		}
-	}
-
-	// Give servers a moment to start; surface any immediate bind/listen errors.
+	// Give the listeners a moment to start; surface any immediate serve errors.
 	select {
-	case err := <-errCh:
-		stopStarted()
-		if err != nil {
-			return fmt.Errorf("failed to start server: %w", err)
-		}
+	case serveErr := <-errCh:
+		shutdownAll(entries, shutdownTimeout, logger)
+		return fmt.Errorf("failed to start server: %w", serveErr)
+	case <-ctx.Done():
+		logger.Info("Received shutdown signal during startup")
+		shutdownAll(entries, shutdownTimeout, logger)
 		return nil
 	case <-time.After(serverStartTimeout):
-		logger.Info("spire-identity-exchange servers started successfully",
-			zap.Int("grpc_port", cfg.Server.GrpcPort),
-			zap.Int("http_rest_port", cfg.Server.RestPort))
+		logger.Info("spire-identity-exchange listeners started successfully",
+			zap.Strings("listeners", entryNames(entries)))
 	}
 
 	select {
 	case <-ctx.Done():
 		logger.Info("Received shutdown signal")
-
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-
-		stopped := make(chan struct{})
-		go func() {
-			var wg sync.WaitGroup
-			if grpcServer != nil {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					grpcServer.GracefulStop()
-				}()
-			}
-			if httpServer != nil {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					_ = httpServer.Shutdown(shutdownCtx)
-				}()
-			}
-			wg.Wait()
-			close(stopped)
-		}()
-
-		select {
-		case <-stopped:
-			logger.Info("Server shutdown completed")
-		case <-shutdownCtx.Done():
-			logger.Warn("Shutdown timeout exceeded, forcing stop")
-			if grpcServer != nil {
-				grpcServer.Stop()
-			}
-		}
-
+		shutdownAll(entries, shutdownTimeout, logger)
 		return nil
 
-	case err := <-errCh:
-		return fmt.Errorf("server runtime error: %w", err)
+	case serveErr := <-errCh:
+		shutdownAll(entries, shutdownTimeout, logger)
+		return fmt.Errorf("server runtime error: %w", serveErr)
 	}
 }
 
@@ -448,7 +628,7 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			return
 		}
 
-		selectors := v.GenerateSelectors(claims)
+		selectors := buildDelegatedSelectors(v, claims, stack)
 		if len(selectors) == 0 {
 			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
 			return
@@ -594,7 +774,7 @@ func handleGetJWTSVID(cfg *config.SpireIdentityExchangeConfig, dc *delegated.Cli
 			return
 		}
 
-		selectors := v.GenerateSelectors(claims)
+		selectors := buildDelegatedSelectors(v, claims, stack)
 		if len(selectors) == 0 {
 			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
 			return

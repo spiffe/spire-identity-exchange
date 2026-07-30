@@ -114,7 +114,7 @@ func (h *SpireIdentityExchangeServer) MintCertificateByPlugin(ctx context.Contex
 	}
 	audit.TokenIssuer, _ = claims.GetRaw()["iss"].(string)
 
-	selectors := stack.GenerateSelectors(claims)
+	selectors := buildDelegatedSelectors(stack, claims, stackName)
 	if len(selectors) == 0 {
 		audit.FailedStage = stageSelectorGeneration
 		audit.RejectionReason = "no selectors derivable from token claims"

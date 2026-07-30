@@ -7,3 +7,4 @@ spec:
   spiffeID: spiffe://${SPIFFE_TRUST_DOMAIN}/ssh/mockhub
   selectors:
   - github_actions:repository:my-org/my-repo
+  - spire_identity_exchange:stack:name:mockhub
