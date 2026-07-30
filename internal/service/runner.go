@@ -628,7 +628,7 @@ func handleGetX509SVID(cfg *config.SpireIdentityExchangeConfig, cache *trustBund
 			return
 		}
 
-		selectors := v.GenerateSelectors(claims)
+		selectors := buildDelegatedSelectors(v, claims, stack)
 		if len(selectors) == 0 {
 			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
 			return
@@ -774,7 +774,7 @@ func handleGetJWTSVID(cfg *config.SpireIdentityExchangeConfig, dc *delegated.Cli
 			return
 		}
 
-		selectors := v.GenerateSelectors(claims)
+		selectors := buildDelegatedSelectors(v, claims, stack)
 		if len(selectors) == 0 {
 			http.Error(w, "No selectors derivable from token claims", http.StatusBadRequest)
 			return
