@@ -70,7 +70,7 @@ Selector type: `gitlab_ci`
 ```yaml
 auth:
   plugins:
-    - name: "gitlab-ci"
+    gitlab-ci:
       plugin: "gitlab"
       config:
         issuerURL: "https://gitlab.com"

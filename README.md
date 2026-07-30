@@ -121,6 +121,17 @@ Additional authentication methods can be added by implementing the `validator.To
 
 Every exchange addresses a **stack**: either an entry in `auth.stacks` (a composite that validates one token per member plugin), or — when `passthroughPlugins` is enabled, the default — a single plugin addressed under its own name. The stack is the `{stack}` segment of the REST path (`/api/v1/svid/{stack}/x509`) and the `stackName` field of the gRPC `MintCertificateRequest`.
 
+`auth.stacks` is a mapping keyed by stack name, each entry naming its member plugins:
+
+```yaml
+auth:
+  stacks:
+    foo:
+      plugins:
+      - k8s_psat
+      - github-actions
+```
+
 In addition to the plugin selectors above, spire-identity-exchange supplies one selector of its own naming the stack that was addressed:
 
 | Selector type | Value | Example |
@@ -174,7 +185,7 @@ build/linux/amd64/spire-identity-exchange-server --config config/default.conf -e
 
 ### Plugin-based configuration (default)
 
-Authentication methods are configured via the `auth.plugins` array. Each entry specifies a user-defined name, a plugin type, and plugin-specific configuration.
+Authentication methods are configured under `auth.plugins`, a mapping keyed by plugin name. Each entry holds a plugin type and plugin-specific configuration; the key is the plugin's name, and doubles as the type when `plugin` is omitted. `auth.stacks` is keyed the same way.
 
 ```jsonc
 {
@@ -207,9 +218,10 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
   },
 
   "auth": {
-    "plugins": [
-      {
-        "name": "github-actions",
+    // Keyed by plugin name. "plugin" is only needed where the name differs
+    // from the plugin type — a plugin keyed "github" needs no "plugin" field.
+    "plugins": {
+      "github-actions": {
         "plugin": "github",
         "config": {
           "issuerURL": "https://token.actions.githubusercontent.com",
@@ -217,8 +229,7 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
           "allowedRepositoryOwners": ["my-org"]
         }
       },
-      {
-        "name": "kubernetes-prod",
+      "kubernetes-prod": {
         "plugin": "k8s_psat",
         "config": {
           "clusterName": "prod-us-east",
@@ -227,7 +238,15 @@ Authentication methods are configured via the `auth.plugins` array. Each entry s
           "allowedServiceAccounts": ["prod-*/app"]
         }
       }
-    ]
+    },
+
+    // Keyed by stack name. Optional: with passthroughPlugins (the default)
+    // every plugin above is already addressable as a stack of its own.
+    "stacks": {
+      "prod-deploy": {
+        "plugins": ["github-actions", "kubernetes-prod"]
+      }
+    }
   }
 }
 ```

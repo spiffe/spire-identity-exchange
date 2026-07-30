@@ -55,7 +55,7 @@ When both stages run, JWKS runs first and TokenReview's claims are authoritative
 ```yaml
 auth:
   plugins:
-    - name: "production-cluster"
+    production-cluster:
       plugin: "k8s_psat"
       config:
         clusterName: "prod-us-east"

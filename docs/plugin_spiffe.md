@@ -38,7 +38,7 @@ Selector type: `spiffe`
 ```yaml
 auth:
   plugins:
-    - name: "peer-federation"
+    peer-federation:
       plugin: "spiffe"
       config:
         issuerURL: "https://spire-server.peer.example.org"

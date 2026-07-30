@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
@@ -131,28 +133,73 @@ type NamedListener struct {
 
 // AuthConfig contains Authentication configuration
 type AuthConfig struct {
-	Plugins            []PluginConfig                                     `yaml:"plugins"`
-	Stacks             []StackConfig                                      `yaml:"stacks"`
+	Plugins            PluginConfigs                                      `yaml:"plugins"`
+	Stacks             StackConfigs                                       `yaml:"stacks"`
 	PassthroughPlugins *bool                                              `yaml:"passthroughPlugins"`
 	LoadedPlugins map[string]validator.TokenValidatorAndSelectorGenerator `yaml:"-"`
 	LoadedStacks  map[string]validator.TokenValidatorAndSelectorGenerator `yaml:"-"`
 }
 
-// PluginConfig is the operator config for one plugin. SPIFFE ID and TTL are not
-// set here — both surfaces use SPIRE's Delegated Identity API, which resolves
-// both from the registration entry matching the plugin's generated selectors.
+// PluginConfigs maps plugin name to its config. Both sections are mappings
+// rather than lists so that a Helm values override can patch one entry instead
+// of replacing the whole block — YAML lists do not merge.
+type PluginConfigs map[string]PluginConfig
+
+// StackConfigs maps stack name to its config.
+type StackConfigs map[string]StackConfig
+
+// PluginConfig is the operator config for one plugin. The plugin's name is the
+// key it appears under in PluginConfigs, and is also the default value of
+// Plugin. SPIFFE ID and TTL are not set here — both surfaces use SPIRE's
+// Delegated Identity API, which resolves both from the registration entry
+// matching the plugin's generated selectors.
 type PluginConfig struct {
-	Name      string                         `yaml:"name"`
 	Plugin    string                         `yaml:"plugin"`
 	Enabled   *bool                          `yaml:"enabled"`
 	RawConfig yaml.Node                      `yaml:"config"`
 	Config    validator.TokenValidatorLoader `yaml:"-"`
 }
 
-// StackConfig is the operator config for one stack
+// StackConfig is the operator config for one stack. The stack's name is the key
+// it appears under in StackConfigs.
 type StackConfig struct {
-	Name      string                         `json:"name"`
-	Plugins   []string                       `json:"plugins"`
+	Plugins []string `yaml:"plugins"`
+}
+
+// UnmarshalYAML decodes the plugins mapping, naming the replacement when it
+// finds the removed list form. yaml.Unmarshal would otherwise report only
+// "cannot unmarshal !!seq into config.PluginConfigs".
+func (p *PluginConfigs) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.SequenceNode {
+		return errors.New("auth.plugins is a mapping keyed by plugin name, not a list: " +
+			"replace each `- name: foo` / `plugin: bar` entry with a `foo:` key holding `plugin: bar`, " +
+			"omitting `plugin` where it matches the name")
+	}
+	// Named type so decoding does not recurse back into this method.
+	type plugins map[string]PluginConfig
+	var m plugins
+	if err := node.Decode(&m); err != nil {
+		return err
+	}
+	*p = PluginConfigs(m)
+	return nil
+}
+
+// UnmarshalYAML decodes the stacks mapping, naming the replacement when it
+// finds the removed list form.
+func (s *StackConfigs) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.SequenceNode {
+		return errors.New("auth.stacks is a mapping keyed by stack name, not a list: " +
+			"replace each `- name: foo` / `plugins: [...]` entry with a `foo:` key holding `plugins: [...]`")
+	}
+	// Named type so decoding does not recurse back into this method.
+	type stacks map[string]StackConfig
+	var m stacks
+	if err := node.Decode(&m); err != nil {
+		return err
+	}
+	*s = StackConfigs(m)
+	return nil
 }
 
 // SPIREConfig contains SPIRE server configurations
@@ -270,24 +317,23 @@ func (c *AuthConfig) Validate() error {
 	if (c.PassthroughPlugins != nil && *c.PassthroughPlugins == false) {
 		passthroughPlugins = false
 	}
+	// Names are map keys, so duplicates are impossible; the maps are walked in
+	// sorted order only so the joined errors come out in a stable order.
 	usedPlugins := make(map[string]struct{})
-	usedStacks := make(map[string]struct{})
 	var errs []error
-	for i, plugin := range c.Plugins {
+	for _, name := range slices.Sorted(maps.Keys(c.Plugins)) {
+		plugin := c.Plugins[name]
 		if plugin.Enabled != nil && !*plugin.Enabled {
 			continue
 		}
-		if c.Plugins[i].Name == "" {
-			plugin.Name = plugin.Plugin
-			c.Plugins[i].Name = plugin.Plugin
-		}
-		if _, exists := usedPlugins[plugin.Name]; exists {
-			errs = append(errs, fmt.Errorf("plugin name %s is defined more than once", plugin.Name))
+		if !PluginNamePattern.MatchString(name) {
+			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", name))
 			continue
 		}
-		if !PluginNamePattern.MatchString(plugin.Name) {
-			errs = append(errs, fmt.Errorf("Plugin name %s is invalid", plugin.Name))
-			continue
+		// A plugin keyed by its own type needs no plugin field.
+		if plugin.Plugin == "" {
+			plugin.Plugin = name
+			c.Plugins[name] = plugin
 		}
 		pluginGenerator, exists := registry.AllBuiltinPlugins[plugin.Plugin]
 		if !exists {
@@ -295,31 +341,26 @@ func (c *AuthConfig) Validate() error {
 		} else {
 			config, err := pluginGenerator()
 			if err != nil {
-				errs = append(errs, fmt.Errorf("failed to initialize plugin %q: %w", plugin.Name, err))
+				errs = append(errs, fmt.Errorf("failed to initialize plugin %q: %w", name, err))
 			} else if err := config.Unmarshal(&plugin.RawConfig); err != nil {
-				errs = append(errs, fmt.Errorf("failed to unmarshal config for plugin %q: %w", plugin.Name, err))
+				errs = append(errs, fmt.Errorf("failed to unmarshal config for plugin %q: %w", name, err))
 			} else if err := config.ValidateConfig(); err != nil {
-				errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", plugin.Name, err))
+				errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", name, err))
 			} else {
-				c.Plugins[i].Config = config
+				plugin.Config = config
+				c.Plugins[name] = plugin
 			}
 		}
-		usedPlugins[plugin.Name] = struct{}{}
+		usedPlugins[name] = struct{}{}
 	}
-	for _, stack := range c.Stacks {
-		if _, exists := usedPlugins[stack.Name]; passthroughPlugins && exists {
-			errs = append(errs, fmt.Errorf("stack name %s is defined the same as an existing plugin", stack.Name))
+	for _, name := range slices.Sorted(maps.Keys(c.Stacks)) {
+		if _, exists := usedPlugins[name]; passthroughPlugins && exists {
+			errs = append(errs, fmt.Errorf("stack name %s is defined the same as an existing plugin", name))
 			continue
 		}
-		if _, exists := usedStacks[stack.Name]; exists {
-			errs = append(errs, fmt.Errorf("stack name %s is defined more than once", stack.Name))
-			continue
+		if !PluginNamePattern.MatchString(name) {
+			errs = append(errs, fmt.Errorf("Stack name %s is invalid", name))
 		}
-		if !PluginNamePattern.MatchString(stack.Name) {
-			errs = append(errs, fmt.Errorf("Stack name %s is invalid", stack.Name))
-			continue
-		}
-		usedStacks[stack.Name] = struct{}{}
 	}
 	return errors.Join(errs...)
 }

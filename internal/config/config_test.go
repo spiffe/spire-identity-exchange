@@ -1,8 +1,10 @@
 package config
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -192,7 +194,7 @@ func TestValidateSocketPathRequirements(t *testing.T) {
 		return &SpireIdentityExchangeConfig{
 			Server: server,
 			SPIRE:  SPIREConfig{TrustDomain: "example.org"},
-			Auth:   AuthConfig{Plugins: []PluginConfig{}},
+			Auth:   AuthConfig{Plugins: PluginConfigs{}},
 		}
 	}
 
@@ -265,22 +267,26 @@ func TestRepoConfigsDecode(t *testing.T) {
 	// Repo root, relative to internal/config.
 	root := filepath.Join("..", "..")
 
+	// plugins/stacks are the expected map keys; nil skips the check. Keys, not
+	// counts — both sections are mappings now, and len() alone would pass
+	// unchanged against a list, so it would not catch a half-converted file.
 	cases := []struct {
 		path       string
 		tlsGRPC    bool
 		tlsREST    bool
 		spiffeGRPC bool
 		spiffeREST bool
-		plugins    int // -1 to skip the check
+		plugins    []string
+		stacks     []string
 	}{
-		{"config/default.conf", true, true, false, false, 4},
-		{"config/legacy/config.example.json", true, true, false, false, -1},
-		{"config/legacy/config.example-local.json", true, true, false, false, -1},
-		{"tests/integration/github/default.conf", true, true, true, true, -1},
-		{"tests/integration/spiffe/default.conf", true, true, false, false, -1},
-		{"tests/integration/stack/default.conf", true, true, false, false, -1},
-		{"tests/integration/k8s_psat/default.conf", true, true, false, false, -1},
-		{"tests/integration/k8s_deploy/default.conf", true, true, false, false, -1},
+		{"config/default.conf", true, true, false, false, []string{"github", "gitlab", "k8s_psat", "spiffe"}, []string{}},
+		{"config/legacy/config.example.json", true, true, false, false, nil, nil},
+		{"config/legacy/config.example-local.json", true, true, false, false, nil, nil},
+		{"tests/integration/github/default.conf", true, true, true, true, []string{"github", "mockhub"}, []string{}},
+		{"tests/integration/spiffe/default.conf", true, true, false, false, []string{"spiffe"}, []string{}},
+		{"tests/integration/stack/default.conf", true, true, false, false, []string{"k8s_psat", "mockhub"}, []string{"foo"}},
+		{"tests/integration/k8s_psat/default.conf", true, true, false, false, []string{"k8s_psat", "spiffe"}, []string{"zot"}},
+		{"tests/integration/k8s_deploy/default.conf", true, true, false, false, []string{"k8s_psat"}, []string{}},
 	}
 
 	for _, c := range cases {
@@ -311,8 +317,201 @@ func TestRepoConfigsDecode(t *testing.T) {
 			if cfg.Server.TLS.CertFile == "" || cfg.Server.TLS.KeyFile == "" {
 				t.Error("server.tls.certFile/keyFile did not decode")
 			}
-			if c.plugins >= 0 && len(cfg.Auth.Plugins) != c.plugins {
-				t.Errorf("auth.plugins = %d, want %d", len(cfg.Auth.Plugins), c.plugins)
+			if c.plugins != nil {
+				if got := slices.Sorted(maps.Keys(cfg.Auth.Plugins)); !slices.Equal(got, c.plugins) {
+					t.Errorf("auth.plugins keys = %v, want %v", got, c.plugins)
+				}
+			}
+			if c.stacks != nil {
+				if got := slices.Sorted(maps.Keys(cfg.Auth.Stacks)); !slices.Equal(got, c.stacks) {
+					t.Errorf("auth.stacks keys = %v, want %v", got, c.stacks)
+				}
+			}
+		})
+	}
+}
+
+// unmarshalAuth decodes a whole config document and hands back its auth block,
+// so the tests below exercise the same path an operator's file takes.
+func unmarshalAuth(t *testing.T, doc string) (*AuthConfig, error) {
+	t.Helper()
+	var cfg SpireIdentityExchangeConfig
+	if err := yaml.Unmarshal([]byte(doc), &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg.Auth, nil
+}
+
+// githubConfig is the smallest github plugin config that passes ValidateConfig,
+// inlined so each document below can nest it at its own indentation.
+const githubConfig = `config: {audiences: ["spire-identity-exchange"], allowedRepositoryOwners: ["my-org"]}`
+
+func TestAuthConfigValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		doc     string
+		wantErr string
+	}{
+		{
+			name: "plugin type defaults to the key",
+			doc: `
+auth:
+  plugins:
+    github: {` + githubConfig + `}`,
+		},
+		{
+			name: "explicit plugin field names a different type",
+			doc: `
+auth:
+  plugins:
+    mockhub: {plugin: github, ` + githubConfig + `}`,
+		},
+		{
+			name: "unknown plugin type",
+			doc: `
+auth:
+  plugins:
+    mockhub: {plugin: bogus, ` + githubConfig + `}`,
+			wantErr: `plugin type "bogus" is unknown`,
+		},
+		{
+			name: "key that is not a valid name",
+			doc: `
+auth:
+  plugins:
+    "bad name!": {plugin: github, ` + githubConfig + `}`,
+			wantErr: "Plugin name bad name! is invalid",
+		},
+		{
+			name: "empty key",
+			doc: `
+auth:
+  plugins:
+    "": {plugin: github, ` + githubConfig + `}`,
+			wantErr: "Plugin name  is invalid",
+		},
+		{
+			name: "invalid plugin config",
+			doc: `
+auth:
+  plugins:
+    github: {config: {audiences: ["x"]}}`,
+			wantErr: "at least one of allowedRepositories or allowedRepositoryOwners",
+		},
+		{
+			name: "disabled plugin is not validated",
+			doc: `
+auth:
+  plugins:
+    github: {enabled: false, config: {}}`,
+		},
+		{
+			name: "stack name collides with a plugin under passthrough",
+			doc: `
+auth:
+  plugins:
+    github: {` + githubConfig + `}
+  stacks:
+    github: {plugins: [github]}`,
+			wantErr: "stack name github is defined the same as an existing plugin",
+		},
+		{
+			name: "same collision is allowed without passthrough",
+			doc: `
+auth:
+  passthroughPlugins: false
+  plugins:
+    github: {` + githubConfig + `}
+  stacks:
+    github: {plugins: [github]}`,
+		},
+		{
+			name: "stack key that is not a valid name",
+			doc: `
+auth:
+  plugins:
+    github: {` + githubConfig + `}
+  stacks:
+    "bad name!": {plugins: [github]}`,
+			wantErr: "Stack name bad name! is invalid",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			auth, err := unmarshalAuth(t, c.doc)
+			if err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			err = auth.Validate()
+			switch {
+			case c.wantErr == "" && err != nil:
+				t.Fatalf("Validate() = %v, want nil", err)
+			case c.wantErr != "" && err == nil:
+				t.Fatalf("Validate() = nil, want error containing %q", c.wantErr)
+			case c.wantErr != "" && !strings.Contains(err.Error(), c.wantErr):
+				t.Fatalf("Validate() = %v, want error containing %q", err, c.wantErr)
+			}
+		})
+	}
+}
+
+// TestAuthConfigValidateLoadsPlugins covers what Validate leaves behind for the
+// loader in main: a resolved plugin type on every entry, a loaded Config on the
+// enabled ones, and none on the disabled ones.
+func TestAuthConfigValidateLoadsPlugins(t *testing.T) {
+	auth, err := unmarshalAuth(t, `
+auth:
+  plugins:
+    github: {`+githubConfig+`}
+    mockhub: {plugin: github, `+githubConfig+`}
+    gitlab: {enabled: false, config: {}}`)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := auth.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+
+	for name, want := range map[string]string{"github": "github", "mockhub": "github"} {
+		p, ok := auth.Plugins[name]
+		if !ok {
+			t.Fatalf("plugin %q missing", name)
+		}
+		if p.Plugin != want {
+			t.Errorf("plugin %q type = %q, want %q", name, p.Plugin, want)
+		}
+		if p.Config == nil {
+			t.Errorf("plugin %q has no loaded config", name)
+		}
+	}
+	if p := auth.Plugins["gitlab"]; p.Config != nil {
+		t.Error("disabled plugin gitlab was loaded")
+	}
+}
+
+// TestAuthConfigRejectsListForm pins the migration message for configs written
+// against the removed list schema. Without the explicit check these fail with
+// only "cannot unmarshal !!seq into ...", which names no replacement.
+func TestAuthConfigRejectsListForm(t *testing.T) {
+	cases := map[string]string{
+		"plugins": `
+auth:
+  plugins:
+    - {name: github, plugin: github, ` + githubConfig + `}`,
+		"stacks": `
+auth:
+  stacks:
+    - {name: foo, plugins: [github]}`,
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := unmarshalAuth(t, doc)
+			if err == nil {
+				t.Fatalf("unmarshal of the list form = nil, want error")
+			}
+			if want := "auth." + name + " is a mapping keyed by"; !strings.Contains(err.Error(), want) {
+				t.Fatalf("unmarshal = %v, want error containing %q", err, want)
 			}
 		})
 	}
