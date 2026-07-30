@@ -117,6 +117,29 @@ spire-identity-exchange supports pluggable authentication via a dynamic plugin s
 
 Additional authentication methods can be added by implementing the `validator.TokenValidatorLoaderGenerator` interface (see [pkg/validator/](pkg/validator/)).
 
+### The stack selector
+
+Every exchange addresses a **stack**: either an entry in `auth.stacks` (a composite that validates one token per member plugin), or — when `passthroughPlugins` is enabled, the default — a single plugin addressed under its own name. The stack is the `{stack}` segment of the REST path (`/api/v1/svid/{stack}/x509`) and the `stackName` field of the gRPC `MintCertificateRequest`.
+
+In addition to the plugin selectors above, spire-identity-exchange supplies one selector of its own naming the stack that was addressed:
+
+| Selector type | Value | Example |
+|---|---|---|
+| `spire_identity_exchange` | `stack:name:<stack>` | `spire_identity_exchange:stack:name:foo` |
+
+Add it to a registration entry to scope that entry to a single stack:
+
+```yaml
+selectors:
+- k8s_psat:namespace:default
+- github_actions:repository:my-org/my-repo
+- spire_identity_exchange:stack:name:foo   # only issuable via the "foo" stack
+```
+
+**Existing entries need no change.** SPIRE matches an entry when the entry's selectors are a subset of those supplied, so an entry that omits this selector keeps matching from any stack. Adding it is opt-in tightening, useful when the same token would otherwise be accepted through more than one route — for example a composite stack `foo` and, under `passthroughPlugins`, each of its member plugins individually.
+
+The stack selector is never sufficient on its own: an exchange that derives no plugin selectors from the token claims is rejected before the agent is contacted.
+
 ## Prerequisites
 
 - A running [SPIRE Agent](https://spiffe.io/docs/latest/deploying/install-agent/) with the Delegated Identity API enabled (`authorized_delegates` configured)
@@ -243,7 +266,7 @@ The legacy build (`-tags legacy`) uses top-level `githubOIDC` and `k8sSAToken` c
 
 ### Selectors vs. SPIFFE ID templates
 
-In the default (agent-based) mode, spire-identity-exchange does **not** derive SPIFFE IDs from token claims. Instead, each plugin generates **SPIRE selectors** from the validated claims, and SVID issuance is driven by SPIRE registration entries that match those selectors. This means SPIFFE IDs are entirely managed in SPIRE registration entries — no Go templates required.
+In the default (agent-based) mode, spire-identity-exchange does **not** derive SPIFFE IDs from token claims. Instead, each plugin generates **SPIRE selectors** from the validated claims, and SVID issuance is driven by SPIRE registration entries that match those selectors. This means SPIFFE IDs are entirely managed in SPIRE registration entries — no Go templates required. Alongside the plugin selectors, spire-identity-exchange asserts the name of the stack that was addressed, so an entry can also be scoped to a single stack — see [The stack selector](#the-stack-selector).
 
 The legacy mode (`-tags legacy`) uses SPIFFE ID templates to derive workload identities. For a full security reference on template-based SPIFFE ID derivation, see [docs/spiffe-id-template-guide.md](docs/spiffe-id-template-guide.md) and [docs/spiffe-id-token-reference.md](docs/spiffe-id-token-reference.md).
 
