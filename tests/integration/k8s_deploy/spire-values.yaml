@@ -19,7 +19,7 @@ spire-identity-exchange:
       secretName: spire-identity-exchange
   auth:
     plugins:
-      - plugin: k8s_psat
+      k8s_psat:
         config:
           audiences:
             - spire-identity-exchange
