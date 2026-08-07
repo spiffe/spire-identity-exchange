@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -39,6 +40,7 @@ func main() {
 	stackFlag := flag.String("stack", "", "Stack (Required if SPIFFE workload API is enabled)")
 	registryAudienceFlag := flag.String("registry-audience", "", "Registry audience (Required if SPIFFE workload API is enabled")
 	spiffeAudienceFlag := flag.String("spiffe-audience", "", "SPIFFE audience (Required if SPIFFE workload API is enabled)")
+	spiffeHintFlag := flag.String("spiffe-hint", "", "Hint of the JWT-SVID to select when the workload API returns more than one. Empty means no preference (use the first).")
 	disableSpiffeFlag := flag.Bool("disable-spiffe-workload-api", false, "Disable SPIFFE workload API")
 	timeoutFlag := flag.Duration("timeout", 0, "Global timeout for the entire process (e.g., 5s, 30s). 0 means no timeout.")
 	spiffeIDFlag := flag.String("spiffe-id", "", "SPIFFE ID to validate against the identity exchange.")
@@ -102,7 +104,7 @@ func main() {
 	var spiffeToken string
 	if !*disableSpiffeFlag {
 		var err error
-		spiffeToken, err = fetchSpiffeJWT(ctx, *spiffeAudienceFlag)
+		spiffeToken, err = fetchSpiffeJWT(ctx, *spiffeAudienceFlag, *spiffeHintFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to fetch SPIFFE JWT token: %v\n", err)
 			os.Exit(1)
@@ -169,14 +171,42 @@ func main() {
 	}
 }
 
-func fetchSpiffeJWT(ctx context.Context, audience string) (string, error) {
-	token, err := workloadapi.FetchJWTSVID(ctx, jwtsvid.Params{
+func fetchSpiffeJWT(ctx context.Context, audience, hint string) (string, error) {
+	svids, err := workloadapi.FetchJWTSVIDs(ctx, jwtsvid.Params{
 		Audience: audience,
 	})
 	if err != nil {
 		return "", fmt.Errorf("could not fetch SPIFFE JWT token from workload API: %w", err)
 	}
-	return token.Marshal(), nil
+	svid, err := selectSVIDByHint(svids, hint)
+	if err != nil {
+		return "", err
+	}
+	return svid.Marshal(), nil
+}
+
+// selectSVIDByHint returns the JWT-SVID whose hint matches the requested hint. An
+// empty hint means no preference, in which case the first JWT-SVID is returned. If
+// a hint is requested but nothing matches, an error naming the available hints is
+// returned rather than a JWT-SVID for a different identity.
+func selectSVIDByHint(svids []*jwtsvid.SVID, hint string) (*jwtsvid.SVID, error) {
+	if len(svids) == 0 {
+		return nil, errors.New("the workload API returned no JWT-SVIDs")
+	}
+	if hint == "" {
+		return svids[0], nil
+	}
+
+	available := make([]string, 0, len(svids))
+	for _, svid := range svids {
+		if svid.Hint == hint {
+			return svid, nil
+		}
+		available = append(available, fmt.Sprintf("%q", svid.Hint))
+	}
+
+	return nil, fmt.Errorf("no JWT-SVID with hint %q (--spiffe-hint); available hints: %s",
+		hint, strings.Join(available, ", "))
 }
 
 func getRemainingCacheDuration(jwtToken string) (*metav1.Duration, error) {
