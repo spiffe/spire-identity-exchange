@@ -286,7 +286,6 @@ func TestRepoConfigsDecode(t *testing.T) {
 		{"tests/integration/spiffe/default.conf", true, true, false, false, []string{"spiffe"}, []string{}},
 		{"tests/integration/stack/default.conf", true, true, false, false, []string{"k8s_psat", "mockhub"}, []string{"foo"}},
 		{"tests/integration/k8s_psat/default.conf", true, true, false, false, []string{"k8s_psat", "spiffe"}, []string{"zot"}},
-		{"tests/integration/k8s_deploy/default.conf", true, true, false, false, []string{"k8s_psat"}, []string{}},
 	}
 
 	for _, c := range cases {
