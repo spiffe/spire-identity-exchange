@@ -1,6 +1,7 @@
 global:
   spire:
     clusterName: example-cluster
+    trustDomain: example.org
 spire-server:
   initContainers:
     - name: install-custom-plugin-busybox
