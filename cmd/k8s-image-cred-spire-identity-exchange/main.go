@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/svid/jwtsvid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubelet/pkg/apis/credentialprovider/v1"
-	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 )
 
 type jwtSVIDRequest struct {
@@ -345,4 +345,3 @@ func exchangeTokenForRegistryCreds(baseURL, stack, saToken, spiffeToken, registr
 
 	return result.Token, nil
 }
-
