@@ -67,11 +67,8 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 sudo cat /etc/spire/server/default.conf
 
 # Zot bits
-git clone https://github.com/project-zot/zot
-cd zot
-make binary-minimal
-sudo cp -a bin/zot-linux-amd64-minimal /usr/bin/zot
-cd ..
+sudo curl -o /usr/bin/zot https://github.com/project-zot/zot/releases/download/v2.1.20/zot-linux-amd64
+sudo chmod +x /usr/bin/zot
 sudo spire-server bundle show -format pem > /tmp/ca.pem
 sudo zot serve "${SCRIPTPATH}/zot.yaml" &
 
