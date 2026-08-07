@@ -9,7 +9,7 @@ Details: https://github.com/project-zot/zot/pull/4171
 ## Selecting a JWT-SVID by hint
 
 When the SPIFFE workload API returns more than one JWT-SVID for `--spiffe-audience`
-(for example a SPIRE HA broker fronting several entry-scoped SVIDs), the plugin uses
+(for example, a SPIRE HA broker fronting several entry-scoped SVIDs), the plugin uses
 the first one by default. Set `--spiffe-hint` to the operator-assigned hint on the
 registration entry to pin a specific SVID instead:
 
