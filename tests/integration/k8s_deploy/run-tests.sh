@@ -82,10 +82,10 @@ spire-identity-exchange:
     image:
       tag: "dev"
       pullPolicy: Never
-    auth:
-      spiffe:
-        config:
-          discoveryURL: "https://spiffe-oidc-discovery-provider"
+  auth:
+    spiffe:
+      config:
+        discoveryURL: "https://spiffe-oidc-discovery-provider"
 EOF
 
 mkdir -p certs
