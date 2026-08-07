@@ -67,10 +67,8 @@ setup_base_spire "${SCRIPTPATH}" "${SCRIPTPATH}/../common"
 sudo cat /etc/spire/server/default.conf
 
 # Zot bits
-tmp="$(mktemp)"
-sudo curl -fsSL --retry 5 --retry-all-errors -o "${tmp}" https://github.com/project-zot/zot/releases/download/v2.1.20/zot-linux-amd64
-sudo install -m 0755 "${tmp}" /usr/bin/zot
-rm -f "${tmp}"
+sudo curl -fsSL --retry 5 --retry-all-errors -o "/usr/bin/zot" https://github.com/project-zot/zot/releases/download/v2.1.20/zot-linux-amd64
+sudo chmod +x /usr/bin/zot
 sudo spire-server bundle show -format pem > /tmp/ca.pem
 sudo zot serve "${SCRIPTPATH}/zot.yaml" &
 
