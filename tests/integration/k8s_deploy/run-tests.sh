@@ -37,6 +37,7 @@ teardown() {
   NODE_NAME=$(kubectl get pod "${EXCHANGE_POD_NAME}" -n spire-server -o jsonpath='{.spec.nodeName}')
   AGENT_POD=$(kubectl get pods -n spire-server -l app.kubernetes.io/name=agent --field-selector "spec.nodeName=${NODE_NAME}" -o jsonpath='{.items[0].metadata.name}')
   kubectl logs "${AGENT_POD}" -n spire-server 2>&1 || true
+  kubectl get configmaps -n spire-server -o yaml || true
 }
 
 trap 'EC=$? && trap - SIGTERM && teardown $EC' SIGINT SIGTERM EXIT
