@@ -18,6 +18,7 @@ spire-identity-exchange:
       enabled: true
       secretName: spire-identity-exchange
   auth:
+    passthroughPlugins: true
     plugins:
       k8s_psat:
         config:
@@ -25,4 +26,8 @@ spire-identity-exchange:
             - spire-identity-exchange
           allowedServiceAccounts:
             - default/default
-
+      spiffe:
+        enabled: false
+    stacks:
+      image_pull:
+        enabled: false
