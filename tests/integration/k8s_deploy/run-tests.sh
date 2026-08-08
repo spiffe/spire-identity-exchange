@@ -105,8 +105,6 @@ docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange /tmp/cc
 SUM=$(sha256sum /tmp/cc | awk '{print $1}')
 timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f test-values.yaml -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
 
-sleep 60
-
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
 kubectl logs job/test | base64 -d | tar -xvf -
