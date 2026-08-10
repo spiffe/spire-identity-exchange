@@ -1,3 +1,7 @@
+global:
+  spire:
+    clusterName: example-cluster
+    trustDomain: example.org
 spire-server:
   controllerManager:
     identities:
