@@ -85,10 +85,6 @@ spire-identity-exchange:
   image:
     tag: "dev"
     pullPolicy: Never
-  spireServerAttestorSPIFFEWorkloadAPI:
-    image:
-      tag: "dev"
-      pullPolicy: Never
   auth:
     spiffe:
       config:
