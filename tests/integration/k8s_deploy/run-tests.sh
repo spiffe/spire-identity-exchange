@@ -7,6 +7,11 @@ SCRIPT="$(readlink -f "$0")"
 SCRIPTPATH="$(dirname "${SCRIPT}")"
 TESTDIR="${SCRIPTPATH}/../../.github/tests"
 
+CHART_BRANCH=""
+CHART_GIT="https://github.com/spiffe/helm-charts-hardened"
+CHART_REPO="https://spiffe.github.io/helm-charts-hardened/"
+CHART_VERSION="0.30.1"
+
 if [ "x${GITHUB_JOB}" != "x" ]; then
   echo "Running in GitHub"
 else
@@ -56,16 +61,17 @@ docker tag "$IMAGE_REF" ghcr.io/spiffe/spire-identity-exchange-server:dev
 kind load docker-image ghcr.io/spiffe/spire-identity-exchange-server:dev --name chart-testing
 
 helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spiffe.github.io/helm-charts-hardened/ --create-namespace
-#FIXME until release
-#timeout 120 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/ -f "${SCRIPTPATH}/spire-values.yaml" --wait
-git clone https://github.com/spiffe/helm-charts-hardened
-cd helm-charts-hardened/charts/spire
-git checkout six-update
-helm dep up
-cd -
-cd helm-charts-hardened/charts/spire-identity-exchange
-helm dep up
-cd -
+
+if [ -n "${CHART_BRANCH}" ]; then
+  echo "Using the ${CHART_BRANCH} branch of the spire chart"
+  git clone --depth 1 --branch "${CHART_BRANCH}" "${CHART_GIT}"
+  (cd helm-charts-hardened/charts/spire && helm dep up)
+  (cd helm-charts-hardened/charts/spire-identity-exchange && helm dep up)
+  SPIRE_CHART=(helm-charts-hardened/charts/spire)
+else
+  echo "Using the released spire chart ${CHART_VERSION}"
+  SPIRE_CHART=(spire --repo "${CHART_REPO}" --version "${CHART_VERSION}")
+fi
 
 cat > test-values.yaml <<EOF
 spire-server:
@@ -103,7 +109,7 @@ kubectl create secret tls -n spire-server spire-identity-exchange --key=certs/se
 docker create --name temp "${CC_IMAGE_REF}"
 docker cp temp:/ko-app/spire-credentialcomposer-identity-exchange /tmp/cc
 SUM=$(sha256sum /tmp/cc | awk '{print $1}')
-timeout 120 helm upgrade --install -n spire-server spire helm-charts-hardened/charts/spire -f test-values.yaml -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
+timeout 120 helm upgrade --install -n spire-server spire "${SPIRE_CHART[@]}" -f test-values.yaml -f "${SCRIPTPATH}/spire-values.yaml" --set "spire-server.credentialComposer.spireIdentityExchange.checksum=${SUM}" --wait
 
 kubectl apply -f "${SCRIPTPATH}/test-job.yaml"
 kubectl wait --for=condition=complete --timeout=60s job/test && \
