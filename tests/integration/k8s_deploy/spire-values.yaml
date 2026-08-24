@@ -3,82 +3,37 @@ global:
     clusterName: example-cluster
     trustDomain: example.org
 spire-server:
-  initContainers:
-    - name: install-custom-plugin-busybox
-      image: busybox:1.37.0-uclibc
-      command: ["busybox", "sh", "-ec", "cp -a /bin/busybox /custom-plugin/busybox"]
-      volumeMounts:
-        - name: plugin-staging
-          mountPath: /custom-plugin
-    - name: install-custom-plugin
-      image: ghcr.io/spiffe/spire-credentialcomposer-identity-exchange:dev
-      imagePullPolicy: Never
-      command: ["/custom-plugin/busybox", "sh", "-ec", "/custom-plugin/busybox cp -a /ko-app/spire-credentialcomposer-identity-exchange /custom-plugin && /custom-plugin/busybox rm /custom-plugin/busybox"]
-      volumeMounts:
-        - name: plugin-staging
-          mountPath: /custom-plugin
   controllerManager:
     identities:
-      clusterSPIFFEIDs:
-        trustbundle-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/trustbundle-spire-identity-exchange
-          podSelector:
-            matchLabels:
-              app: spire-identity-exchange
-          namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-          workloadSelectorTemplates:
-            - "k8s:container-name:spire-server-attestor"
-        service-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/service/spire-identity-exchange
-          podSelector:
-            matchLabels:
-              app: spire-identity-exchange
-          namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-          workloadSelectorTemplates:
-            - "k8s:container-name:spire-identity-exchange"
-        agent-spire-identity-exchange:
-          spiffeIDTemplate: spiffe://{{ .TrustDomain }}/spire-exchange/k8s/example-cluster/spire-identity-exchange/{{ .PodMeta.Name }}
-          podSelector:
-            matchLabels:
-              app: spire-identity-exchange
-          namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-          workloadSelectorTemplates:
-            - "k8s:container-name:spire-agent"
       clusterStaticEntries:
-        spire-identity-exchange:
-          enabled: true
         test:
           parentID: spiffe://example.org/spire-identity-exchange
           spiffeID: spiffe://example.org/k8s-psat/test
           selectors:
             - k8s_psat:namespace:default
             - k8s_psat:service_account_name:default
-        #FIXME Only needed for delegated api. Can remove once switched to the broker api.
-        agent-spire-identity-exchange:
-          parentID: spiffe://example.org/spire-identity-exchange
-          spiffeID: spiffe://example.org/service/spire-identity-exchange
-          selectors:
-            - unix:uid:0
-  extraVolumes:
-    - name: plugin-staging
-      emptyDir: {}
-  extraVolumeMounts:
-    - name: plugin-staging
-      mountPath: /custom-plugin/spire-credentialcomposer-identity-exchange
-      subPath: spire-credentialcomposer-identity-exchange
-  nodeAttestor:
-      x509POP:
-        enabled: true
-  customPlugins:
-    credentialComposer:
-      spire-credentialcomposer-identity-exchange:
-        plugin_cmd: /custom-plugin/spire-credentialcomposer-identity-exchange
-        plugin_checksum: ""
-        plugin_data:
-          prefix: spire-exchange/k8s/example-cluster/spire-identity-exchange
+  spireIdentityExchange:
+    enabled: true
+
+spire-identity-exchange:
+  enabled: true
+  tls:
+    rest:
+      enabled: true
+    externalSecret:
+      enabled: true
+      secretName: spire-identity-exchange
+  auth:
+    passthroughPlugins: true
+    plugins:
+      k8s_psat:
+        config:
+          audiences:
+            - spire-identity-exchange
+          allowedServiceAccounts:
+            - default/default
+      spiffe:
+        enabled: false
+    stacks:
+      image_pull:
+        enabled: false
