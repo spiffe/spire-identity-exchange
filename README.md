@@ -3,7 +3,7 @@
 A SPIRE integration service that bridges non-SPIFFE workload identity to the [SPIRE](https://spiffe.io/docs/latest/spire-about/) ecosystem — enabling platform-native tokens (GitHub Actions OIDC, GitLab CI/CD OIDC, Kubernetes service account tokens, and SPIFFE SVIDs from other trust domains) to be exchanged for SPIRE-issued SVIDs via the SPIRE Agent's Delegated Identity API.
 
 [![Apache 2.0 License](https://img.shields.io/github/license/spiffe/spire-identity-exchange)](https://opensource.org/licenses/Apache-2.0)
-[![Development Phase](https://github.com/spiffe/spire/blob/main/.img/maturity/dev.svg)](https://github.com/spiffe/spire/blob/main/MATURITY.md#development)
+[![Development Phase](https://raw.githubusercontent.com/spiffe/spiffe/refs/heads/main/.img/maturity/dev.svg)](https://github.com/spiffe/spiffe/blob/main/MATURITY.md#development)
 
 ## Warning
 
