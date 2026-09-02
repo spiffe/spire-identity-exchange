@@ -10,7 +10,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
 	github.com/hashicorp/hcl v1.0.1-vault-5
 	github.com/prometheus/client_golang v1.23.2
-	github.com/spiffe/go-spiffe/v2 v2.6.0
+	github.com/spiffe/go-spiffe/v2 v2.7.0
 	github.com/spiffe/spire v1.8.5
 	github.com/spiffe/spire-api-sdk v1.9.6
 	github.com/spiffe/spire-plugin-sdk v1.4.4-0.20230721151831-bf67dde4721d
@@ -18,7 +18,7 @@ require (
 	go.uber.org/zap v1.27.0
 	go.yaml.in/yaml/v3 v3.0.4
 	google.golang.org/genproto/googleapis/api v0.0.0-20260615183401-62b3387ff324
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
