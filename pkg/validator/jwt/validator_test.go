@@ -158,13 +158,36 @@ func TestNewValidator(t *testing.T) {
 			errMsg:    "at least one audience must be configured",
 		},
 		{
+			// With no discoveryURL the issuer is what gets fetched, so it
+			// inherits the scheme requirement -- and is named in the error.
 			name: "http_issuer_without_allow",
 			cfg: Config{
 				IssuerURL: "http://other",
 				Audiences: []string{"test-aud"},
 			},
 			expectErr: true,
-			errMsg:    "scheme must be https",
+			errMsg:    "invalid issuer URL: scheme must be https",
+		},
+		{
+			// The issuer is only compared against the `iss` claim, so an http
+			// issuer is fine as long as the URL actually fetched is https.
+			name: "http_issuer_with_https_discovery",
+			cfg: Config{
+				IssuerURL:    "http://other",
+				DiscoveryURL: "https://discovery.example.com",
+				Audiences:    []string{"test-aud"},
+			},
+			expectErr: false,
+		},
+		{
+			name: "http_discovery_without_allow",
+			cfg: Config{
+				IssuerURL:    "https://example.com",
+				DiscoveryURL: "http://discovery.example.com",
+				Audiences:    []string{"test-aud"},
+			},
+			expectErr: true,
+			errMsg:    "invalid discovery URL: scheme must be https",
 		},
 		{
 			name: "http_issuer_with_allow",
@@ -413,6 +436,66 @@ func TestValidateIssuerURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateIssuerURL(tt.issuer, tt.allowHTTP)
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateIssuerFormat(t *testing.T) {
+	tests := []struct {
+		name      string
+		issuer    string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name:   "valid_https",
+			issuer: "https://example.com",
+		},
+		{
+			// The whole point: an issuer is an identifier compared against the
+			// `iss` claim, not an address that gets dereferenced.
+			name:   "http_accepted",
+			issuer: "http://example.com",
+		},
+		{
+			name:   "non_web_scheme_accepted",
+			issuer: "spiffe://example.org",
+		},
+		{
+			name:      "empty_host",
+			issuer:    "https://",
+			expectErr: true,
+			errMsg:    "host must not be empty",
+		},
+		{
+			name:      "no_scheme_has_no_host",
+			issuer:    "example.com",
+			expectErr: true,
+			errMsg:    "host must not be empty",
+		},
+		{
+			name:      "query_rejected",
+			issuer:    "https://example.com?q=1",
+			expectErr: true,
+			errMsg:    "query parameters are not allowed",
+		},
+		{
+			name:      "fragment_rejected",
+			issuer:    "https://example.com#frag",
+			expectErr: true,
+			errMsg:    "fragment is not allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateIssuerFormat(tt.issuer)
 			if tt.expectErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)

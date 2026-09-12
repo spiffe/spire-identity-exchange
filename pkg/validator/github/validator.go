@@ -24,7 +24,11 @@ func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
 
 // Config holds configuration for the GitHub OIDC validator.
 type Config struct {
-	IssuerURL               string   `yaml:"issuerURL"`
+	IssuerURL string `yaml:"issuerURL"`
+	// DiscoveryURL is the base URL used for OIDC discovery of the JWKS endpoint.
+	// If empty, it defaults to IssuerURL. Set it when the issuer identifier is
+	// not reachable at the address that serves the discovery document.
+	DiscoveryURL            string   `yaml:"discoveryURL"`
 	Audiences               []string `yaml:"audiences"`
 	AllowedRepositoryOwners []string `yaml:"allowedRepositoryOwners"`
 	AllowedRepositories     []string `yaml:"allowedRepositories"`
@@ -48,9 +52,21 @@ func (c *Config) ValidateConfig() error {
 	if c.IssuerURL == "" {
 		c.IssuerURL = DefaultIssuer
 	}
-	err := jwtvalidator.ValidateIssuerURL(c.IssuerURL, c.AllowHTTP)
-	if err != nil {
-		return err
+	if c.DiscoveryURL == "" {
+		// The issuer doubles as the discovery URL, so it will be fetched and
+		// inherits the scheme requirement.
+		if err := jwtvalidator.ValidateIssuerURL(c.IssuerURL, c.AllowHTTP); err != nil {
+			return err
+		}
+	} else {
+		// The issuer is only compared against the `iss` claim; the discovery URL
+		// is the one dereferenced.
+		if err := jwtvalidator.ValidateIssuerFormat(c.IssuerURL); err != nil {
+			return err
+		}
+		if err := jwtvalidator.ValidateIssuerURL(c.DiscoveryURL, c.AllowHTTP); err != nil {
+			return fmt.Errorf("invalid discovery URL: %w", err)
+		}
 	}
 	if len(c.Audiences) == 0 {
 		return errors.New("at least one audience must be specified")
@@ -91,12 +107,15 @@ func NewValidator(cfg Config) (*Validator, error) {
 		return nil, fmt.Errorf("at least one of allowed_repositories or allowed_repository_owners must be configured")
 	}
 
+	// DiscoveryURL is passed through as-is; jwtvalidator.NewValidator defaults it
+	// to the issuer when empty.
 	jv, err := jwtvalidator.NewValidator(jwtvalidator.Config{
-		IssuerURL:   issuer,
-		Audiences:   cfg.Audiences,
-		KeyProvider: cfg.KeyProvider,
-		AllowHTTP:   cfg.AllowHTTP,
-		Metrics:     cfg.Metrics,
+		IssuerURL:    issuer,
+		DiscoveryURL: cfg.DiscoveryURL,
+		Audiences:    cfg.Audiences,
+		KeyProvider:  cfg.KeyProvider,
+		AllowHTTP:    cfg.AllowHTTP,
+		Metrics:      cfg.Metrics,
 	})
 	if err != nil {
 		return nil, err

@@ -8,7 +8,8 @@ Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verificati
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `issuerURL` | string | no | OIDC issuer. Default: `https://gitlab.com`. Must be HTTPS. |
+| `issuerURL` | string | no | OIDC issuer. Default: `https://gitlab.com`. Compared against the token's `iss` claim rather than fetched; but when `discoveryURL` is unset it doubles as the discovery URL and must then meet the same scheme requirement. |
+| `discoveryURL` | string | no | Base URL for OIDC discovery of the JWKS endpoint. Defaults to `issuerURL` when empty. This is the URL actually fetched, so it must be HTTPS (or HTTP to `localhost`). The `jwks_uri` the discovery document advertises must meet the same requirement, and a redirect from HTTPS to HTTP is refused. |
 | `audiences` | string array | **yes** | Expected JWT audience values. At least one entry required. |
 | `allowedNamespacePaths` | string array | see note | GitLab group/user paths allowed (e.g. `my-org`). Supports trailing wildcard (`*`). At least one of `allowedNamespacePaths` or `allowedProjectPaths` must be set. |
 | `allowedProjectPaths` | string array | see note | GitLab project paths allowed (e.g. `my-org/my-project`). Supports trailing wildcard (`*`). At least one required if `allowedNamespacePaths` is empty. |
