@@ -48,13 +48,11 @@ type TokenReviewConfig struct {
 	// describes the API server endpoint, the CA used to verify it, and the
 	// credentials used to authenticate to it.
 	//
-	// This field only matters when SIE is NOT running in-cluster:
-	// getKubernetesConfig unconditionally probes rest.InClusterConfig() first
-	// and returns those credentials if the probe succeeds — Kubeconfig is
-	// ignored in that case. When the probe fails (ErrNotInCluster), the
-	// kubeconfig loader runs: with Kubeconfig set, that path is the single
-	// file loaded; with Kubeconfig empty, the loader falls back to $KUBECONFIG,
-	// then $HOME/.kube/config.
+	// When set, getKubernetesConfig loads this file and ignores in-cluster
+	// credentials — even when running in a pod — so TokenReview can target a
+	// cluster other than the hosting cluster. When empty, the resolver probes
+	// in-cluster credentials first, then falls back to $KUBECONFIG, then
+	// $HOME/.kube/config.
 	//
 	// A kubeconfig composes natively with every K8s authentication style
 	// (in-cluster SA token, mTLS client certs, bearer token, AWS IAM / GKE /
@@ -70,9 +68,7 @@ type TokenReviewConfig struct {
 
 // NewTokenReviewValidator constructs a TokenReviewValidator. When
 // cfg.AuthClient is non-nil it is used directly (intended for tests);
-// otherwise a TokenReview-backed client is built via getKubernetesConfig,
-// which always tries in-cluster credentials first and only falls through to
-// kubeconfig when the in-cluster probe returns ErrNotInCluster.
+// otherwise a TokenReview-backed client is built via getKubernetesConfig.
 // The underlying clientset is goroutine-safe and reuses HTTP/TLS connections to
 // the API server across requests.
 func NewTokenReviewValidator(cfg TokenReviewConfig) (*TokenReviewValidator, error) {
@@ -96,30 +92,38 @@ func NewTokenReviewValidator(cfg TokenReviewConfig) (*TokenReviewValidator, erro
 	}, nil
 }
 
-// getKubernetesConfig builds a *rest.Config using the standard K8s client
-// resolution order:
+// getKubernetesConfig builds a *rest.Config using the K8s client resolution
+// order:
 //
-//  1. In-cluster — kubelet-injected ServiceAccount token, CA, and
-//     KUBERNETES_SERVICE_{HOST,PORT}. Works automatically when SIE runs as a
-//     pod; no operator-supplied paths needed.
-//  2. Kubeconfig — explicit path from cfg.Kubeconfig wins; otherwise the
-//     loading rules fall back to $KUBECONFIG (env), then $HOME/.kube/config.
-//     A kubeconfig file expresses every K8s auth flavor (mTLS, bearer token,
-//     exec plugin for AWS/GKE/Azure/SPIRE), so a single field replaces what
-//     would otherwise be apiHost + caFile + certFile + keyFile.
+//  1. Explicit kubeconfig — when kubeconfigPath is set, that file is loaded
+//     and in-cluster credentials are not consulted. This lets a pod-hosted
+//     process authenticate TokenReview calls against a different cluster.
+//  2. In-cluster — kubelet-injected ServiceAccount token, CA, and
+//     KUBERNETES_SERVICE_{HOST,PORT}. Used automatically when running in a
+//     pod and no explicit kubeconfig path is configured.
+//  3. Default kubeconfig — $KUBECONFIG (env), then $HOME/.kube/config.
 func getKubernetesConfig(kubeconfigPath string) (*rest.Config, error) {
+	if kubeconfigPath != "" {
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		loadingRules.ExplicitPath = kubeconfigPath
+		cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			loadingRules,
+			&clientcmd.ConfigOverrides{},
+		).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+		}
+		return cfg, nil
+	}
+
 	if cfg, err := rest.InClusterConfig(); err == nil {
 		return cfg, nil
 	} else if !errors.Is(err, rest.ErrNotInCluster) {
 		return nil, fmt.Errorf("in-cluster config probe failed: %w", err)
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfigPath != "" {
-		loadingRules.ExplicitPath = kubeconfigPath
-	}
 	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		loadingRules,
+		clientcmd.NewDefaultClientConfigLoadingRules(),
 		&clientcmd.ConfigOverrides{},
 	).ClientConfig()
 	if err != nil {

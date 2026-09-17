@@ -294,12 +294,10 @@ type K8sSATokenConfig struct {
 	// Optional path to a kubeconfig file used to reach the Kubernetes API
 	// server for TokenReview calls.
 	//
-	// Resolution order (independent of this field): the runtime always probes
-	// in-cluster credentials first — when SIE runs as a pod, the kubelet-injected
-	// ServiceAccount token wins outright and this field is ignored. Only when
-	// SIE is NOT running in-cluster does kubeconfig loading happen, and only
-	// then does this field matter: when set, it is the single file loaded;
-	// when empty, the loader falls back to $KUBECONFIG, then $HOME/.kube/config.
+	// When set, this file is loaded and in-cluster credentials are ignored —
+	// even when running in a pod — so TokenReview can target a different
+	// cluster. When empty, the resolver probes in-cluster credentials first,
+	// then falls back to $KUBECONFIG, then $HOME/.kube/config.
 	//
 	// A kubeconfig file natively expresses every K8s auth flavor (in-cluster
 	// SA token, mTLS, bearer token, AWS IAM / GKE / Azure exec plugins,
@@ -471,11 +469,12 @@ func (c *K8sSATokenConfig) Validate() error {
 	if c.SPIFFEIDTemplate == "" {
 		errs = append(errs, errors.New("k8sSAToken.spiffeIdTemplate is required when k8sSAToken is enabled"))
 	}
-	// API server connectivity comes from the kubeconfig / in-cluster fallback
-	// resolved at runtime in pkg/validator/k8s. Only check that an explicit
-	// kubeconfig path, when set, points at an existing file; absence is fine
-	// because the resolver will fall back to in-cluster credentials, then
-	// $KUBECONFIG, then $HOME/.kube/config.
+	// API server connectivity comes from the explicit kubeconfig path,
+	// in-cluster credentials, or default kubeconfig discovery resolved at
+	// runtime in pkg/validator/k8s. Only check that an explicit kubeconfig
+	// path, when set, points at an existing file; absence is fine because the
+	// resolver will fall back to in-cluster credentials, then $KUBECONFIG, then
+	// $HOME/.kube/config.
 	if c.Kubeconfig != "" {
 		if _, err := os.Stat(c.Kubeconfig); err != nil {
 			errs = append(errs, fmt.Errorf("k8sSAToken.kubeconfig not found at %q: %w", c.Kubeconfig, err))

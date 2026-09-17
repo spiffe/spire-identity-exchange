@@ -17,8 +17,7 @@ func TestNewValidator(t *testing.T) {
 
 	// Isolate from any host kubeconfig the loader would otherwise discover via
 	// $KUBECONFIG or $HOME/.kube/config — the test should depend only on what
-	// the test case configures, and on the in-cluster probe (which fails on
-	// the dev host, falling through to the kubeconfig path).
+	// the test case configures.
 	t.Setenv("KUBECONFIG", "")
 	t.Setenv("HOME", t.TempDir())
 

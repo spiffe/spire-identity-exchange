@@ -18,7 +18,7 @@ The plugin name `k8s_psat` matches SPIRE's node-attestor naming for projected se
 | `audiences` | string array | when `jwksCheck` enabled | Expected token audiences. Strongly recommended to configure a dedicated audience (e.g. `spire-identity-exchange`). Required when the in-process JWKS check is enabled. |
 | `allowedNamespaces` | string array | see note | Kubernetes namespaces allowed. Supports trailing wildcard (`*`). At least one of `allowedNamespaces` or `allowedServiceAccounts` must be set. |
 | `allowedServiceAccounts` | string array | see note | Service accounts allowed, in `namespace/serviceAccountName` format. Supports trailing wildcard (`*`). At least one required if `allowedNamespaces` is empty. |
-| `kubeconfig` | string | no | Path to a kubeconfig file for API server connectivity. When running in-cluster, the pod's service account credentials are used automatically and this field is ignored. |
+| `kubeconfig` | string | no | Path to a kubeconfig file for API server connectivity. Overrides in-cluster credentials when set. |
 | `jwksCheck` | bool | no | Enable the in-process JWKS signature check. Default: `true`. Disabling removes offline signature verification. |
 | `tokenReview` | bool | no | Enable the authoritative TokenReview round-trip. Default: `true`. Disabling removes live-state validation. |
 
