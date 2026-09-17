@@ -91,6 +91,36 @@ func mkToken(sub string, audiences ...string) string {
 		base64.RawURLEncoding.EncodeToString(cb) + ".signature"
 }
 
+func TestGetKubernetesConfig_PrefersExplicitKubeconfigOverInCluster(t *testing.T) {
+	const explicitServer = "https://kubeconfig-cluster.example:6443"
+
+	validKubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	kubeconfigYAML := fmt.Sprintf(`
+apiVersion: v1
+kind: Config
+clusters:
+- name: stub
+  cluster:
+    server: %s
+    insecure-skip-tls-verify: true
+users:
+- name: stub
+  user:
+    token: stub-token
+contexts:
+- name: stub
+  context:
+    cluster: stub
+    user: stub
+current-context: stub
+`, explicitServer)
+	require.NoError(t, os.WriteFile(validKubeconfig, []byte(kubeconfigYAML), 0o600))
+
+	cfg, err := getKubernetesConfig(validKubeconfig)
+	require.NoError(t, err)
+	assert.Equal(t, explicitServer, cfg.Host)
+}
+
 func TestNewTokenReviewValidator_BuildsRealClient(t *testing.T) {
 	// Build a minimal but syntactically valid kubeconfig the loader will accept.
 	// We never dial the server in this test — kubernetes.NewForConfig is lazy.
