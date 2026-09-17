@@ -112,16 +112,21 @@ func refuseDowngrade(c *http.Client) *http.Client {
 		return nil
 	}
 	inner := c.CheckRedirect
+	if inner == nil {
+		inner = func(_ *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return nil
+		}
+	}
 	dup := *c
 	dup.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" {
 			return fmt.Errorf("refusing redirect from https to %q (%s): a discovery or JWKS fetch must not be downgraded",
 				req.URL.Scheme, req.URL.Redacted())
 		}
-		if inner != nil {
-			return inner(req, via)
-		}
-		return nil
+		return inner(req, via)
 	}
 	return &dup
 }
