@@ -15,6 +15,10 @@ Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verificati
 | `audiences` | string array | **yes** | Expected JWT audience values. At least one entry required. |
 | `trustDomain` | string | **yes** | Expected SPIFFE trust domain of the incoming SVID (e.g. `example.org`). Must be a valid SPIFFE trust domain. |
 | `pathPatterns` | string array | **yes** | Go regular expression patterns for allowed SPIFFE ID paths. At least one pattern required. The token's `sub` claim SPIFFE ID path must match at least one pattern. |
+| `keySource` | string | no | Where to fetch JWT verification keys. `oidc` (default) uses HTTP OIDC discovery and JWKS. `workload_api` reads JWT authorities from a federated trust domain bundle on the SPIRE Agent Workload API. |
+| `jwksTrustDomain` | string | no | Federated trust domain whose JWT bundle to use when `keySource` is `workload_api`. Defaults to `trustDomain` when empty. |
+| `agentWorkloadSocketPath` | string | if `connectWithTrustBundle` or `keySource: workload_api` | Unix socket path to the SPIRE Agent Workload API. |
+| `connectWithTrustBundle` | bool | no | When `keySource` is `oidc`, use the agent trust bundle to open mTLS to the OIDC discovery endpoint. Cannot be combined with `keySource: workload_api`. |
 
 ## Selector reference
 
@@ -28,7 +32,7 @@ Selector type: `spiffe`
 
 ## Validation flow
 
-1. **JWT signature verification** — fetches the issuer's JWKS via OIDC discovery and verifies the token signature.
+1. **JWT signature verification** — fetches the issuer's public keys (via OIDC discovery/JWKS or from a federated JWT bundle on the agent Workload API) and verifies the token signature.
 2. **Standard claim validation** — verifies `iss`, `aud`, and `exp` (30s clock leeway).
 3. **SPIFFE ID validation** — parses the `sub` claim as a SPIFFE ID (`spiffe://<td>/<path>`), checks that the trust domain matches the configured `trustDomain`, and verifies the path matches at least one configured `pathPattern` regex.
 4. **Replay detection** — the caller's replay cache prevents token reuse.
@@ -47,6 +51,27 @@ auth:
         trustDomain: "peer.example.org"
         pathPatterns:
           - "^/workload/.*"
+```
+
+### Workload API key source
+
+When the SPIRE Agent already holds a federated JWT bundle, keys can be read from the Workload API instead of an HTTP OIDC discovery endpoint:
+
+```yaml
+auth:
+  plugins:
+    peer-federation:
+      plugin: "spiffe"
+      config:
+        issuerURL: "https://oidc-discovery-provider.peer.example.org"
+        audiences:
+          - "exchange-service"
+        trustDomain: "peer.example.org"
+        pathPatterns:
+          - "^/workload/.*"
+        keySource: workload_api
+        jwksTrustDomain: "peer.example.org"
+        agentWorkloadSocketPath: /var/run/spire/agent/sockets/public/api.sock
 ```
 
 ## Security considerations
