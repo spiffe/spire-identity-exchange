@@ -178,6 +178,30 @@ func TestParseWorkflowRef(t *testing.T) {
 			expectRef:  "abc123def456",
 		},
 		{
+			name:       "forgejo_workflow_ref",
+			input:      "my-org/my-repo/.forgejo/workflows/build.yml@refs/heads/main",
+			expectOK:   true,
+			expectRepo: "my-org/my-repo",
+			expectPath: ".forgejo/workflows/build.yml",
+			expectRef:  "refs/heads/main",
+		},
+		{
+			name:       "forgejo_tag_ref",
+			input:      "my-org/my-repo/.forgejo/workflows/release.yml@refs/tags/v1.0.0",
+			expectOK:   true,
+			expectRepo: "my-org/my-repo",
+			expectPath: ".forgejo/workflows/release.yml",
+			expectRef:  "refs/tags/v1.0.0",
+		},
+		{
+			name:       "forgejo_nested_workflow_path",
+			input:      "org/repo/.forgejo/workflows/sub/deploy.yml@refs/heads/main",
+			expectOK:   true,
+			expectRepo: "org/repo",
+			expectPath: ".forgejo/workflows/sub/deploy.yml",
+			expectRef:  "refs/heads/main",
+		},
+		{
 			name:     "empty_string",
 			input:    "",
 			expectOK: false,
@@ -188,7 +212,7 @@ func TestParseWorkflowRef(t *testing.T) {
 			expectOK: false,
 		},
 		{
-			name:     "no_github_dir",
+			name:     "no_workflow_dir",
 			input:    "my-org/my-repo/workflows/ci.yml@refs/heads/main",
 			expectOK: false,
 		},
@@ -232,6 +256,40 @@ func TestBuildSelectors_WorkflowRefDecomposition(t *testing.T) {
 	// Decomposed job_workflow_ref.
 	assert.Contains(t, values, "job_workflow_ref:repo:other-org/other-repo")
 	assert.Contains(t, values, "job_workflow_ref:path:.github/workflows/reusable.yml")
+	assert.Contains(t, values, "job_workflow_ref:ref:refs/tags/v1.0.0")
+
+	// 2 original + 6 decomposed = 8
+	assert.Len(t, selectors, 8)
+}
+
+func TestBuildSelectors_ForgejoWorkflowRefDecomposition(t *testing.T) {
+	// Forgejo places workflows in .forgejo/workflows. Without decomposition the
+	// undecomposed workflow_ref selector is still emitted, so a policy written
+	// against workflow_ref:ref would silently never match.
+	claims := &Claims{
+		WorkflowRef:    "my-org/my-repo/.forgejo/workflows/build.yml@refs/heads/main",
+		JobWorkflowRef: "other-org/other-repo/.forgejo/workflows/reusable.yml@refs/tags/v1.0.0",
+	}
+
+	selectors := buildSelectors(claims)
+
+	values := make([]string, len(selectors))
+	for i, s := range selectors {
+		values[i] = s.Value
+	}
+
+	// Original full values.
+	assert.Contains(t, values, "workflow_ref:my-org/my-repo/.forgejo/workflows/build.yml@refs/heads/main")
+	assert.Contains(t, values, "job_workflow_ref:other-org/other-repo/.forgejo/workflows/reusable.yml@refs/tags/v1.0.0")
+
+	// Decomposed workflow_ref.
+	assert.Contains(t, values, "workflow_ref:repo:my-org/my-repo")
+	assert.Contains(t, values, "workflow_ref:path:.forgejo/workflows/build.yml")
+	assert.Contains(t, values, "workflow_ref:ref:refs/heads/main")
+
+	// Decomposed job_workflow_ref.
+	assert.Contains(t, values, "job_workflow_ref:repo:other-org/other-repo")
+	assert.Contains(t, values, "job_workflow_ref:path:.forgejo/workflows/reusable.yml")
 	assert.Contains(t, values, "job_workflow_ref:ref:refs/tags/v1.0.0")
 
 	// 2 original + 6 decomposed = 8

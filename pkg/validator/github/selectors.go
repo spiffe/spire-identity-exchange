@@ -65,9 +65,15 @@ func buildSelectors(c *Claims) []*types.Selector {
 	return selectors
 }
 
+// workflowDirSeparators are the workflow directories a forge may use, each
+// wrapped in slashes so they only match a whole path component. GitHub uses
+// ".github"; Forgejo prefers ".forgejo" and also accepts ".github".
+var workflowDirSeparators = []string{"/.github/", "/.forgejo/"}
+
 // parseWorkflowRef splits a workflow ref string like
-// "owner/repo/.github/workflows/ci.yml@refs/heads/main" into its components.
-// Returns (repo, path, ref, ok).
+// "owner/repo/.github/workflows/ci.yml@refs/heads/main", or its Forgejo
+// equivalent "owner/repo/.forgejo/workflows/ci.yml@refs/heads/main", into its
+// components. Returns (repo, path, ref, ok).
 func parseWorkflowRef(workflowRef string) (repo, path, ref string, ok bool) {
 	if workflowRef == "" {
 		return "", "", "", false
@@ -81,14 +87,20 @@ func parseWorkflowRef(workflowRef string) (repo, path, ref string, ok bool) {
 	base := workflowRef[:atIdx]
 	ref = workflowRef[atIdx+1:]
 
-	// Split at "/.github/" to separate repo from workflow path.
-	const sep = "/.github/"
-	sepIdx := strings.Index(base, sep)
+	// Split at the workflow directory to separate repo from workflow path. When
+	// more than one candidate appears, the earliest wins, which preserves the
+	// first-match semantics of the single-separator strings.Index this replaced.
+	sepIdx := -1
+	for _, sep := range workflowDirSeparators {
+		if i := strings.Index(base, sep); i >= 0 && (sepIdx < 0 || i < sepIdx) {
+			sepIdx = i
+		}
+	}
 	if sepIdx < 0 {
 		return "", "", "", false
 	}
 	repo = base[:sepIdx]
-	path = base[sepIdx+1:] // includes ".github/..."
+	path = base[sepIdx+1:] // includes ".github/..." or ".forgejo/..."
 
 	if repo == "" || path == "" || ref == "" {
 		return "", "", "", false
