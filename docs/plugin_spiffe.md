@@ -10,8 +10,8 @@ Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verificati
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `issuerURL` | string | **yes** | OIDC issuer URL for the SPIFFE JWT's issuing authority. Must be HTTPS. |
-| `discoveryURL` | string | no | Base URL for OIDC discovery of the JWKS endpoint. Defaults to `issuerURL` when empty. |
+| `issuerURL` | string | **yes** | OIDC issuer URL for the SPIFFE JWT's issuing authority. Compared against the token's `iss` claim rather than fetched; but when `discoveryURL` is unset it doubles as the discovery URL and must then meet the same scheme requirement. |
+| `discoveryURL` | string | no | Base URL for OIDC discovery of the JWKS endpoint. Defaults to `issuerURL` when empty. This is the URL actually fetched, so it must be HTTPS (or HTTP to `localhost`). The `jwks_uri` the discovery document advertises must meet the same requirement, and a redirect from HTTPS to HTTP is refused. |
 | `audiences` | string array | **yes** | Expected JWT audience values. At least one entry required. |
 | `trustDomain` | string | **yes** | Expected SPIFFE trust domain of the incoming SVID (e.g. `example.org`). Must be a valid SPIFFE trust domain. |
 | `pathPatterns` | string array | **yes** | Go regular expression patterns for allowed SPIFFE ID paths. At least one pattern required. The token's `sub` claim SPIFFE ID path must match at least one pattern. |

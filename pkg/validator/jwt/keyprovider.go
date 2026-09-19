@@ -39,6 +39,11 @@ type DefaultKeyProvider struct {
 	// to supply an authenticated httpClient to reach it.
 	jwksURIOverride string
 
+	// allowHTTP relaxes the transport requirement applied to a jwks_uri learned
+	// from a discovery document. Defaults to false, so the strict rule is what
+	// a caller gets by not thinking about it.
+	allowHTTP bool
+
 	mu    sync.RWMutex
 	cache *jwksCache
 }
@@ -49,14 +54,29 @@ type jwksCache struct {
 	expiry  time.Time
 }
 
+// KeyProviderOption configures a DefaultKeyProvider. Variadic so the existing
+// constructor signatures keep working for callers that need none of them.
+type KeyProviderOption func(*DefaultKeyProvider)
+
+// WithAllowHTTP permits a plaintext jwks_uri from a discovery document, for
+// local testing against a mock OIDC server. Must not be enabled in production:
+// a plaintext key fetch is what an attacker substitutes keys through.
+func WithAllowHTTP(allow bool) KeyProviderOption {
+	return func(p *DefaultKeyProvider) { p.allowHTTP = allow }
+}
+
 // NewDefaultKeyProvider creates a KeyProvider that fetches JWKS on demand
 // from the issuer's /.well-known/jwks endpoint.
-func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics validator.Metrics) *DefaultKeyProvider {
-	return &DefaultKeyProvider{
+func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics validator.Metrics, opts ...KeyProviderOption) *DefaultKeyProvider {
+	p := &DefaultKeyProvider{
 		issuerURL:  issuerURL,
-		httpClient: httpClient,
+		httpClient: refuseDowngrade(httpClient),
 		metrics:    metrics,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 // NewKeyProviderWithJWKSURI creates a KeyProvider that fetches JWKS directly
@@ -64,12 +84,51 @@ func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics va
 // httpClient, which may be authenticated (e.g. a Kubernetes API server client)
 // when the JWKS endpoint requires authentication. Keys are cached and refetched
 // on cache miss or expiry, so brief endpoint downtime is tolerated.
-func NewKeyProviderWithJWKSURI(jwksURI string, httpClient *http.Client, metrics validator.Metrics) *DefaultKeyProvider {
-	return &DefaultKeyProvider{
+func NewKeyProviderWithJWKSURI(jwksURI string, httpClient *http.Client, metrics validator.Metrics, opts ...KeyProviderOption) *DefaultKeyProvider {
+	p := &DefaultKeyProvider{
 		jwksURIOverride: jwksURI,
-		httpClient:      httpClient,
+		httpClient:      refuseDowngrade(httpClient),
 		metrics:         metrics,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+// refuseDowngrade returns a copy of c that will not follow a redirect from https
+// to a plaintext scheme.
+//
+// Without it, every scheme check in this package is advisory: an https URL that
+// answers 302 to an http one is followed silently, and the keys arrive over
+// plaintext having passed validation. Go's default policy follows up to 10
+// redirects and inspects none of them.
+//
+// A COPY, not a mutation, because the client belongs to the caller -- the SPIFFE
+// and Kubernetes validators both pass one they built. Copying an http.Client
+// shares its Transport, which is the part that must be shared.
+func refuseDowngrade(c *http.Client) *http.Client {
+	if c == nil {
+		return nil
+	}
+	inner := c.CheckRedirect
+	if inner == nil {
+		inner = func(_ *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return nil
+		}
+	}
+	dup := *c
+	dup.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing redirect from https to %q (%s): a discovery or JWKS fetch must not be downgraded",
+				req.URL.Scheme, req.URL.Redacted())
+		}
+		return inner(req, via)
+	}
+	return &dup
 }
 
 // GetKey returns the public key for the given kid. Implements validator.KeyProvider.
@@ -159,6 +218,11 @@ func (p *DefaultKeyProvider) discoverJWKSURI(ctx context.Context) (string, error
 	}
 	if config.JWKSURI == "" {
 		return "", fmt.Errorf("discovery document missing jwks_uri")
+	}
+	// The document said where to get the keys; that does not make it a safe
+	// place to get them from. See ValidateJWKSURL.
+	if err := ValidateJWKSURL(config.JWKSURI, p.allowHTTP); err != nil {
+		return "", fmt.Errorf("discovery document advertised an unusable jwks_uri %q: %w", config.JWKSURI, err)
 	}
 
 	return config.JWKSURI, nil

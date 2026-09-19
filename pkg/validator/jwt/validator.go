@@ -53,19 +53,26 @@ func NewValidator(cfg Config) (*Validator, error) {
 	if cfg.IssuerURL == "" {
 		return nil, fmt.Errorf("issuer URL must not be empty")
 	}
-	if err := ValidateIssuerURL(cfg.IssuerURL, cfg.AllowHTTP); err != nil {
+	// Format only here. Whether the issuer's scheme is constrained depends on
+	// whether it also serves as the discovery URL, decided below.
+	if err := ValidateIssuerFormat(cfg.IssuerURL); err != nil {
 		return nil, fmt.Errorf("invalid issuer URL: %w", err)
 	}
 	if len(cfg.Audiences) == 0 {
 		return nil, fmt.Errorf("at least one audience must be configured")
 	}
 
+	// The discovery URL is dereferenced, so it carries the scheme requirement.
+	// When it is not configured the issuer is used for discovery and inherits
+	// that requirement -- reported against the field the operator actually set.
 	discoveryURL := cfg.DiscoveryURL
+	errLabel := "invalid discovery URL"
 	if discoveryURL == "" {
 		discoveryURL = cfg.IssuerURL
+		errLabel = "invalid issuer URL"
 	}
 	if err := ValidateIssuerURL(discoveryURL, cfg.AllowHTTP); err != nil {
-		return nil, fmt.Errorf("invalid discovery URL: %w", err)
+		return nil, fmt.Errorf("%s: %w", errLabel, err)
 	}
 
 	keyProvider := cfg.KeyProvider
@@ -74,7 +81,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 		if client == nil {
 			client = &http.Client{Timeout: defaultHTTPTimeout}
 		}
-		keyProvider = NewDefaultKeyProvider(discoveryURL, client, cfg.Metrics)
+		keyProvider = NewDefaultKeyProvider(discoveryURL, client, cfg.Metrics, WithAllowHTTP(cfg.AllowHTTP))
 	}
 
 	return &Validator{
@@ -209,18 +216,9 @@ func extractKID(rawToken string) (string, error) {
 	return kid, nil
 }
 
-// ValidateIssuerURL validates the issuer URL format and scheme.
-func ValidateIssuerURL(issuer string, allowHTTP bool) error {
-	u, err := url.Parse(issuer)
-	if err != nil {
-		return fmt.Errorf("failed to parse URL: %w", err)
-	}
-	isHTTPS := u.Scheme == "https"
-	isLocalhost := u.Scheme == "http" && u.Hostname() == "localhost"
-	isAllowedHTTP := allowHTTP && u.Scheme == "http"
-	if !isHTTPS && !isLocalhost && !isAllowedHTTP {
-		return fmt.Errorf("scheme must be https (got %q)", u.Scheme)
-	}
+// validateIssuerShape validates the parts of a URL that must hold whether or not
+// it will be dereferenced.
+func validateIssuerShape(u *url.URL) error {
 	if u.Host == "" {
 		return fmt.Errorf("host must not be empty")
 	}
@@ -229,6 +227,77 @@ func ValidateIssuerURL(issuer string, allowHTTP bool) error {
 	}
 	if u.Fragment != "" {
 		return fmt.Errorf("fragment is not allowed")
+	}
+	return nil
+}
+
+// ValidateIssuerFormat validates the shape of an issuer identifier. It
+// deliberately does NOT constrain the scheme: an issuer is compared against the
+// token's `iss` claim -- a StringOrURI per RFC 7519 section 4.1.1, with no
+// scheme requirement -- and is never dereferenced. The https requirement in
+// OpenID Connect Discovery exists because the issuer URL is fetched there to
+// retrieve the provider configuration; where the key source is configured
+// out-of-band, that rationale does not apply.
+//
+// Use ValidateIssuerURL for a URL that will actually be requested.
+func ValidateIssuerFormat(issuer string) error {
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	return validateIssuerShape(u)
+}
+
+// ValidateIssuerURL validates a URL that will be dereferenced: the format checks
+// of ValidateIssuerFormat plus a requirement that the transport be https (or
+// http to localhost, or http when allowHTTP is set).
+func ValidateIssuerURL(issuer string, allowHTTP bool) error {
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if err := validateFetchableScheme(u, allowHTTP); err != nil {
+		return err
+	}
+	return validateIssuerShape(u)
+}
+
+// ValidateJWKSURL validates a jwks_uri taken from a discovery document.
+//
+// A discovery document is remote input, and its jwks_uri is where the signing
+// keys are actually fetched from. Authenticating the document and then following
+// it to a plaintext endpoint protects the pointer and not the keys, which is the
+// half that decides whether a token is trusted; so the URL the keys come from is
+// held to the same transport requirement as the URL the document came from.
+//
+// Deliberately NOT ValidateIssuerURL: that also rejects query parameters, which
+// is right for an issuer identifier and wrong here. Azure AD B2C publishes a
+// jwks_uri carrying a `p=<policy>` query, and it is a perfectly ordinary URL to
+// fetch.
+func ValidateJWKSURL(jwksURI string, allowHTTP bool) error {
+	u, err := url.Parse(jwksURI)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("host must not be empty")
+	}
+	return validateFetchableScheme(u, allowHTTP)
+}
+
+// validateFetchableScheme is the transport requirement shared by every URL this
+// package dereferences. Shared so the issuer and the jwks_uri cannot drift into
+// disagreeing about what counts as safe to fetch.
+//
+// Note the exemption is the literal hostname "localhost" and not 127.0.0.1 or
+// ::1. That is the pre-existing behaviour and is left alone here: widening it
+// belongs in a change about the exemption, not in one about the jwks_uri.
+func validateFetchableScheme(u *url.URL, allowHTTP bool) error {
+	isHTTPS := u.Scheme == "https"
+	isLocalhost := u.Scheme == "http" && u.Hostname() == "localhost"
+	isAllowedHTTP := allowHTTP && u.Scheme == "http"
+	if !isHTTPS && !isLocalhost && !isAllowedHTTP {
+		return fmt.Errorf("scheme must be https (got %q)", u.Scheme)
 	}
 	return nil
 }

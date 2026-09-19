@@ -64,14 +64,51 @@ func TestConfig_ValidateConfig(t *testing.T) {
             expectError: "issuer URL must not be empty",
         },
         {
-            name: "invalid issuer URL (http)",
+            // With a discoveryURL the issuer is only compared against the `iss`
+            // claim, so its scheme is not constrained.
+            name: "http issuer URL with https discovery URL is accepted",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "http://issuer.example.org"
+                cfg.DiscoveryURL = "https://discovery.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "",
+        },
+        {
+            // Without one, the issuer is what gets fetched and inherits the
+            // scheme requirement.
+            name: "http issuer URL without discovery URL is rejected",
             mutateCfg: func(cfg *Config) {
                 cfg.IssuerURL = "http://issuer.example.org"
                 cfg.Audiences = []string{"spire-server"}
                 cfg.TrustDomain = "example.org"
                 cfg.PathPatterns = []string{"^/workload/.*"}
             },
-            expectError: "scheme must be https",
+            expectError: "invalid issuer URL: scheme must be https",
+        },
+        {
+            name: "malformed issuer URL",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org?foo=bar"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "query parameters are not allowed",
+        },
+        {
+            // The discovery URL is dereferenced, so it must be https.
+            name: "http discovery URL is rejected",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoveryURL = "http://discovery.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "invalid discovery URL: scheme must be https",
         },
         {
             name: "empty trust domain",

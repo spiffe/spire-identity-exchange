@@ -68,6 +68,99 @@ func TestNewValidator(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       Config
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "valid_config",
+			cfg: Config{
+				IssuerURL:           "https://gitlab.com",
+				Audiences:           []string{"test-aud"},
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+		},
+		{
+			// With a discoveryURL the issuer is only compared against the `iss`
+			// claim, so its scheme is not constrained.
+			name: "http_issuer_with_https_discovery_accepted",
+			cfg: Config{
+				IssuerURL:           "http://gitlab.example.com",
+				DiscoveryURL:        "https://gitlab.example.com",
+				Audiences:           []string{"test-aud"},
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+		},
+		{
+			// Without one, the issuer is what gets fetched and inherits the
+			// requirement.
+			name: "http_issuer_without_discovery_rejected",
+			cfg: Config{
+				IssuerURL:           "http://gitlab.example.com",
+				Audiences:           []string{"test-aud"},
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+			expectErr: true,
+			errMsg:    "invalid issuer URL: scheme must be https",
+		},
+		{
+			name: "http_discovery_rejected",
+			cfg: Config{
+				IssuerURL:           "https://gitlab.example.com",
+				DiscoveryURL:        "http://gitlab.example.com",
+				Audiences:           []string{"test-aud"},
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+			expectErr: true,
+			errMsg:    "invalid discovery URL: scheme must be https",
+		},
+		{
+			name: "malformed_issuer",
+			cfg: Config{
+				IssuerURL:           "https://gitlab.example.com?q=1",
+				Audiences:           []string{"test-aud"},
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+			expectErr: true,
+			errMsg:    "query parameters are not allowed",
+		},
+		{
+			name: "no_audiences",
+			cfg: Config{
+				IssuerURL:           "https://gitlab.com",
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+			expectErr: true,
+			errMsg:    "at least one audience must be specified",
+		},
+		{
+			name: "no_allowlists",
+			cfg: Config{
+				IssuerURL: "https://gitlab.com",
+				Audiences: []string{"test-aud"},
+			},
+			expectErr: true,
+			errMsg:    "at least one of allowedProjectPaths or allowedNamespacePaths must be specified",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.cfg
+			err := cfg.ValidateConfig()
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestCheckAllowLists(t *testing.T) {
 	tests := []struct {
 		name           string

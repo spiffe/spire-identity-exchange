@@ -68,8 +68,21 @@ func (c *Config) ValidateConfig() error {
     if c.IssuerURL == "" {
         return errors.New("issuer URL must not be empty")
     }
-	if err := jwtauth.ValidateIssuerURL(c.IssuerURL, c.AllowHTTP); err != nil {
-		return fmt.Errorf("invalid issuer URL: %w", err)
+	if c.DiscoveryURL == "" {
+		// The issuer doubles as the discovery URL, so it will be fetched and
+		// inherits the scheme requirement.
+		if err := jwtauth.ValidateIssuerURL(c.IssuerURL, c.AllowHTTP); err != nil {
+			return fmt.Errorf("invalid issuer URL: %w", err)
+		}
+	} else {
+		// The issuer is only compared against the `iss` claim; the discovery URL
+		// is the one dereferenced.
+		if err := jwtauth.ValidateIssuerFormat(c.IssuerURL); err != nil {
+			return fmt.Errorf("invalid issuer URL: %w", err)
+		}
+		if err := jwtauth.ValidateIssuerURL(c.DiscoveryURL, c.AllowHTTP); err != nil {
+			return fmt.Errorf("invalid discovery URL: %w", err)
+		}
 	}
     if len(c.Audiences) == 0 {
         return errors.New("at least one audience must be specified")
@@ -162,6 +175,13 @@ func NewValidator(cfg Config) (*Validator, error) {
         }
         if doc.JWKSURI == "" {
             return nil, fmt.Errorf("discovery document missing jwks_uri")
+        }
+        // The document arrived over SPIFFE-authenticated TLS; the URL inside it
+        // did not. Following it to a plaintext endpoint would authenticate the
+        // pointer and leave the keys -- the thing that decides whether a token
+        // is trusted -- open to substitution by anyone on the path.
+        if err := jwtauth.ValidateJWKSURL(doc.JWKSURI, cfg.AllowHTTP); err != nil {
+            return nil, fmt.Errorf("discovery document advertised an unusable jwks_uri %q: %w", doc.JWKSURI, err)
         }
 
         keyProvider = jwtauth.NewKeyProviderWithJWKSURI(doc.JWKSURI, httpClient, cfg.Metrics)
