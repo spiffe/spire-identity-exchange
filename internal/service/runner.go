@@ -727,7 +727,11 @@ type jwtSVIDResponse struct {
 
 // handleGetJWTSVID validates the bearer token, derives selectors via the
 // stack's SelectorGenerator, fetches a JWT-SVID via the delegated client for
-// the requested audiences, and returns it as JSON.
+// the requested audiences, and returns it.
+//
+// Response format is selected by the optional format query parameter:
+//   - omitted: JSON envelope (spiffeId, token, expiresAt)
+//   - token: raw JWT-SVID string (text/plain)
 //
 // Error mapping mirrors handleGetX509SVID:
 //   - missing/malformed Authorization header  → 401
@@ -819,12 +823,35 @@ func handleGetJWTSVID(cfg *config.SpireIdentityExchangeConfig, dc *delegated.Cli
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(&resp); err != nil {
+		if err := writeJWTSVIDResponse(w, r.URL.Query().Get("format"), &resp); err != nil {
+			if errors.Is(err, errInvalidJWTSVIDFormat) {
+				http.Error(w, "Invalid format", http.StatusBadRequest)
+				return
+			}
 			logger.Error("response encode failed", zap.Error(err))
 			http.Error(w, "encoding failed", http.StatusInternalServerError)
 		}
 	}
+}
+
+var errInvalidJWTSVIDFormat = errors.New("invalid jwt svid response format")
+
+func writeJWTSVIDResponse(w http.ResponseWriter, format string, resp *jwtSVIDResponse) error {
+	switch format {
+	case "token":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if _, err := w.Write([]byte(resp.Token)); err != nil {
+			return err
+		}
+	case "":
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			return err
+		}
+	default:
+		return errInvalidJWTSVIDFormat
+	}
+	return nil
 }
 
 func extractBearerToken(r *http.Request) (string, error) {
