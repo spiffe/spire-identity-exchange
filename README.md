@@ -357,6 +357,15 @@ curl -k -X POST https://localhost:8444/api/v1/svid/github-actions/jwt \
   -d '{"audiences": ["my-workload-audience"]}'
 ```
 
+To receive only the JWT-SVID string (no JSON envelope), pass `format=token`:
+
+```bash
+curl -k -X POST 'https://localhost:8444/api/v1/svid/github-actions/jwt?format=token' \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"audiences": ["my-workload-audience"]}'
+```
+
 ### Inspecting the service
 
 ```bash
