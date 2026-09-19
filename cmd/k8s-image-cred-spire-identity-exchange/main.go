@@ -33,6 +33,12 @@ type jwtSVIDResponse struct {
 	ExpiresAt int64  `json:"expiresAt"` // Unix seconds
 }
 
+const (
+	cacheModeImage    = "image"
+	cacheModeRegistry = "registry"
+	cacheModeNoCache  = "nocache"
+)
+
 func main() {
 	usernameFlag := flag.String("username", "", "Registry username (Required)")
 	modeFlag := flag.String("mode", "spire-identity-exchange", "Operation mode: spire-identity-exchange, passthrough-k8s, or passthrough-spiffe")
@@ -47,6 +53,7 @@ func main() {
 	k8sPSATFlag := flag.String("k8s-psat", "k8s_psat", "Name of the k8s psat plugin in the stack")
 	spiffeFlag := flag.String("spiffe", "spiffe", "Name of the spiffe plugin in the stack")
 	caFileFlag := flag.String("ca-file", "", "Path to a custom CA file to validate the URL's TLS certificate")
+	cacheModeFlag := flag.String("cache-mode", cacheModeImage, "How the kubelet caches the returned credential: image (one cache entry per image), registry (one cache entry shared by every repository on the registry host), or nocache (no caching).")
 
 	flag.Parse()
 
@@ -69,6 +76,13 @@ func main() {
 
 	if *usernameFlag == "" {
 		fmt.Fprintf(os.Stderr, "error: --username flag is required\n")
+		os.Exit(1)
+	}
+
+	switch *cacheModeFlag {
+	case cacheModeImage, cacheModeRegistry, cacheModeNoCache:
+	default:
+		fmt.Fprintf(os.Stderr, "error: --cache-mode %q is not recognized (image|registry|nocache)\n", *cacheModeFlag)
 		os.Exit(1)
 	}
 
@@ -144,10 +158,29 @@ func main() {
 
 	username := *usernameFlag
 
-	remaining, err := getRemainingCacheDuration(token)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to get remaining duration on the token: %v\n", err)
-		os.Exit(1)
+	var (
+		cacheKeyType v1.PluginCacheKeyType
+		authKey      string
+	)
+	switch *cacheModeFlag {
+	case cacheModeRegistry:
+		cacheKeyType = v1.RegistryPluginCacheKeyType
+		authKey = parseRegistry(request.Image)
+	case cacheModeImage, cacheModeNoCache:
+		cacheKeyType = v1.ImagePluginCacheKeyType
+		authKey = request.Image
+	}
+
+	var cacheDuration *metav1.Duration
+	if *cacheModeFlag == cacheModeNoCache {
+		cacheDuration = &metav1.Duration{Duration: 0}
+	} else {
+		var err error
+		cacheDuration, err = getRemainingCacheDuration(token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to get remaining duration on the token: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	response := v1.CredentialProviderResponse{
@@ -155,10 +188,10 @@ func main() {
 			APIVersion: "credentialprovider.kubelet.k8s.io/v1",
 			Kind:       "CredentialProviderResponse",
 		},
-		CacheKeyType:  v1.RegistryPluginCacheKeyType,
-		CacheDuration: remaining,
+		CacheKeyType:  cacheKeyType,
+		CacheDuration: cacheDuration,
 		Auth: map[string]v1.AuthConfig{
-			request.Image: {
+			authKey: {
 				Username: username,
 				Password: token,
 			},
@@ -207,6 +240,11 @@ func selectSVIDByHint(svids []*jwtsvid.SVID, hint string) (*jwtsvid.SVID, error)
 
 	return nil, fmt.Errorf("no JWT-SVID with hint %q (--spiffe-hint); available hints: %s",
 		hint, strings.Join(available, ", "))
+}
+
+func parseRegistry(image string) string {
+	registry, _, _ := strings.Cut(image, "/")
+	return registry
 }
 
 func getRemainingCacheDuration(jwtToken string) (*metav1.Duration, error) {
