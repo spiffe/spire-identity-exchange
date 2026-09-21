@@ -25,6 +25,9 @@ const (
 	oidcDiscoveryPath = "/.well-known/openid-configuration"
 	discoveryTimeout  = 10 * time.Second
 	maxDiscoveryBytes = 1 << 20 // 1 MiB
+
+	KeySourceOIDC        = "oidc"
+	KeySourceWorkloadAPI = "workload_api"
 )
 
 type oidcDiscoveryDoc struct {
@@ -46,8 +49,16 @@ type Config struct {
 	// trust bundle to validate the remote OIDC discovery endpoint's TLS certs.
 	ConnectWithTrustBundle bool `yaml:"connectWithTrustBundle"`
 	// AgentWorkloadSocketPath specifies a custom UDS socket path for reaching the
-	// SPIFFE Workload API. Required if ConnectWithTrustBundle is enabled.
+	// SPIFFE Workload API. Required if ConnectWithTrustBundle or KeySource
+	// workload_api is enabled.
 	AgentWorkloadSocketPath string `yaml:"agentWorkloadSocketPath"`
+	// KeySource selects where JWT verification keys are fetched from. Defaults to
+	// oidc (HTTP OIDC discovery + JWKS). Use workload_api to read JWT authorities
+	// from a federated trust domain bundle on the agent Workload API.
+	KeySource string `yaml:"keySource"`
+	// JWKSTrustDomain selects which federated trust domain's JWT bundle to use
+	// when KeySource is workload_api. Defaults to TrustDomain when empty.
+	JWKSTrustDomain string `yaml:"jwksTrustDomain"`
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
@@ -93,10 +104,39 @@ func (c *Config) ValidateConfig() error {
     if len(c.PathPatterns) == 0 {
         return errors.New("at least one path pattern must be specified")
     }
+	keySource := c.keySource()
+	if keySource != KeySourceOIDC && keySource != KeySourceWorkloadAPI {
+		return fmt.Errorf("unsupported keySource %q: must be %q or %q", c.KeySource, KeySourceOIDC, KeySourceWorkloadAPI)
+	}
+	if c.ConnectWithTrustBundle && keySource == KeySourceWorkloadAPI {
+		return errors.New("connectWithTrustBundle cannot be used with keySource workload_api")
+	}
 	if c.ConnectWithTrustBundle && c.AgentWorkloadSocketPath == "" {
 		return errors.New("agent workload socket path must be specified when connectWithTrustBundle is enabled")
 	}
-    return nil
+	if keySource == KeySourceWorkloadAPI && c.AgentWorkloadSocketPath == "" {
+		return errors.New("agent workload socket path must be specified when keySource is workload_api")
+	}
+	if c.JWKSTrustDomain != "" {
+		if _, err := spiffeid.TrustDomainFromString(c.JWKSTrustDomain); err != nil {
+			return fmt.Errorf("invalid jwksTrustDomain: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *Config) keySource() string {
+	if c.KeySource == "" {
+		return KeySourceOIDC
+	}
+	return c.KeySource
+}
+
+func (c *Config) jwksTrustDomain() string {
+	if c.JWKSTrustDomain != "" {
+		return c.JWKSTrustDomain
+	}
+	return c.TrustDomain
 }
 
 func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, error) {
@@ -106,8 +146,9 @@ func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, e
 // Validator validates SPIFFE SVID JWTs and generates selectors for token exchange.
 // It implements validator.TokenValidator and validator.SelectorGenerator.
 type Validator struct {
-    jwtValidator *jwtauth.Validator
-    config       Config
+	jwtValidator *jwtauth.Validator
+	config       Config
+	keySync validator.KeySynchronizer
 }
 
 // NewValidator creates a new SPIFFE SVID validator.
@@ -122,15 +163,40 @@ func NewValidator(cfg Config) (*Validator, error) {
         discoveryURL = cfg.IssuerURL
     }
 
-    keyProvider := cfg.KeyProvider
-    if keyProvider == nil && cfg.ConnectWithTrustBundle && cfg.TrustDomain != "" {
+	keyProvider := cfg.KeyProvider
+	var keySync validator.KeySynchronizer
+	if keyProvider == nil && cfg.keySource() == KeySourceWorkloadAPI {
+		socketAddr := workloadSocketAddr(cfg.AgentWorkloadSocketPath)
+		bundleSource, err := NewWorkloadAPIBundleSource(context.Background(), socketAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SPIFFE bundle source: %w", err)
+		}
+
+		jwksTD, err := spiffeid.TrustDomainFromString(cfg.jwksTrustDomain())
+		if err != nil {
+			bundleSource.Close()
+			return nil, fmt.Errorf("invalid jwks trust domain: %w", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
+		defer cancel()
+		if err := bundleSource.WaitUntilUpdated(ctx); err != nil {
+			bundleSource.Close()
+			return nil, fmt.Errorf("failed to receive initial JWT bundle from workload API: %w", err)
+		}
+
+		wlProvider := NewWorkloadAPIKeyProvider(bundleSource, jwksTD, cfg.Metrics)
+		keyProvider = wlProvider
+		keySync = wlProvider
+	}
+	if keyProvider == nil && cfg.ConnectWithTrustBundle && cfg.TrustDomain != "" {
         td, err := spiffeid.TrustDomainFromString(cfg.TrustDomain)
         if err != nil {
             return nil, fmt.Errorf("invalid trust domain: %w", err)
         }
 
-        socketAddr := "unix://" + strings.TrimPrefix(cfg.AgentWorkloadSocketPath, "unix://")
-        source, err := workloadapi.NewX509Source(
+		socketAddr := workloadSocketAddr(cfg.AgentWorkloadSocketPath)
+		source, err := workloadapi.NewX509Source(
             context.Background(),
             workloadapi.WithClientOptions(workloadapi.WithAddr(socketAddr)),
         )
@@ -199,10 +265,23 @@ func NewValidator(cfg Config) (*Validator, error) {
         return nil, err
     }
 
-    return &Validator{
-        jwtValidator: jv,
-        config:       cfg,
-    }, nil
+	return &Validator{
+		jwtValidator: jv,
+		config:       cfg,
+		keySync:      keySync,
+	}, nil
+}
+
+func workloadSocketAddr(path string) string {
+	return "unix://" + strings.TrimPrefix(path, "unix://")
+}
+
+// Start waits for the initial Workload API bundle when using workload_api keys.
+func (v *Validator) Start(ctx context.Context) error {
+	if v.keySync != nil {
+		return v.keySync.Start(ctx)
+	}
+	return nil
 }
 
 // Validate validates a SPIFFE SVID JWT token and returns claims.
