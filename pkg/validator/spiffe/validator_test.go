@@ -1,9 +1,10 @@
 package spiffe
 
 import (
-    "testing"
+	"context"
+	"testing"
 
-    "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
     "github.com/spiffe/spire-identity-exchange/pkg/validator"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
@@ -24,6 +25,24 @@ pathPatterns: ["^/workload/.*"]`
         assert.Equal(t, []string{"spire-server"}, cfg.Audiences)
         assert.Equal(t, "example.org", cfg.TrustDomain)
         assert.Equal(t, []string{"^/workload/.*"}, cfg.PathPatterns)
+    })
+
+    t.Run("workload_api config fields", func(t *testing.T) {
+        raw := `issuerURL: "https://issuer.example.org"
+audiences: ["spire-server"]
+trustDomain: "example.org"
+pathPatterns: ["^/workload/.*"]
+keySource: workload_api
+jwksTrustDomain: "peer.example.org"
+agentWorkloadSocketPath: /tmp/agent.sock`
+        var node yaml.Node
+        require.NoError(t, yaml.Unmarshal([]byte(raw), &node))
+        cfg := new(Config)
+        require.NoError(t, cfg.Unmarshal(&node))
+        assert.Equal(t, KeySourceWorkloadAPI, cfg.KeySource)
+        assert.Equal(t, "peer.example.org", cfg.JWKSTrustDomain)
+        assert.Equal(t, "/tmp/agent.sock", cfg.AgentWorkloadSocketPath)
+        assert.NoError(t, cfg.ValidateConfig())
     })
 
     t.Run("empty config", func(t *testing.T) {
@@ -99,6 +118,65 @@ func TestConfig_ValidateConfig(t *testing.T) {
                 cfg.PathPatterns = []string{"^/workload/.*"}
             },
             expectError: "at least one audience must be specified",
+        },
+        {
+            name: "workload_api requires socket path",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.KeySource = KeySourceWorkloadAPI
+            },
+            expectError: "agent workload socket path must be specified",
+        },
+        {
+            name: "workload_api conflicts with connectWithTrustBundle",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.KeySource = KeySourceWorkloadAPI
+                cfg.ConnectWithTrustBundle = true
+                cfg.AgentWorkloadSocketPath = "/tmp/agent.sock"
+            },
+            expectError: "connectWithTrustBundle cannot be used with keySource workload_api",
+        },
+        {
+            name: "invalid keySource",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.KeySource = "invalid"
+            },
+            expectError: "unsupported keySource",
+        },
+        {
+            name: "valid workload_api config",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.KeySource = KeySourceWorkloadAPI
+                cfg.AgentWorkloadSocketPath = "/tmp/agent.sock"
+                cfg.JWKSTrustDomain = "peer.example.org"
+            },
+            expectError: "",
+        },
+        {
+            name: "invalid jwksTrustDomain",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.JWKSTrustDomain = "not a valid trust domain"
+            },
+            expectError: "invalid jwksTrustDomain",
         },
     }
 
@@ -227,6 +305,25 @@ func TestGenerateSelectors(t *testing.T) {
     assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_trust_domain:example.org"})
     assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_path:/workload/myapp/production"})
     assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_spiffe_id:spiffe://example.org/workload/myapp/production"})
+}
+
+type keySyncSpy struct {
+	started bool
+}
+
+func (s *keySyncSpy) Start(context.Context) error {
+	s.started = true
+	return nil
+}
+
+func TestValidator_Start(t *testing.T) {
+	syncer := &keySyncSpy{}
+	v := &Validator{keySync: syncer}
+	require.NoError(t, v.Start(context.Background()))
+	assert.True(t, syncer.started)
+
+	v = &Validator{}
+	require.NoError(t, v.Start(context.Background()))
 }
 
 func TestTokenValidatorLoader(t *testing.T) {
