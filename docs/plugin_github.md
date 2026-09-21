@@ -4,6 +4,8 @@ Validates GitHub Actions OIDC tokens (JWTs issued by `https://token.actions.gith
 
 Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verification, key discovery, and standard claim validation (issuer, audience, expiration). Adds GitHub-specific allowlist checks (repository owner, repository name) and selector generation on top.
 
+This plugin also validates **Forgejo Actions** OIDC tokens. Forgejo emits the same claim names in the same formats, including the default `sub` of `repo:<owner>/<repo>:ref:<ref>`; it simply emits fewer claims, and absent ones produce no selector. Point `issuerURL` at `<forgejo instance>/api/actions`.
+
 ## Configuration
 
 | Field | Type | Required | Description |
@@ -52,6 +54,8 @@ Selectors are generated for every non-empty claim field in the validated token:
 | `run_attempt` | re-run attempt | always |
 | `environment` | deployment environment name | always |
 | `runner_environment` | `github-hosted` or `self-hosted` | always |
+
+The `workflow_ref` and `job_workflow_ref` values decompose only when the path contains a recognised workflow directory — `.github/` (GitHub, and Forgejo's fallback) or `.forgejo/` (Forgejo's default). A value in any other shape still produces the undecomposed selector, but none of the `:repo`, `:path` or `:ref` parts, so an entry written against those would not match.
 
 ## Validation flow
 
