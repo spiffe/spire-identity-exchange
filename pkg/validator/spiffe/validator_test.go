@@ -215,6 +215,30 @@ func TestConfig_ValidateConfig(t *testing.T) {
             },
             expectError: "invalid jwksTrustDomain",
         },
+        {
+            name: "mergeTrustDomains requires connectWithTrustBundle",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.MergeTrustDomains = []string{"spire-ha"}
+            },
+            expectError: "mergeTrustDomains requires connectWithTrustBundle",
+        },
+        {
+            name: "valid mergeTrustDomains config",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.ConnectWithTrustBundle = true
+                cfg.AgentWorkloadSocketPath = "/tmp/agent.sock"
+                cfg.MergeTrustDomains = []string{"spire-ha"}
+            },
+            expectError: "",
+        },
     }
 
     for _, tc := range cases {

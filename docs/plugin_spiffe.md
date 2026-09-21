@@ -19,6 +19,7 @@ Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verificati
 | `jwksTrustDomain` | string | no | Federated trust domain whose JWT bundle to use when `keySource` is `workload_api`. Defaults to `trustDomain` when empty. |
 | `agentWorkloadSocketPath` | string | if `connectWithTrustBundle` or `keySource: workload_api` | Unix socket path to the SPIRE Agent Workload API. |
 | `connectWithTrustBundle` | bool | no | When `keySource` is `oidc`, use the agent trust bundle to open mTLS to the OIDC discovery endpoint. Cannot be combined with `keySource: workload_api`. |
+| `mergeTrustDomains` | string array | no | When `connectWithTrustBundle` is enabled, union X.509 authorities from these federated trust domains into `trustDomain` for OIDC discovery TLS verification. Use in SPIRE HA deployments where peer CAs are split across bundles (for example `spire-ha`). |
 
 ## Selector reference
 
@@ -52,6 +53,31 @@ auth:
         pathPatterns:
           - "^/workload/.*"
 ```
+
+### SPIRE HA OIDC discovery
+
+In a SPIRE HA trust domain, OIDC discovery endpoints may present TLS certificates signed by either HA side. When those authorities are split across federated bundles on the Workload API, list the supplemental trust domains to merge:
+
+```yaml
+auth:
+  plugins:
+    peer-federation:
+      plugin: "spiffe"
+      config:
+        issuerURL: "https://oidc-discovery-provider.example.org"
+        discoveryURL: "https://oidc-discovery.example.org:8181"
+        audiences:
+          - "exchange-service"
+        trustDomain: "example.org"
+        pathPatterns:
+          - "^/workload/.*"
+        connectWithTrustBundle: true
+        agentWorkloadSocketPath: /var/run/spire/agent/sockets/main/public/api.sock
+        mergeTrustDomains:
+          - "spire-ha"
+```
+
+Point `agentWorkloadSocketPath` at the downstream Workload API socket served by your HA agent when one is deployed.
 
 ### Workload API key source
 
