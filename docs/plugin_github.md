@@ -12,11 +12,19 @@ This plugin also validates **Forgejo Actions** OIDC tokens. Forgejo emits the sa
 |-------|------|----------|-------------|
 | `issuerURL` | string | no | OIDC issuer. Default: `https://token.actions.githubusercontent.com`. Compared against the token's `iss` claim rather than fetched; but when `discoveryURL` is unset it doubles as the discovery URL and must then meet the same scheme requirement. |
 | `discoveryURL` | string | no | Base URL for OIDC discovery of the JWKS endpoint. Defaults to `issuerURL` when empty. This is the URL actually fetched, so it must be HTTPS (or HTTP to `localhost`). The `jwks_uri` the discovery document advertises must meet the same requirement, and a redirect from HTTPS to HTTP is refused. |
+| `discoverySPIFFEID` | string | no | When set, the discovery endpoint's TLS is verified against the SPIFFE trust bundle and it must present exactly this SPIFFE ID (e.g. `spiffe://example.org/oidc-discovery-provider`). Must include a path. |
+| `agentWorkloadSocketPath` | string | no | UDS path for the SPIFFE Workload API, used to fetch the trust bundle. Defaults to the server-level `spire.agentWorkloadSocketPath`. Required, from one source or the other, whenever trust-bundle verification is enabled. |
 | `audiences` | string array | **yes** | Expected JWT audience values. At least one entry required. |
 | `allowedRepositoryOwners` | string array | see note | GitHub organizations/users allowed. Supports trailing wildcard (`*`). At least one of `allowedRepositories` or `allowedRepositoryOwners` must be set. |
 | `allowedRepositories` | string array | see note | Repositories allowed in `owner/name` format. Supports trailing wildcard (`*`). At least one required if `allowedRepositoryOwners` is empty. |
 
 When both `allowedRepositoryOwners` and `allowedRepositories` are set, the token must match **both** lists (AND logic).
+
+**SPIFFE TLS does not verify the DNS name.** go-spiffe disables Go's hostname
+verification and replaces certificate validation entirely: the peer is identified
+by the SPIFFE ID in its URI SAN. So when trust-bundle verification is enabled the
+host in `discoveryURL` is an address only, and `discoverySPIFFEID` is the
+identity. It must still be an HTTPS URL.
 
 ## Selector reference
 
