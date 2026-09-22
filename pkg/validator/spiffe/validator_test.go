@@ -130,6 +130,55 @@ func TestConfig_ValidateConfig(t *testing.T) {
             expectError: "invalid discovery URL: scheme must be https",
         },
         {
+            name: "discovery SPIFFE ID with plugin socket",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoverySPIFFEID = "spiffe://example.org/oidc-discovery-provider"
+                cfg.AgentWorkloadSocketPath = "/plugin.sock"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "",
+        },
+        {
+            // connectWithTrustBundle alone still works; it just authorizes any
+            // member of the trust domain rather than one identity.
+            name: "connectWithTrustBundle with plugin socket",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.ConnectWithTrustBundle = true
+                cfg.AgentWorkloadSocketPath = "/plugin.sock"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "",
+        },
+        {
+            name: "malformed discovery SPIFFE ID",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoverySPIFFEID = "https://example.org/oidc"
+                cfg.AgentWorkloadSocketPath = "/plugin.sock"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "invalid discoverySPIFFEID",
+        },
+        {
+            name: "discovery SPIFFE ID without any socket",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoverySPIFFEID = "spiffe://example.org/oidc-discovery-provider"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "workload API socket path must be available",
+        },
+        {
             name: "empty trust domain",
             mutateCfg: func(cfg *Config) {
                 cfg.IssuerURL = "https://issuer.example.org"
@@ -165,7 +214,22 @@ func TestConfig_ValidateConfig(t *testing.T) {
                 cfg.PathPatterns = []string{"^/workload/.*"}
                 cfg.KeySource = KeySourceWorkloadAPI
             },
-            expectError: "agent workload socket path must be specified",
+            expectError: "a workload API socket path must be available when keySource is workload_api",
+        },
+        {
+            // The server-level spire.agentWorkloadSocketPath reaches the plugin
+            // through validator.WorkloadAPIDefaulter, so it satisfies this the
+            // same way it satisfies connectWithTrustBundle.
+            name: "workload_api accepts the server-level socket path",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.KeySource = KeySourceWorkloadAPI
+                cfg.SetDefaultWorkloadAPISocketPath("/run/spire/agent.sock")
+            },
+            expectError: "",
         },
         {
             name: "workload_api conflicts with connectWithTrustBundle",

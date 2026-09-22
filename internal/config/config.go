@@ -310,7 +310,16 @@ type K8sSATokenConfig struct {
 	SVIDTTL Duration `yaml:"svidTTL"`
 }
 
-func (c *AuthConfig) Validate() error {
+// Validate checks the auth configuration and instantiates each enabled plugin's
+// config.
+//
+// defaultWorkloadAPISocketPath is the server-level spire.agentWorkloadSocketPath.
+// Plugin configs are otherwise isolated from server configuration -- Unmarshal
+// receives only the plugin's own config node -- so it is offered here to any
+// plugin implementing validator.WorkloadAPIDefaulter. It may be empty: that
+// setting is only required for certain listener configurations, and is checked
+// separately after this runs.
+func (c *AuthConfig) Validate(defaultWorkloadAPISocketPath string) error {
 	passthroughPlugins := true
 	if (c.PassthroughPlugins != nil && *c.PassthroughPlugins == false) {
 		passthroughPlugins = false
@@ -342,11 +351,19 @@ func (c *AuthConfig) Validate() error {
 				errs = append(errs, fmt.Errorf("failed to initialize plugin %q: %w", name, err))
 			} else if err := config.Unmarshal(&plugin.RawConfig); err != nil {
 				errs = append(errs, fmt.Errorf("failed to unmarshal config for plugin %q: %w", name, err))
-			} else if err := config.ValidateConfig(); err != nil {
-				errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", name, err))
 			} else {
-				plugin.Config = config
-				c.Plugins[name] = plugin
+				// Offer the server-level Workload API socket before validation,
+				// so a plugin that needs one but did not set its own can pick up
+				// the default and validate against the resolved value.
+				if d, ok := config.(validator.WorkloadAPIDefaulter); ok {
+					d.SetDefaultWorkloadAPISocketPath(defaultWorkloadAPISocketPath)
+				}
+				if err := config.ValidateConfig(); err != nil {
+					errs = append(errs, fmt.Errorf("invalid config for plugin %q: %w", name, err))
+				} else {
+					plugin.Config = config
+					c.Plugins[name] = plugin
+				}
 			}
 		}
 		usedPlugins[name] = struct{}{}
@@ -503,7 +520,7 @@ func (c *SpireIdentityExchangeConfig) Validate() error {
 		}
 	}
 
-	errs = append(errs, c.Auth.Validate())
+	errs = append(errs, c.Auth.Validate(c.SPIRE.AgentWorkloadSocketPath))
 	errs = append(errs, c.Server.Validate())
 	errs = append(errs, c.SPIRE.Validate())
 	errs = append(errs, c.GitHubOIDC.Validate())

@@ -169,6 +169,39 @@ func TestConfig_ValidateConfig(t *testing.T) {
 			expectErr: true,
 			errMsg:    "at least one of allowedRepositories or allowedRepositoryOwners must be specified",
 		},
+		{
+			name: "discovery_spiffe_id_with_plugin_socket",
+			cfg: Config{
+				IssuerURL:               "https://example.com",
+				DiscoverySPIFFEID:       "spiffe://example.org/oidc-discovery-provider",
+				AgentWorkloadSocketPath: "/plugin.sock",
+				Audiences:               []string{"test-aud"},
+				AllowedRepositoryOwners: []string{"my-org"},
+			},
+		},
+		{
+			name: "malformed_discovery_spiffe_id",
+			cfg: Config{
+				IssuerURL:               "https://example.com",
+				DiscoverySPIFFEID:       "https://example.org/oidc",
+				AgentWorkloadSocketPath: "/plugin.sock",
+				Audiences:               []string{"test-aud"},
+				AllowedRepositoryOwners: []string{"my-org"},
+			},
+			expectErr: true,
+			errMsg:    "invalid discoverySPIFFEID",
+		},
+		{
+			name: "discovery_spiffe_id_without_any_socket",
+			cfg: Config{
+				IssuerURL:               "https://example.com",
+				DiscoverySPIFFEID:       "spiffe://example.org/oidc-discovery-provider",
+				Audiences:               []string{"test-aud"},
+				AllowedRepositoryOwners: []string{"my-org"},
+			},
+			expectErr: true,
+			errMsg:    "workload API socket path must be available",
+		},
 	}
 
 	for _, tt := range tests {

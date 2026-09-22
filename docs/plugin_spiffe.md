@@ -17,8 +17,15 @@ Uses the generic [JWT validator](../pkg/validator/jwt/) for signature verificati
 | `pathPatterns` | string array | **yes** | Go regular expression patterns for allowed SPIFFE ID paths. At least one pattern required. The token's `sub` claim SPIFFE ID path must match at least one pattern. |
 | `keySource` | string | no | Where to fetch JWT verification keys. `oidc` (default) uses HTTP OIDC discovery and JWKS. `workload_api` reads JWT authorities from a federated trust domain bundle on the SPIRE Agent Workload API. |
 | `jwksTrustDomain` | string | no | Federated trust domain whose JWT bundle to use when `keySource` is `workload_api`. Defaults to `trustDomain` when empty. |
-| `agentWorkloadSocketPath` | string | if `connectWithTrustBundle` or `keySource: workload_api` | Unix socket path to the SPIRE Agent Workload API. |
-| `connectWithTrustBundle` | bool | no | When `keySource` is `oidc`, use the agent trust bundle to open mTLS to the OIDC discovery endpoint. Cannot be combined with `keySource: workload_api`. |
+| `agentWorkloadSocketPath` | string | no | UDS path for the SPIFFE Workload API. Defaults to the server-level `spire.agentWorkloadSocketPath`. Required, from one source or the other, when trust-bundle verification is enabled or `keySource` is `workload_api`. |
+| `connectWithTrustBundle` | bool | no | When `keySource` is `oidc`, verify the discovery endpoint's TLS against the SPIFFE trust bundle, accepting any workload in `trustDomain`. Cannot be combined with `keySource: workload_api`. Narrower alternative: set `discoverySPIFFEID`, which implies this and takes precedence -- both authorize the same URI SAN. |
+| `discoverySPIFFEID` | string | no | When set, the discovery endpoint's TLS is verified against the SPIFFE trust bundle and it must present exactly this SPIFFE ID (e.g. `spiffe://example.org/oidc-discovery-provider`). Must include a path. |
+
+**SPIFFE TLS does not verify the DNS name.** go-spiffe disables Go's hostname
+verification and replaces certificate validation entirely: the peer is identified
+by the SPIFFE ID in its URI SAN. So when trust-bundle verification is enabled the
+host in `discoveryURL` is an address only, and `discoverySPIFFEID` is the
+identity. It must still be an HTTPS URL.
 
 ## Selector reference
 

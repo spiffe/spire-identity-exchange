@@ -20,6 +20,20 @@ type TokenValidatorLoader interface {
 	NewValidator() (TokenValidatorAndSelectorGenerator, error)
 }
 
+// WorkloadAPIDefaulter is an optional interface for TokenValidatorLoader
+// implementations that can fall back to the server-level Workload API socket
+// when their own is unset. Plugin configs are otherwise isolated from server
+// configuration -- Unmarshal receives only the plugin's own config node -- so
+// this is how the server-level default reaches them.
+//
+// It is called after Unmarshal and before ValidateConfig. The path may be empty,
+// since spire.agentWorkloadSocketPath is only required for certain listener
+// configurations; an implementation that needs one should report that from
+// ValidateConfig.
+type WorkloadAPIDefaulter interface {
+	SetDefaultWorkloadAPISocketPath(path string)
+}
+
 type TokenValidatorAndSelectorGenerator interface {
 	TokenValidator
 	SelectorGenerator
