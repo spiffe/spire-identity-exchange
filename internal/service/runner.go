@@ -770,6 +770,11 @@ func handleGetJWTSVID(cfg *config.SpireIdentityExchangeConfig, dc *delegated.Cli
 			http.Error(w, "audiences must be non-empty", http.StatusBadRequest)
 			return
 		}
+		if err := validateMintAudiences(cfg.Auth.Stacks[stack].MintAudiences, req.Audiences); err != nil {
+			logger.Info("mint audiences not permitted", zap.String("stack", stack), zap.Error(err))
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
 
 		claims, err := v.Validate(r.Context(), token, pr.JWT(req.Audiences))
 		if err != nil {

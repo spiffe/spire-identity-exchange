@@ -151,6 +151,23 @@ selectors:
 
 The stack selector is never sufficient on its own: an exchange that derives no plugin selectors from the token claims is rejected before the agent is contacted.
 
+### Stack mint audiences
+
+Plugin `config.audiences` restricts the **incoming** auth token's `aud` claim. For **outgoing** JWT-SVID minting, callers supply `audiences` in the request body (REST) or `mintJWTSVIDRequest.audiences` (gRPC). An optional per-stack allowlist limits which outgoing audiences a stack may issue:
+
+```yaml
+auth:
+  stacks:
+    prod-deploy:
+      plugins:
+      - github-actions
+      mintAudiences:
+      - zot
+      - registry.example.com
+```
+
+When `mintAudiences` is set, every audience in the mint request must appear in that list. Omitted or empty means no SIE-side restriction (SPIRE registration entry policy still applies). This only affects explicit `auth.stacks` entries — passthrough plugin stacks are unrestricted unless you define an explicit stack for them.
+
 ## Prerequisites
 
 - A running [SPIRE Agent](https://spiffe.io/docs/latest/deploying/install-agent/) with the Delegated Identity API enabled (`authorized_delegates` configured)
