@@ -240,42 +240,12 @@ func NewValidator(cfg Config) (*Validator, error) {
         ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
         defer cancel()
 
-        configURL := strings.TrimRight(discoveryURL, "/") + oidcDiscoveryPath
-        req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
+        jwksURI, err := discoverJWKSURI(ctx, httpClient, discoveryURL, cfg.AllowHTTP)
         if err != nil {
-            return nil, fmt.Errorf("failed to create discovery request: %w", err)
+            return nil, err
         }
 
-        resp, err := httpClient.Do(req)
-        if err != nil {
-            return nil, fmt.Errorf("failed to fetch discovery document: %w", err)
-        }
-        defer resp.Body.Close()
-
-        body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes))
-        if err != nil {
-            return nil, fmt.Errorf("failed to read discovery document: %w", err)
-        }
-        if resp.StatusCode != http.StatusOK {
-            return nil, fmt.Errorf("HTTP %d fetching discovery document: %s", resp.StatusCode, string(body))
-        }
-
-        var doc oidcDiscoveryDoc
-        if err := json.Unmarshal(body, &doc); err != nil {
-            return nil, fmt.Errorf("failed to parse discovery document: %w", err)
-        }
-        if doc.JWKSURI == "" {
-            return nil, fmt.Errorf("discovery document missing jwks_uri")
-        }
-        // The document arrived over SPIFFE-authenticated TLS; the URL inside it
-        // did not. Following it to a plaintext endpoint would authenticate the
-        // pointer and leave the keys -- the thing that decides whether a token
-        // is trusted -- open to substitution by anyone on the path.
-        if err := jwtauth.ValidateJWKSURL(doc.JWKSURI, cfg.AllowHTTP); err != nil {
-            return nil, fmt.Errorf("discovery document advertised an unusable jwks_uri %q: %w", doc.JWKSURI, err)
-        }
-
-        keyProvider = jwtauth.NewKeyProviderWithJWKSURI(doc.JWKSURI, httpClient, cfg.Metrics)
+        keyProvider = jwtauth.NewKeyProviderWithJWKSURI(jwksURI, httpClient, cfg.Metrics)
     }
 
    jv, err := jwtauth.NewValidator(jwtauth.Config{
@@ -295,6 +265,56 @@ func NewValidator(cfg Config) (*Validator, error) {
 		config:       cfg,
 		keySync:      keySync,
 	}, nil
+}
+
+// discoverJWKSURI fetches the OIDC discovery document over client and returns
+// the jwks_uri it advertises.
+//
+// THE REDIRECT POLICY IS ATTACHED HERE, NOT BY THE CALLER. The key providers
+// wrap the clients they are handed, so the JWKS fetch inherits it; a raw fetch
+// does not, and this is the fetch that decides WHICH JWKS is trusted. Without
+// the wrapper every scheme check here is advisory: an https discovery URL that
+// 302s to http is followed, and the document naming the keys arrives over a
+// connection nothing authenticated.
+func discoverJWKSURI(ctx context.Context, client *http.Client, discoveryURL string, allowHTTP bool) (string, error) {
+	client = jwtauth.RefuseDowngrade(client)
+
+	configURL := strings.TrimRight(discoveryURL, "/") + oidcDiscoveryPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create discovery request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch discovery document: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to read discovery document: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d fetching discovery document: %s", resp.StatusCode, string(body))
+	}
+
+	var doc oidcDiscoveryDoc
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return "", fmt.Errorf("failed to parse discovery document: %w", err)
+	}
+	if doc.JWKSURI == "" {
+		return "", fmt.Errorf("discovery document missing jwks_uri")
+	}
+	// The document arrived over an authenticated connection; the URL inside it
+	// did not. Following it to a plaintext endpoint would authenticate the
+	// pointer and leave the keys -- the thing that decides whether a token is
+	// trusted -- open to substitution by anyone on the path.
+	if err := jwtauth.ValidateJWKSURL(doc.JWKSURI, allowHTTP); err != nil {
+		return "", fmt.Errorf("discovery document advertised an unusable jwks_uri %q: %w", doc.JWKSURI, err)
+	}
+
+	return doc.JWKSURI, nil
 }
 
 func workloadSocketAddr(path string) string {
