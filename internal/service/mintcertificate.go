@@ -212,16 +212,22 @@ func (h *SpireIdentityExchangeServer) mintPluginX509SVID(ctx context.Context, se
 // mintPluginJWTSVID fetches a JWT-SVID through the Delegated Identity API
 // matching the given selectors and audiences, and packages it into a
 // MintCertificateResponse.
-func (h *SpireIdentityExchangeServer) mintPluginJWTSVID(ctx context.Context, selectors []*spiretypes.Selector, audiences []string, audit *auditEntry, logger *zap.Logger, pluginName string) (*proto.MintCertificateResponse, error) {
+func (h *SpireIdentityExchangeServer) mintPluginJWTSVID(ctx context.Context, selectors []*spiretypes.Selector, audiences []string, audit *auditEntry, logger *zap.Logger, stackName string) (*proto.MintCertificateResponse, error) {
 	if len(audiences) == 0 {
 		audit.FailedStage = stageCSRValidation
 		audit.RejectionReason = "mintJWTSVIDRequest.audiences must be non-empty"
 		audit.logRejection(logger)
 		return nil, status.Error(codes.InvalidArgument, audit.RejectionReason)
 	}
+	if err := validateMintAudiences(h.config.Auth.Stacks[stackName].MintAudiences, audiences); err != nil {
+		audit.FailedStage = stageCSRValidation
+		audit.RejectionReason = err.Error()
+		audit.logRejection(logger)
+		return nil, status.Error(codes.PermissionDenied, audit.RejectionReason)
+	}
 	svid, err := h.delegated.FetchJWTSVID(ctx, selectors, audiences)
 	if err != nil {
-		return nil, translateDelegatedFetchError(err, audit, logger, pluginName, "JWT")
+		return nil, translateDelegatedFetchError(err, audit, logger, stackName, "JWT")
 	}
 	id, err := parseSpiffeID(svid.SpiffeID)
 	if err != nil {

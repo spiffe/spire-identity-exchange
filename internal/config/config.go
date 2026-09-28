@@ -164,6 +164,11 @@ type PluginConfig struct {
 // it appears under in StackConfigs.
 type StackConfig struct {
 	Plugins []string `yaml:"plugins"`
+
+	// Optional allowlist of JWT-SVID audiences this stack may mint. When set,
+	// every audience in a mint request must appear in this list. Omitted or
+	// empty means no SIE-side restriction (SPIRE registration policy still applies).
+	MintAudiences []string `yaml:"mintAudiences"`
 }
 
 // UnmarshalYAML decodes the plugins mapping, naming the replacement when it
@@ -352,15 +357,39 @@ func (c *AuthConfig) Validate() error {
 		usedPlugins[name] = struct{}{}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Stacks)) {
+		stack := c.Stacks[name]
 		if _, exists := usedPlugins[name]; passthroughPlugins && exists {
 			errs = append(errs, fmt.Errorf("stack name %s is defined the same as an existing plugin", name))
 			continue
 		}
 		if !PluginNamePattern.MatchString(name) {
 			errs = append(errs, fmt.Errorf("Stack name %s is invalid", name))
+			continue
+		}
+		if err := validateMintAudiencesList(stack.MintAudiences); err != nil {
+			errs = append(errs, fmt.Errorf("invalid mintAudiences for stack %q: %w", name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// validateMintAudiencesList checks operator-configured mint audience allowlists.
+// An empty list means no restriction and is always valid.
+func validateMintAudiencesList(audiences []string) error {
+	if len(audiences) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(audiences))
+	for _, aud := range audiences {
+		if aud == "" {
+			return errors.New("entries must be non-empty")
+		}
+		if _, dup := seen[aud]; dup {
+			return fmt.Errorf("duplicate entry %q", aud)
+		}
+		seen[aud] = struct{}{}
+	}
+	return nil
 }
 
 const maxPort = 65535

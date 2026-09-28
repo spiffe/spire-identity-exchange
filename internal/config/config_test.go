@@ -434,6 +434,38 @@ auth:
     "bad name!": {plugins: [github]}`,
 			wantErr: "Stack name bad name! is invalid",
 		},
+		{
+			name: "stack mintAudiences with empty entry",
+			doc: `
+auth:
+  passthroughPlugins: false
+  plugins:
+    github: {` + githubConfig + `}
+  stacks:
+    deploy: {plugins: [github], mintAudiences: [""]}`,
+			wantErr: "invalid mintAudiences for stack \"deploy\"",
+		},
+		{
+			name: "stack mintAudiences with duplicate entry",
+			doc: `
+auth:
+  passthroughPlugins: false
+  plugins:
+    github: {` + githubConfig + `}
+  stacks:
+    deploy: {plugins: [github], mintAudiences: [zot, zot]}`,
+			wantErr: "duplicate entry \"zot\"",
+		},
+		{
+			name: "stack mintAudiences valid",
+			doc: `
+auth:
+  passthroughPlugins: false
+  plugins:
+    github: {` + githubConfig + `}
+  stacks:
+    deploy: {plugins: [github], mintAudiences: [zot, registry]}`,
+		},
 	}
 
 	for _, c := range cases {
