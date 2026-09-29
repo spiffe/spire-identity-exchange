@@ -474,7 +474,7 @@ auth:
 			if err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
-			err = auth.Validate()
+			err = auth.Validate("")
 			switch {
 			case c.wantErr == "" && err != nil:
 				t.Fatalf("Validate() = %v, want nil", err)
@@ -500,7 +500,7 @@ auth:
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if err := auth.Validate(); err != nil {
+	if err := auth.Validate(""); err != nil {
 		t.Fatalf("Validate() = %v, want nil", err)
 	}
 

@@ -14,10 +14,9 @@ import (
 	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
-	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
-	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	jwtauth "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/spiffetls"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -47,11 +46,25 @@ type Config struct {
 	PathPatterns []string `yaml:"pathPatterns"`
 	// ConnectWithTrustBundle determines if the plugin uses its retrieved
 	// trust bundle to validate the remote OIDC discovery endpoint's TLS certs.
+	// Any workload in TrustDomain is accepted; set DiscoverySPIFFEID to narrow
+	// that to one identity.
 	ConnectWithTrustBundle bool `yaml:"connectWithTrustBundle"`
+	// DiscoverySPIFFEID, when set, validates the discovery endpoint's TLS
+	// against the SPIFFE trust bundle and requires it to present exactly this
+	// SPIFFE ID. Implies ConnectWithTrustBundle, and takes precedence over it:
+	// both authorize the same URI SAN, and this one is narrower.
+	//
+	// Note that SPIFFE TLS does not verify the DNS name, so the host in
+	// DiscoveryURL is an address and this is the identity.
+	DiscoverySPIFFEID string `yaml:"discoverySPIFFEID"`
 	// AgentWorkloadSocketPath specifies a custom UDS socket path for reaching the
-	// SPIFFE Workload API. Required if ConnectWithTrustBundle or KeySource
-	// workload_api is enabled.
+	// SPIFFE Workload API. Required if ConnectWithTrustBundle, DiscoverySPIFFEID
+	// or KeySource workload_api is enabled -- from here or, when this is unset,
+	// from the server-level spire.agentWorkloadSocketPath.
 	AgentWorkloadSocketPath string `yaml:"agentWorkloadSocketPath"`
+	// defaultWorkloadAPISocketPath is supplied by the config loader from the
+	// server-level setting; see SetDefaultWorkloadAPISocketPath.
+	defaultWorkloadAPISocketPath string `yaml:"-"`
 	// KeySource selects where JWT verification keys are fetched from. Defaults to
 	// oidc (HTTP OIDC discovery + JWKS). Use workload_api to read JWT authorities
 	// from a federated trust domain bundle on the agent Workload API.
@@ -111,11 +124,16 @@ func (c *Config) ValidateConfig() error {
 	if c.ConnectWithTrustBundle && keySource == KeySourceWorkloadAPI {
 		return errors.New("connectWithTrustBundle cannot be used with keySource workload_api")
 	}
-	if c.ConnectWithTrustBundle && c.AgentWorkloadSocketPath == "" {
-		return errors.New("agent workload socket path must be specified when connectWithTrustBundle is enabled")
+	if err := spiffetls.ValidateDiscoverySPIFFEID(c.DiscoverySPIFFEID); err != nil {
+		return err
 	}
-	if keySource == KeySourceWorkloadAPI && c.AgentWorkloadSocketPath == "" {
-		return errors.New("agent workload socket path must be specified when keySource is workload_api")
+	if c.trustBundleEnabled() && c.workloadAPISocketPath() == "" {
+		return errors.New("a workload API socket path must be available when connectWithTrustBundle or discoverySPIFFEID is set; " +
+			"set agentWorkloadSocketPath on the plugin or spire.agentWorkloadSocketPath on the server")
+	}
+	if keySource == KeySourceWorkloadAPI && c.workloadAPISocketPath() == "" {
+		return errors.New("a workload API socket path must be available when keySource is workload_api; " +
+			"set agentWorkloadSocketPath on the plugin or spire.agentWorkloadSocketPath on the server")
 	}
 	if c.JWKSTrustDomain != "" {
 		if _, err := spiffeid.TrustDomainFromString(c.JWKSTrustDomain); err != nil {
@@ -123,6 +141,23 @@ func (c *Config) ValidateConfig() error {
 		}
 	}
 	return nil
+}
+
+// SetDefaultWorkloadAPISocketPath implements validator.WorkloadAPIDefaulter.
+func (c *Config) SetDefaultWorkloadAPISocketPath(path string) {
+	c.defaultWorkloadAPISocketPath = path
+}
+
+// workloadAPISocketPath resolves the plugin-level path against the server-level
+// default. May be empty.
+func (c *Config) workloadAPISocketPath() string {
+	return spiffetls.ResolveSocketPath(c.AgentWorkloadSocketPath, c.defaultWorkloadAPISocketPath)
+}
+
+// trustBundleEnabled reports whether the discovery endpoint's TLS should be
+// verified against the SPIFFE trust bundle.
+func (c *Config) trustBundleEnabled() bool {
+	return c.ConnectWithTrustBundle || c.DiscoverySPIFFEID != ""
 }
 
 func (c *Config) keySource() string {
@@ -166,7 +201,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 	keyProvider := cfg.KeyProvider
 	var keySync validator.KeySynchronizer
 	if keyProvider == nil && cfg.keySource() == KeySourceWorkloadAPI {
-		socketAddr := workloadSocketAddr(cfg.AgentWorkloadSocketPath)
+		socketAddr := workloadSocketAddr(cfg.workloadAPISocketPath())
 		bundleSource, err := NewWorkloadAPIBundleSource(context.Background(), socketAddr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SPIFFE bundle source: %w", err)
@@ -189,68 +224,28 @@ func NewValidator(cfg Config) (*Validator, error) {
 		keyProvider = wlProvider
 		keySync = wlProvider
 	}
-	if keyProvider == nil && cfg.ConnectWithTrustBundle && cfg.TrustDomain != "" {
-        td, err := spiffeid.TrustDomainFromString(cfg.TrustDomain)
+	if keyProvider == nil && cfg.trustBundleEnabled() && cfg.TrustDomain != "" {
+        // An exact DiscoverySPIFFEID wins over trust-domain membership; both
+        // authorize the same URI SAN and the ID is narrower.
+        authorizer, err := spiffetls.AuthorizerFor(cfg.DiscoverySPIFFEID, cfg.TrustDomain)
         if err != nil {
-            return nil, fmt.Errorf("invalid trust domain: %w", err)
+            return nil, err
         }
 
-		socketAddr := workloadSocketAddr(cfg.AgentWorkloadSocketPath)
-		source, err := workloadapi.NewX509Source(
-            context.Background(),
-            workloadapi.WithClientOptions(workloadapi.WithAddr(socketAddr)),
-        )
+        httpClient, err := spiffetls.NewTrustBundleHTTPClient(cfg.workloadAPISocketPath(), authorizer, discoveryTimeout)
         if err != nil {
-            return nil, fmt.Errorf("failed to create SPIFFE X509 source: %w", err)
-        }
-
-        tlsCfg := tlsconfig.TLSClientConfig(source, tlsconfig.AuthorizeMemberOf(td))
-        httpClient := &http.Client{
-            Transport: &http.Transport{
-                TLSClientConfig: tlsCfg,
-            },
-            Timeout: discoveryTimeout,
+            return nil, err
         }
 
         ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
         defer cancel()
 
-        configURL := strings.TrimRight(discoveryURL, "/") + oidcDiscoveryPath
-        req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
+        jwksURI, err := discoverJWKSURI(ctx, httpClient, discoveryURL, cfg.AllowHTTP)
         if err != nil {
-            return nil, fmt.Errorf("failed to create discovery request: %w", err)
+            return nil, err
         }
 
-        resp, err := httpClient.Do(req)
-        if err != nil {
-            return nil, fmt.Errorf("failed to fetch discovery document: %w", err)
-        }
-        defer resp.Body.Close()
-
-        body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes))
-        if err != nil {
-            return nil, fmt.Errorf("failed to read discovery document: %w", err)
-        }
-        if resp.StatusCode != http.StatusOK {
-            return nil, fmt.Errorf("HTTP %d fetching discovery document: %s", resp.StatusCode, string(body))
-        }
-
-        var doc oidcDiscoveryDoc
-        if err := json.Unmarshal(body, &doc); err != nil {
-            return nil, fmt.Errorf("failed to parse discovery document: %w", err)
-        }
-        if doc.JWKSURI == "" {
-            return nil, fmt.Errorf("discovery document missing jwks_uri")
-        }
-        // The document arrived over SPIFFE-authenticated TLS; the URL inside it
-        // did not. Following it to a plaintext endpoint would authenticate the
-        // pointer and leave the keys -- the thing that decides whether a token
-        // is trusted -- open to substitution by anyone on the path.
-        if err := jwtauth.ValidateJWKSURL(doc.JWKSURI, cfg.AllowHTTP); err != nil {
-            return nil, fmt.Errorf("discovery document advertised an unusable jwks_uri %q: %w", doc.JWKSURI, err)
-        }
-
-        keyProvider = jwtauth.NewKeyProviderWithJWKSURI(doc.JWKSURI, httpClient, cfg.Metrics)
+        keyProvider = jwtauth.NewKeyProviderWithJWKSURI(jwksURI, httpClient, cfg.Metrics)
     }
 
    jv, err := jwtauth.NewValidator(jwtauth.Config{
@@ -270,6 +265,56 @@ func NewValidator(cfg Config) (*Validator, error) {
 		config:       cfg,
 		keySync:      keySync,
 	}, nil
+}
+
+// discoverJWKSURI fetches the OIDC discovery document over client and returns
+// the jwks_uri it advertises.
+//
+// THE REDIRECT POLICY IS ATTACHED HERE, NOT BY THE CALLER. The key providers
+// wrap the clients they are handed, so the JWKS fetch inherits it; a raw fetch
+// does not, and this is the fetch that decides WHICH JWKS is trusted. Without
+// the wrapper every scheme check here is advisory: an https discovery URL that
+// 302s to http is followed, and the document naming the keys arrives over a
+// connection nothing authenticated.
+func discoverJWKSURI(ctx context.Context, client *http.Client, discoveryURL string, allowHTTP bool) (string, error) {
+	client = jwtauth.RefuseDowngrade(client)
+
+	configURL := strings.TrimRight(discoveryURL, "/") + oidcDiscoveryPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create discovery request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch discovery document: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to read discovery document: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d fetching discovery document: %s", resp.StatusCode, string(body))
+	}
+
+	var doc oidcDiscoveryDoc
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return "", fmt.Errorf("failed to parse discovery document: %w", err)
+	}
+	if doc.JWKSURI == "" {
+		return "", fmt.Errorf("discovery document missing jwks_uri")
+	}
+	// The document arrived over an authenticated connection; the URL inside it
+	// did not. Following it to a plaintext endpoint would authenticate the
+	// pointer and leave the keys -- the thing that decides whether a token is
+	// trusted -- open to substitution by anyone on the path.
+	if err := jwtauth.ValidateJWKSURL(doc.JWKSURI, allowHTTP); err != nil {
+		return "", fmt.Errorf("discovery document advertised an unusable jwks_uri %q: %w", doc.JWKSURI, err)
+	}
+
+	return doc.JWKSURI, nil
 }
 
 func workloadSocketAddr(path string) string {

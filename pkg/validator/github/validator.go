@@ -8,14 +8,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/spiffe/spire-identity-exchange/pkg/validator"
 	jwtvalidator "github.com/spiffe/spire-identity-exchange/pkg/validator/jwt"
+	"github.com/spiffe/spire-identity-exchange/pkg/validator/spiffetls"
 	"go.yaml.in/yaml/v3"
 )
 
 const (
 	DefaultIssuer = "https://token.actions.githubusercontent.com"
+
+	// discoveryTimeout bounds discovery and JWKS fetches made over the SPIFFE
+	// trust-bundle client.
+	discoveryTimeout = 10 * time.Second
 )
 
 func TokenValidatorLoaderGenerator() (validator.TokenValidatorLoader, error) {
@@ -28,10 +35,23 @@ type Config struct {
 	// DiscoveryURL is the base URL used for OIDC discovery of the JWKS endpoint.
 	// If empty, it defaults to IssuerURL. Set it when the issuer identifier is
 	// not reachable at the address that serves the discovery document.
-	DiscoveryURL            string   `yaml:"discoveryURL"`
-	Audiences               []string `yaml:"audiences"`
-	AllowedRepositoryOwners []string `yaml:"allowedRepositoryOwners"`
-	AllowedRepositories     []string `yaml:"allowedRepositories"`
+	DiscoveryURL string `yaml:"discoveryURL"`
+	// DiscoverySPIFFEID, when set, validates the discovery endpoint's TLS
+	// against the SPIFFE trust bundle and requires it to present exactly this
+	// SPIFFE ID.
+	//
+	// Note that SPIFFE TLS does not verify the DNS name, so the host in
+	// DiscoveryURL is an address and this is the identity.
+	DiscoverySPIFFEID string `yaml:"discoverySPIFFEID"`
+	// AgentWorkloadSocketPath is the UDS path for reaching the SPIFFE Workload
+	// API. Defaults to the server-level spire.agentWorkloadSocketPath.
+	AgentWorkloadSocketPath string `yaml:"agentWorkloadSocketPath"`
+	// defaultWorkloadAPISocketPath is supplied by the config loader from the
+	// server-level setting; see SetDefaultWorkloadAPISocketPath.
+	defaultWorkloadAPISocketPath string   `yaml:"-"`
+	Audiences                    []string `yaml:"audiences"`
+	AllowedRepositoryOwners      []string `yaml:"allowedRepositoryOwners"`
+	AllowedRepositories          []string `yaml:"allowedRepositories"`
 	// KeyProvider allows injecting a custom key provider (e.g., one with
 	// background refresh and fail-closed semantics). If nil, a default
 	// on-demand JWKS fetching provider is used.
@@ -74,7 +94,25 @@ func (c *Config) ValidateConfig() error {
 	if len(c.AllowedRepositories) == 0 && len(c.AllowedRepositoryOwners) == 0 {
 		return errors.New("at least one of allowedRepositories or allowedRepositoryOwners must be specified")
 	}
+	if err := spiffetls.ValidateDiscoverySPIFFEID(c.DiscoverySPIFFEID); err != nil {
+		return err
+	}
+	if c.DiscoverySPIFFEID != "" && c.workloadAPISocketPath() == "" {
+		return errors.New("a workload API socket path must be available when discoverySPIFFEID is set; " +
+			"set agentWorkloadSocketPath on the plugin or spire.agentWorkloadSocketPath on the server")
+	}
 	return nil
+}
+
+// SetDefaultWorkloadAPISocketPath implements validator.WorkloadAPIDefaulter.
+func (c *Config) SetDefaultWorkloadAPISocketPath(path string) {
+	c.defaultWorkloadAPISocketPath = path
+}
+
+// workloadAPISocketPath resolves the plugin-level path against the server-level
+// default. May be empty.
+func (c *Config) workloadAPISocketPath() string {
+	return spiffetls.ResolveSocketPath(c.AgentWorkloadSocketPath, c.defaultWorkloadAPISocketPath)
 }
 
 func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, error) {
@@ -107,6 +145,21 @@ func NewValidator(cfg Config) (*Validator, error) {
 		return nil, fmt.Errorf("at least one of allowed_repositories or allowed_repository_owners must be configured")
 	}
 
+	// When a discovery SPIFFE ID is configured, supply an HTTP client whose TLS
+	// is verified against the SPIFFE trust bundle. jwtvalidator uses it for both
+	// the discovery document and the JWKS fetches that follow.
+	var httpClient *http.Client
+	if cfg.DiscoverySPIFFEID != "" {
+		authorizer, err := spiffetls.AuthorizerFor(cfg.DiscoverySPIFFEID, "")
+		if err != nil {
+			return nil, err
+		}
+		httpClient, err = spiffetls.NewTrustBundleHTTPClient(cfg.workloadAPISocketPath(), authorizer, discoveryTimeout)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// DiscoveryURL is passed through as-is; jwtvalidator.NewValidator defaults it
 	// to the issuer when empty.
 	jv, err := jwtvalidator.NewValidator(jwtvalidator.Config{
@@ -114,6 +167,7 @@ func NewValidator(cfg Config) (*Validator, error) {
 		DiscoveryURL: cfg.DiscoveryURL,
 		Audiences:    cfg.Audiences,
 		KeyProvider:  cfg.KeyProvider,
+		HTTPClient:   httpClient,
 		AllowHTTP:    cfg.AllowHTTP,
 		Metrics:      cfg.Metrics,
 	})

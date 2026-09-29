@@ -70,7 +70,7 @@ func WithAllowHTTP(allow bool) KeyProviderOption {
 func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics validator.Metrics, opts ...KeyProviderOption) *DefaultKeyProvider {
 	p := &DefaultKeyProvider{
 		issuerURL:  issuerURL,
-		httpClient: refuseDowngrade(httpClient),
+		httpClient: RefuseDowngrade(httpClient),
 		metrics:    metrics,
 	}
 	for _, opt := range opts {
@@ -87,7 +87,7 @@ func NewDefaultKeyProvider(issuerURL string, httpClient *http.Client, metrics va
 func NewKeyProviderWithJWKSURI(jwksURI string, httpClient *http.Client, metrics validator.Metrics, opts ...KeyProviderOption) *DefaultKeyProvider {
 	p := &DefaultKeyProvider{
 		jwksURIOverride: jwksURI,
-		httpClient:      refuseDowngrade(httpClient),
+		httpClient:      RefuseDowngrade(httpClient),
 		metrics:         metrics,
 	}
 	for _, opt := range opts {
@@ -96,7 +96,7 @@ func NewKeyProviderWithJWKSURI(jwksURI string, httpClient *http.Client, metrics 
 	return p
 }
 
-// refuseDowngrade returns a copy of c that will not follow a redirect from https
+// RefuseDowngrade returns a copy of c that will not follow a redirect from https
 // to a plaintext scheme.
 //
 // Without it, every scheme check in this package is advisory: an https URL that
@@ -107,7 +107,7 @@ func NewKeyProviderWithJWKSURI(jwksURI string, httpClient *http.Client, metrics 
 // A COPY, not a mutation, because the client belongs to the caller -- the SPIFFE
 // and Kubernetes validators both pass one they built. Copying an http.Client
 // shares its Transport, which is the part that must be shared.
-func refuseDowngrade(c *http.Client) *http.Client {
+func RefuseDowngrade(c *http.Client) *http.Client {
 	if c == nil {
 		return nil
 	}

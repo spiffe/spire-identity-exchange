@@ -2,6 +2,11 @@ package spiffe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
@@ -130,6 +135,55 @@ func TestConfig_ValidateConfig(t *testing.T) {
             expectError: "invalid discovery URL: scheme must be https",
         },
         {
+            name: "discovery SPIFFE ID with plugin socket",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoverySPIFFEID = "spiffe://example.org/oidc-discovery-provider"
+                cfg.AgentWorkloadSocketPath = "/plugin.sock"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "",
+        },
+        {
+            // connectWithTrustBundle alone still works; it just authorizes any
+            // member of the trust domain rather than one identity.
+            name: "connectWithTrustBundle with plugin socket",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.ConnectWithTrustBundle = true
+                cfg.AgentWorkloadSocketPath = "/plugin.sock"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "",
+        },
+        {
+            name: "malformed discovery SPIFFE ID",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoverySPIFFEID = "https://example.org/oidc"
+                cfg.AgentWorkloadSocketPath = "/plugin.sock"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "invalid discoverySPIFFEID",
+        },
+        {
+            name: "discovery SPIFFE ID without any socket",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.DiscoverySPIFFEID = "spiffe://example.org/oidc-discovery-provider"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+            },
+            expectError: "workload API socket path must be available",
+        },
+        {
             name: "empty trust domain",
             mutateCfg: func(cfg *Config) {
                 cfg.IssuerURL = "https://issuer.example.org"
@@ -165,7 +219,22 @@ func TestConfig_ValidateConfig(t *testing.T) {
                 cfg.PathPatterns = []string{"^/workload/.*"}
                 cfg.KeySource = KeySourceWorkloadAPI
             },
-            expectError: "agent workload socket path must be specified",
+            expectError: "a workload API socket path must be available when keySource is workload_api",
+        },
+        {
+            // The server-level spire.agentWorkloadSocketPath reaches the plugin
+            // through validator.WorkloadAPIDefaulter, so it satisfies this the
+            // same way it satisfies connectWithTrustBundle.
+            name: "workload_api accepts the server-level socket path",
+            mutateCfg: func(cfg *Config) {
+                cfg.IssuerURL = "https://issuer.example.org"
+                cfg.Audiences = []string{"spire-server"}
+                cfg.TrustDomain = "example.org"
+                cfg.PathPatterns = []string{"^/workload/.*"}
+                cfg.KeySource = KeySourceWorkloadAPI
+                cfg.SetDefaultWorkloadAPISocketPath("/run/spire/agent.sock")
+            },
+            expectError: "",
         },
         {
             name: "workload_api conflicts with connectWithTrustBundle",
@@ -386,4 +455,117 @@ pathPatterns: ["^/app/.*"]`
     validator, err := loader.NewValidator()
     assert.NoError(t, err)
     assert.NotNil(t, validator)
+}
+
+// Reaching this fetch through NewValidator needs a live SPIFFE Workload API, so
+// these drive the function directly.
+func TestDiscoverJWKSURI(t *testing.T) {
+	// discoveryServer answers the well-known path with whatever handler is given
+	// and returns a client configured to trust it.
+	discoveryServer := func(t *testing.T, h http.HandlerFunc) (*httptest.Server, *http.Client) {
+		t.Helper()
+		srv := httptest.NewTLSServer(h)
+		t.Cleanup(srv.Close)
+		return srv, srv.Client()
+	}
+
+	t.Run("refuses an https discovery URL that redirects to plaintext", func(t *testing.T) {
+		// An attacker-controlled hop. If the redirect were followed, the document
+		// naming the signing keys would arrive over a connection nothing
+		// authenticated -- and every scheme check here would be advisory.
+		plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprint(w, `{"jwks_uri":"https://attacker.example.org/keys"}`)
+		}))
+		defer plain.Close()
+
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, plain.URL, http.StatusFound)
+		})
+
+		_, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not be downgraded")
+	})
+
+	// The negative above proves nothing on its own: a fetch that failed for any
+	// reason would also error. This is the control.
+	t.Run("follows a redirect that stays on https", func(t *testing.T) {
+		final := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprint(w, `{"jwks_uri":"https://issuer.example.org/keys"}`)
+		}))
+		defer final.Close()
+
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, final.URL, http.StatusFound)
+		}))
+		defer srv.Close()
+
+		// One client that trusts both hops; each httptest server signs with its own.
+		pool := x509.NewCertPool()
+		pool.AddCert(srv.Certificate())
+		pool.AddCert(final.Certificate())
+		client := &http.Client{
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}},
+		}
+
+		uri, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.NoError(t, err)
+		assert.Equal(t, "https://issuer.example.org/keys", uri)
+	})
+
+	t.Run("returns the advertised jwks_uri", func(t *testing.T) {
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, oidcDiscoveryPath, r.URL.Path)
+			fmt.Fprint(w, `{"jwks_uri":"https://issuer.example.org/keys"}`)
+		})
+		uri, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.NoError(t, err)
+		assert.Equal(t, "https://issuer.example.org/keys", uri)
+	})
+
+	t.Run("rejects a plaintext jwks_uri", func(t *testing.T) {
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprint(w, `{"jwks_uri":"http://issuer.example.org/keys"}`)
+		})
+		_, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unusable jwks_uri")
+	})
+
+	t.Run("accepts a plaintext jwks_uri when allowHTTP is set", func(t *testing.T) {
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprint(w, `{"jwks_uri":"http://issuer.example.org/keys"}`)
+		})
+		uri, err := discoverJWKSURI(context.Background(), client, srv.URL, true)
+		require.NoError(t, err)
+		assert.Equal(t, "http://issuer.example.org/keys", uri)
+	})
+
+	t.Run("rejects a document with no jwks_uri", func(t *testing.T) {
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprint(w, `{"issuer":"https://issuer.example.org"}`)
+		})
+		_, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing jwks_uri")
+	})
+
+	t.Run("reports a non-200", func(t *testing.T) {
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, "nope")
+		})
+		_, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "HTTP 404")
+	})
+
+	t.Run("reports an unparseable document", func(t *testing.T) {
+		srv, client := discoveryServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			fmt.Fprint(w, "not json")
+		})
+		_, err := discoverJWKSURI(context.Background(), client, srv.URL, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse discovery document")
+	})
 }

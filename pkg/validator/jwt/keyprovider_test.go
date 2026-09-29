@@ -360,7 +360,7 @@ func TestRefuseDowngrade(t *testing.T) {
 		}))
 		defer tls.Close()
 
-		client := refuseDowngrade(tls.Client())
+		client := RefuseDowngrade(tls.Client())
 		_, err := client.Get(tls.URL + "/keys")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must not be downgraded")
@@ -382,7 +382,7 @@ func TestRefuseDowngrade(t *testing.T) {
 		pool := x509.NewCertPool()
 		pool.AddCert(first.Certificate())
 		pool.AddCert(final.Certificate())
-		client := refuseDowngrade(&http.Client{
+		client := RefuseDowngrade(&http.Client{
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}},
 		})
 
@@ -394,7 +394,7 @@ func TestRefuseDowngrade(t *testing.T) {
 
 	t.Run("a_caller_policy_still_runs", func(t *testing.T) {
 		called := false
-		client := refuseDowngrade(&http.Client{
+		client := RefuseDowngrade(&http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				called = true
 				return nil

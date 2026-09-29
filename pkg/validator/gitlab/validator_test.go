@@ -145,6 +145,27 @@ func TestConfig_ValidateConfig(t *testing.T) {
 			expectErr: true,
 			errMsg:    "at least one of allowedProjectPaths or allowedNamespacePaths must be specified",
 		},
+		{
+			name: "discovery_spiffe_id_with_plugin_socket",
+			cfg: Config{
+				IssuerURL:               "https://gitlab.com",
+				DiscoverySPIFFEID:       "spiffe://example.org/oidc-discovery-provider",
+				AgentWorkloadSocketPath: "/plugin.sock",
+				Audiences:               []string{"test-aud"},
+				AllowedProjectPaths:     []string{"my-org/my-project"},
+			},
+		},
+		{
+			name: "discovery_spiffe_id_without_any_socket",
+			cfg: Config{
+				IssuerURL:           "https://gitlab.com",
+				DiscoverySPIFFEID:   "spiffe://example.org/oidc-discovery-provider",
+				Audiences:           []string{"test-aud"},
+				AllowedProjectPaths: []string{"my-org/my-project"},
+			},
+			expectErr: true,
+			errMsg:    "workload API socket path must be available",
+		},
 	}
 
 	for _, tt := range tests {
@@ -244,3 +265,39 @@ func TestCheckAllowLists(t *testing.T) {
 	}
 }
 
+
+func TestConfig_SetDefaultWorkloadAPISocketPath(t *testing.T) {
+	base := func() Config {
+		return Config{
+			IssuerURL:           "https://gitlab.com",
+			DiscoverySPIFFEID:   "spiffe://example.org/oidc-discovery-provider",
+			Audiences:           []string{"test-aud"},
+			AllowedProjectPaths: []string{"my-org/my-project"},
+		}
+	}
+
+	t.Run("server_level_satisfies_the_requirement", func(t *testing.T) {
+		cfg := base()
+		require.Error(t, cfg.ValidateConfig(), "precondition: no socket anywhere")
+
+		cfg = base()
+		cfg.SetDefaultWorkloadAPISocketPath("/server.sock")
+		assert.NoError(t, cfg.ValidateConfig())
+		assert.Equal(t, "/server.sock", cfg.workloadAPISocketPath())
+	})
+
+	t.Run("plugin_level_overrides_server_level", func(t *testing.T) {
+		cfg := base()
+		cfg.AgentWorkloadSocketPath = "/plugin.sock"
+		cfg.SetDefaultWorkloadAPISocketPath("/server.sock")
+		assert.NoError(t, cfg.ValidateConfig())
+		assert.Equal(t, "/plugin.sock", cfg.workloadAPISocketPath())
+	})
+
+	t.Run("empty_default_is_harmless_without_a_spiffe_id", func(t *testing.T) {
+		cfg := base()
+		cfg.DiscoverySPIFFEID = ""
+		cfg.SetDefaultWorkloadAPISocketPath("")
+		assert.NoError(t, cfg.ValidateConfig())
+	})
+}
