@@ -1,6 +1,6 @@
 module github.com/spiffe/spire-identity-exchange
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
