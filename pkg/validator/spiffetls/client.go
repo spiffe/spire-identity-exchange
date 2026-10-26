@@ -21,6 +21,10 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
+// WorkloadAPIStartupTimeout bounds how long a plugin waits at startup
+// for the SPIRE Agent to deliver its first trust bundle.
+const WorkloadAPIStartupTimeout = 60 * time.Second
+
 // Authorizer decides whether the SPIFFE ID presented by the discovery endpoint
 // is acceptable. Re-exported so callers need not import go-spiffe directly.
 type Authorizer = tlsconfig.Authorizer
@@ -32,6 +36,36 @@ func AuthorizeID(id spiffeid.ID) Authorizer { return tlsconfig.AuthorizeID(id) }
 // Weaker than AuthorizeID: any workload in the domain satisfies it.
 func AuthorizeMemberOf(td spiffeid.TrustDomain) Authorizer {
 	return tlsconfig.AuthorizeMemberOf(td)
+}
+
+// NewBundleSource connects to the Workload API at socketPath and waits for the
+// initial trust bundle, giving up after WorkloadAPIStartupTimeout.
+func NewBundleSource(socketPath string) (*workloadapi.BundleSource, error) {
+	return newBundleSourceWithTimeout(socketPath, WorkloadAPIStartupTimeout)
+}
+
+// newBundleSourceWithTimeout is split out so tests can use a short deadline.
+func newBundleSourceWithTimeout(socketPath string, timeout time.Duration) (*workloadapi.BundleSource, error) {
+	if socketPath == "" {
+		return nil, fmt.Errorf("workload API socket path must not be empty")
+	}
+
+	// workloadapi.WithAddr requires the unix:// prefix; accept a path with or
+	// without it.
+	addr := "unix://" + strings.TrimPrefix(socketPath, "unix://")
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	source, err := workloadapi.NewBundleSource(
+		ctx,
+		workloadapi.WithClientOptions(workloadapi.WithAddr(addr)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to receive the initial trust bundle from the workload API at %s within %s "+
+			"(is the SPIRE agent running, and is the socket path correct?): %w", addr, timeout, err)
+	}
+	return source, nil
 }
 
 // NewTrustBundleHTTPClient returns an http.Client that verifies the server
@@ -55,16 +89,9 @@ func NewTrustBundleHTTPClient(socketPath string, authorizer Authorizer, timeout 
 		return nil, fmt.Errorf("authorizer must not be nil")
 	}
 
-	// workloadapi.WithAddr requires the unix:// prefix; accept a path with or
-	// without it.
-	addr := "unix://" + strings.TrimPrefix(socketPath, "unix://")
-
-	source, err := workloadapi.NewBundleSource(
-		context.Background(),
-		workloadapi.WithClientOptions(workloadapi.WithAddr(addr)),
-	)
+	source, err := NewBundleSource(socketPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SPIFFE bundle source: %w", err)
+		return nil, err
 	}
 
 	return newClientWithBundleSource(source, authorizer, timeout), nil

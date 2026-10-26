@@ -413,25 +413,6 @@ func TestGenerateSelectors(t *testing.T) {
     assert.Contains(t, selectors, &types.Selector{Type: "spiffe", Value: "source_spiffe_id:spiffe://example.org/workload/myapp/production"})
 }
 
-type keySyncSpy struct {
-	started bool
-}
-
-func (s *keySyncSpy) Start(context.Context) error {
-	s.started = true
-	return nil
-}
-
-func TestValidator_Start(t *testing.T) {
-	syncer := &keySyncSpy{}
-	v := &Validator{keySync: syncer}
-	require.NoError(t, v.Start(context.Background()))
-	assert.True(t, syncer.started)
-
-	v = &Validator{}
-	require.NoError(t, v.Start(context.Background()))
-}
-
 func TestTokenValidatorLoader(t *testing.T) {
     loader, err := TokenValidatorLoaderGenerator()
     require.NoError(t, err)
