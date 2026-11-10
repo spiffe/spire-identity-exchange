@@ -2,6 +2,7 @@ package spiffetls
 
 import (
 	"testing"
+	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/stretchr/testify/assert"
@@ -162,5 +163,39 @@ func TestNewTrustBundleHTTPClient_Guards(t *testing.T) {
 		_, err := NewTrustBundleHTTPClient("/some.sock", nil, 0)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "authorizer must not be nil")
+	})
+}
+
+func TestNewBundleSource_Timeout(t *testing.T) {
+	t.Run("empty_socket_path", func(t *testing.T) {
+		_, err := newBundleSourceWithTimeout("", time.Second)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "socket path must not be empty")
+	})
+
+	// go-spiffe retries a failing watch forever, so an unreachable socket only
+	// returns once the deadline fires. Keep it short, and check that the error
+	// names the socket and the bound so an operator can act on it.
+	t.Run("unreachable_socket_fails_at_deadline", func(t *testing.T) {
+		const timeout = 300 * time.Millisecond
+		sock := t.TempDir() + "/missing.sock"
+
+		start := time.Now()
+		_, err := newBundleSourceWithTimeout(sock, timeout)
+		elapsed := time.Since(start)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unix://"+sock)
+		assert.Contains(t, err.Error(), timeout.String())
+		assert.Contains(t, err.Error(), "is the SPIRE agent running")
+		assert.GreaterOrEqual(t, elapsed, timeout)
+		assert.Less(t, elapsed, 10*time.Second, "must give up at the deadline, not retry indefinitely")
+	})
+
+	t.Run("accepts_unix_prefix", func(t *testing.T) {
+		_, err := newBundleSourceWithTimeout("unix:///nonexistent/agent.sock", 200*time.Millisecond)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unix:///nonexistent/agent.sock")
+		assert.NotContains(t, err.Error(), "unix://unix://")
 	})
 }

@@ -29,14 +29,6 @@ func NewWorkloadAPIKeyProvider(source *workloadapi.BundleSource, trustDomain spi
 	}
 }
 
-// NewWorkloadAPIBundleSource connects to the agent Workload API at socketAddr.
-func NewWorkloadAPIBundleSource(ctx context.Context, socketAddr string) (*workloadapi.BundleSource, error) {
-	return workloadapi.NewBundleSource(
-		ctx,
-		workloadapi.WithClientOptions(workloadapi.WithAddr(socketAddr)),
-	)
-}
-
 // GetKey returns the public key for kid from the federated JWT bundle.
 func (p *WorkloadAPIKeyProvider) GetKey(ctx context.Context, kid string) (crypto.PublicKey, error) {
 	now := time.Now()
@@ -65,11 +57,6 @@ func (p *WorkloadAPIKeyProvider) GetKey(ctx context.Context, kid string) (crypto
 		return nil, fmt.Errorf("no key found for kid=%q in JWT bundle for trust domain %q", kid, p.trustDomain)
 	}
 	return key, nil
-}
-
-// Start waits until the Workload API has delivered an initial bundle update.
-func (p *WorkloadAPIKeyProvider) Start(ctx context.Context) error {
-	return p.source.WaitUntilUpdated(ctx)
 }
 
 // Close releases the Workload API bundle source.

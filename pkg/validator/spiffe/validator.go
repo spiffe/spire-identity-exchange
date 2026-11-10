@@ -183,7 +183,6 @@ func (c *Config) NewValidator() (validator.TokenValidatorAndSelectorGenerator, e
 type Validator struct {
 	jwtValidator *jwtauth.Validator
 	config       Config
-	keySync validator.KeySynchronizer
 }
 
 // NewValidator creates a new SPIFFE SVID validator.
@@ -199,30 +198,26 @@ func NewValidator(cfg Config) (*Validator, error) {
     }
 
 	keyProvider := cfg.KeyProvider
-	var keySync validator.KeySynchronizer
+	// closeKeyProvider releases the Workload API source if a later step fails;
+	// on success the provider owns it for the life of the process.
+	closeKeyProvider := func() {}
 	if keyProvider == nil && cfg.keySource() == KeySourceWorkloadAPI {
-		socketAddr := workloadSocketAddr(cfg.workloadAPISocketPath())
-		bundleSource, err := NewWorkloadAPIBundleSource(context.Background(), socketAddr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create SPIFFE bundle source: %w", err)
-		}
-
 		jwksTD, err := spiffeid.TrustDomainFromString(cfg.jwksTrustDomain())
 		if err != nil {
-			bundleSource.Close()
 			return nil, fmt.Errorf("invalid jwks trust domain: %w", err)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
-		defer cancel()
-		if err := bundleSource.WaitUntilUpdated(ctx); err != nil {
-			bundleSource.Close()
-			return nil, fmt.Errorf("failed to receive initial JWT bundle from workload API: %w", err)
+		// Blocks until the agent delivers the first bundle, bounded by
+		// spiffetls.WorkloadAPIStartupTimeout. The source is fully initialized
+		// on return, so no further startup synchronization is needed.
+		bundleSource, err := spiffetls.NewBundleSource(cfg.workloadAPISocketPath())
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize workload API JWT key provider: %w", err)
 		}
 
 		wlProvider := NewWorkloadAPIKeyProvider(bundleSource, jwksTD, cfg.Metrics)
 		keyProvider = wlProvider
-		keySync = wlProvider
+		closeKeyProvider = func() { _ = wlProvider.Close() }
 	}
 	if keyProvider == nil && cfg.trustBundleEnabled() && cfg.TrustDomain != "" {
         // An exact DiscoverySPIFFEID wins over trust-domain membership; both
@@ -257,13 +252,13 @@ func NewValidator(cfg Config) (*Validator, error) {
         Metrics:               cfg.Metrics,
     })
     if err != nil {
+        closeKeyProvider()
         return nil, err
     }
 
 	return &Validator{
 		jwtValidator: jv,
 		config:       cfg,
-		keySync:      keySync,
 	}, nil
 }
 
@@ -315,18 +310,6 @@ func discoverJWKSURI(ctx context.Context, client *http.Client, discoveryURL stri
 	}
 
 	return doc.JWKSURI, nil
-}
-
-func workloadSocketAddr(path string) string {
-	return "unix://" + strings.TrimPrefix(path, "unix://")
-}
-
-// Start waits for the initial Workload API bundle when using workload_api keys.
-func (v *Validator) Start(ctx context.Context) error {
-	if v.keySync != nil {
-		return v.keySync.Start(ctx)
-	}
-	return nil
 }
 
 // Validate validates a SPIFFE SVID JWT token and returns claims.

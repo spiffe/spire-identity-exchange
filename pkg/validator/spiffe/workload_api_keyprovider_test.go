@@ -43,11 +43,6 @@ func TestConfig_jwksTrustDomain(t *testing.T) {
 	assert.Equal(t, "peer.example.org", cfg.jwksTrustDomain())
 }
 
-func TestWorkloadSocketAddr(t *testing.T) {
-	assert.Equal(t, "unix:///tmp/agent.sock", workloadSocketAddr("/tmp/agent.sock"))
-	assert.Equal(t, "unix:///tmp/agent.sock", workloadSocketAddr("unix:///tmp/agent.sock"))
-}
-
 func TestNewValidator_withInjectedKeyProvider(t *testing.T) {
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
